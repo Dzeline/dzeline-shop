@@ -204,6 +204,70 @@ export const dbHelpers = {
     const sales = await this.getTodaySales();
     return sales.reduce((sum, txn) => sum + txn.total, 0);
   },
+
+  // Complete a sale atomically: insert transaction, line items, decrement stock
+  async completeTransaction(cartItems, payment) {
+    return await db.transaction(
+      "rw",
+      [db.transactions, db.transaction_items, db.products],
+      async () => {
+        const transactionId = await db.transactions.add({
+          timestamp: Date.now(),
+          subtotal: payment.subtotal,
+          vat: payment.vat,
+          total: payment.total,
+          payment_method: payment.method,
+          payment_amount: payment.amount,
+          change_given: payment.change,
+          synced: false,
+          staff_id: 1,
+        });
+
+        for (const item of cartItems) {
+          await db.transaction_items.add({
+            transaction_id: transactionId,
+            product_id: item.id,
+            quantity: item.quantity,
+            price: item.price,
+            subtotal: item.price * item.quantity,
+          });
+
+          const product = await db.products.get(item.id);
+          if (product) {
+            await db.products.update(item.id, {
+              stock: Math.max(0, product.stock - item.quantity),
+            });
+          }
+        }
+
+        return {
+          id: transactionId,
+          items: cartItems,
+          timestamp: Date.now(),
+          ...payment,
+        };
+      }
+    );
+  },
+
+  // Get recent transactions with their line items
+  async getTransactionHistory(limit = 20) {
+    const txns = await db.transactions
+      .orderBy("timestamp")
+      .reverse()
+      .limit(limit)
+      .toArray();
+
+    return await Promise.all(
+      txns.map(async (txn) => {
+        const items = await db.transaction_items
+          .where("transaction_id")
+          .equals(txn.id)
+          .toArray();
+        return { ...txn, items };
+      })
+    );
+  },
 };
 
 export default db;

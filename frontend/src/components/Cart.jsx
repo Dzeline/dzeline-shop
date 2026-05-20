@@ -1,110 +1,169 @@
+import { useState } from "react";
 import { useCartStore } from "../store/cartStore";
 import { VAT_RATE } from "../utils/constants";
 import { formatPrice } from "../utils/formatters";
+import { dbHelpers } from "../services/db";
+import { showToast } from "../utils/toast";
+import CheckoutModal from "./CheckoutModal";
+import Receipt from "./Receipt";
 
-export default function Cart() {
+export default function Cart({ onNewSale }) {
   const items = useCartStore((state) => state.items);
   const removeItem = useCartStore((state) => state.removeItem);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const getTotal = useCartStore((state) => state.getTotal);
   const clearCart = useCartStore((state) => state.clearCart);
 
-  const total = getTotal();
-  const vat = total * VAT_RATE; // 16% VAT
-  const grandTotal = total + vat;
+  const [view, setView] = useState("cart"); // 'cart' | 'checkout' | 'receipt'
+  const [completedSale, setCompletedSale] = useState(null);
+  const [processing, setProcessing] = useState(false);
+
+  const subtotal = getTotal();
+  const vat = subtotal * VAT_RATE;
+  const grandTotal = subtotal + vat;
+
+  async function handleCheckoutComplete(payment) {
+    setProcessing(true);
+    try {
+      const sale = await dbHelpers.completeTransaction(items, payment);
+      setCompletedSale(sale);
+      clearCart();
+      setView("receipt");
+    } catch (err) {
+      console.error("Sale failed:", err);
+      showToast("Sale failed — please try again");
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  function handleNewSale() {
+    setView("cart");
+    setCompletedSale(null);
+    onNewSale?.();
+  }
+
+  if (view === "receipt" && completedSale) {
+    return <Receipt sale={completedSale} onNewSale={handleNewSale} />;
+  }
 
   if (items.length === 0) {
     return (
-      <div className="p-4 text-center text-gray-500">
-        <p className="text-lg mb-2">Cart is empty</p>
-        <p className="text-sm">Add products to get started</p>
+      <div className="flex flex-col items-center justify-center h-64 text-gray-400 gap-3">
+        <svg className="w-16 h-16 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.5 6h13M7 13l-1-4m9 10a1 1 0 100 2 1 1 0 000-2zm-6 0a1 1 0 100 2 1 1 0 000-2z" />
+        </svg>
+        <div className="text-center">
+          <p className="text-lg font-semibold text-gray-500">Cart is empty</p>
+          <p className="text-sm">Add products to get started</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4">
-      {/* Cart Items */}
-      <div className="space-y-3 mb-6">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg"
-          >
-            {/* Product Info */}
-            <div className="flex-1">
-              <h4 className="font-semibold text-sm">{item.name}</h4>
-              <p className="text-xs text-gray-500">
-                KES {item.price} × {item.quantity}
-              </p>
-            </div>
+    <>
+      <div className="p-4">
+        {/* Cart Items */}
+        <div className="space-y-3 mb-6">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl shadow-sm"
+            >
+              <div className="flex-1 min-w-0">
+                <h4 className="font-semibold text-sm text-gray-800 truncate">{item.name}</h4>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {formatPrice(item.price)} each
+                </p>
+              </div>
 
-            {/* Quantity Controls */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                className="w-8 h-8 bg-gray-200 rounded-full hover:bg-gray-300"
-              >
-                -
-              </button>
-              <span className="w-8 text-center font-semibold">
-                {item.quantity}
-              </span>
-              <button
-                onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                className="w-8 h-8 bg-gray-200 rounded-full hover:bg-gray-300"
-              >
-                +
-              </button>
-            </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                  className="w-8 h-8 bg-gray-100 rounded-full hover:bg-gray-200 font-bold text-gray-600 flex items-center justify-center"
+                >
+                  −
+                </button>
+                <span className="w-8 text-center font-bold text-sm">{item.quantity}</span>
+                <button
+                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                  className="w-8 h-8 bg-gray-100 rounded-full hover:bg-gray-200 font-bold text-gray-600 flex items-center justify-center"
+                >
+                  +
+                </button>
+              </div>
 
-            {/* Subtotal & Remove */}
-            <div className="text-right">
-              <p className="font-bold text-primary">
-                KES {(item.price * item.quantity).toFixed(2)}
-              </p>
-              <button
-                onClick={() => removeItem(item.id)}
-                className="text-xs text-red-500 hover:text-red-700"
-              >
-                Remove
-              </button>
+              <div className="text-right shrink-0">
+                <p className="font-bold text-sm text-primary">
+                  {formatPrice(item.price * item.quantity)}
+                </p>
+                <button
+                  onClick={() => removeItem(item.id)}
+                  className="text-xs text-red-400 hover:text-red-600 mt-0.5"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
+          ))}
+        </div>
+
+        {/* Totals */}
+        <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4 space-y-2 mb-5">
+          <div className="flex justify-between text-sm text-gray-500">
+            <span>Subtotal</span>
+            <span>{formatPrice(subtotal)}</span>
           </div>
-        ))}
+          <div className="flex justify-between text-sm text-gray-500">
+            <span>VAT (16%)</span>
+            <span>{formatPrice(vat)}</span>
+          </div>
+          <div className="flex justify-between text-lg font-bold text-gray-800 pt-2 border-t border-gray-100">
+            <span>Total</span>
+            <span className="text-primary">{formatPrice(grandTotal)}</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="space-y-3">
+          <button
+            onClick={() => setView("checkout")}
+            className="w-full py-4 bg-primary text-white rounded-xl font-bold text-base hover:bg-blue-600 active:scale-95 transition"
+          >
+            Proceed to Checkout
+          </button>
+          <button
+            onClick={clearCart}
+            className="w-full py-3 bg-gray-100 text-gray-600 rounded-xl font-semibold hover:bg-gray-200 transition"
+          >
+            Clear Cart
+          </button>
+        </div>
       </div>
 
-      {/* Totals */}
-      <div className="border-t border-gray-300 pt-4 space-y-2">
-        <div className="flex justify-between text-sm">
-          <span>Subtotal:</span>
-          <span>KES {total.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span>VAT (16%):</span>
-          <span>KES {vat.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-lg font-bold">
-          <span>{formatPrice(total)}:</span>
-          <span className="text-primary">KES {grandTotal.toFixed(2)}</span>
-        </div>
-      </div>
+      {/* Checkout Modal — rendered outside scroll area */}
+      {view === "checkout" && (
+        <CheckoutModal
+          items={items}
+          subtotal={subtotal}
+          vat={vat}
+          grandTotal={grandTotal}
+          onComplete={handleCheckoutComplete}
+          onCancel={() => setView("cart")}
+        />
+      )}
 
-      {/* Actions */}
-      <div className="mt-6 space-y-3">
-        <button
-          onClick={() => alert("Checkout coming in Week 3!")}
-          className="w-full py-3 bg-primary text-white rounded-lg font-semibold hover:bg-blue-600"
-        >
-          Proceed to Checkout
-        </button>
-        <button
-          onClick={clearCart}
-          className="w-full py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
-        >
-          Clear Cart
-        </button>
-      </div>
-    </div>
+      {/* Full-screen processing overlay */}
+      {processing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl p-8 text-center shadow-2xl">
+            <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-gray-600 font-semibold">Processing sale...</p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
