@@ -1,44 +1,48 @@
 # Dzeline Shop - Offline-First POS System
 
-**Supermarket point-of-sale system built for Kenya's small businesses**
+Supermarket point-of-sale system built for Kenya's small businesses
 
 [![License: Private](https://img.shields.io/badge/License-Private-red.svg)](LICENSE)
-[![Phase: 1 Complete](https://img.shields.io/badge/Phase-1%20Complete-success)](HANDOFF.md)
+[![Phase: 2 Complete](https://img.shields.io/badge/Phase-2%20Complete-success)](HANDOFF.md)
 
 ## 🎯 Project Vision
 
 A mobile-first, offline-capable digital shop platform that works reliably in areas with unstable internet connectivity. Built specifically for small-to-medium supermarkets in Kenya.
 
-## ✨ Features (Phase 1 Complete)
+## ✨ Features (Phase 2 Complete)
 
 - ✅ **100% Offline Operation** - Works without internet
-- ✅ **Product Catalog** - Browse & search 10+ products
+- ✅ **Product Catalog** - Browse & search with live debounced search
 - ✅ **Shopping Cart** - Add, remove, adjust quantities
 - ✅ **VAT Calculation** - Automatic 16% Kenya VAT
+- ✅ **Cash Payments** - Full cash checkout with change calculation
+- ✅ **Receipt Generation** - KRA-style receipts with VAT breakdown
+- ✅ **Stock Decrement** - Inventory updated atomically on each sale
+- ✅ **Transaction History** - All sales persisted to IndexedDB
 - ✅ **Mobile-First UI** - Optimized for phones/tablets
 - ✅ **IndexedDB Storage** - Local-first data persistence
 - ✅ **Progressive Web App** - Installable on any device
 
-## 🚧 Coming Soon (Phase 2-4)
+## 🚧 Coming Soon (Phase 3-4)
 
-- 🔜 **Cash Payments** - Record cash transactions
-- 🔜 **M-Pesa Integration** - STK Push + offline fallback
-- 🔜 **Receipt Generation** - KRA-compliant receipts
+- 🔜 **M-Pesa Integration** - STK Push + offline fallback queue
 - 🔜 **Bluetooth Printing** - Thermal printer support
-- 🔜 **Cloud Sync** - Backup to server when online
+- 🔜 **Cloud Sync** - Backup to server when online (sync_queue ready)
 - 🔜 **Multi-Device** - Sync across multiple registers
 - 🔜 **Analytics Dashboard** - Sales reports & insights
+- 🔜 **Staff Management** - Multi-cashier with shift reports
+- 🔜 **Barcode Scanner** - Camera + USB scanner support
 
 ## 🛠️ Tech Stack
 
-### Frontend (Phase 1)
+### Frontend (Phase 1–2)
 
 - **React 19.2** - UI framework
 - **Vite 8.0** - Build tool
-- **Tailwind CSS 4.3** - Styling
-- **Dexie.js 4.4** - IndexedDB wrapper
-- **Zustand 5.0** - State management
-- **PWA** - Service Workers for offline
+- **Tailwind CSS 4.3** - Styling (CSS-first, `@theme` variables)
+- **Dexie.js 4.4** - IndexedDB wrapper (atomic transactions)
+- **Zustand 5.0** - Cart state with `persist` middleware
+- **PWA** - Service Workers for offline, Web App Manifest
 
 ### Backend (Phase 3 - Planned)
 
@@ -119,7 +123,7 @@ ifconfig  # Mac/Linux
 | Phase                          | Status      | Completion |
 | ------------------------------ | ----------- | ---------- |
 | **Phase 1: Core Shop**         | ✅ Complete | 100%       |
-| **Phase 2: Payments**          | 🔜 Next     | 0%         |
+| **Phase 2: Payments**          | ✅ Complete | 100%       |
 | **Phase 3: Sync & Backend**    | 📋 Planned  | 0%         |
 | **Phase 4: Advanced Features** | 📋 Planned  | 0%         |
 
@@ -159,4 +163,4 @@ For issues or questions:
 
 ---
 
-**Built with ❤️ in Kenya for Kenyan businesses**
+\*Built with ❤️ in Kenya for Kenyan businesses\*\*
