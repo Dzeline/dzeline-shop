@@ -206,21 +206,23 @@ export const dbHelpers = {
   },
 
   // Complete a sale atomically: insert transaction, line items, decrement stock
-  async completeTransaction(cartItems, payment) {
+  async completeTransaction(cartItems, payment, staffId = 1) {
     return await db.transaction(
       "rw",
-      [db.transactions, db.transaction_items, db.products],
+      [db.transactions, db.transaction_items, db.products, db.pending_mpesa],
       async () => {
+        const now = Date.now();
         const transactionId = await db.transactions.add({
-          timestamp: Date.now(),
+          timestamp: now,
           subtotal: payment.subtotal,
           vat: payment.vat,
           total: payment.total,
           payment_method: payment.method,
           payment_amount: payment.amount,
-          change_given: payment.change,
+          change_given: payment.method === "CASH" ? payment.change : 0,
+          mpesa_code: payment.method === "MPESA" ? payment.mpesaCode : null,
           synced: false,
-          staff_id: 1,
+          staff_id: staffId,
         });
 
         for (const item of cartItems) {
@@ -240,10 +242,21 @@ export const dbHelpers = {
           }
         }
 
+        if (payment.method === "MPESA") {
+          await db.pending_mpesa.add({
+            transaction_id: transactionId,
+            code: payment.mpesaCode,
+            timestamp: now,
+            verified: false,
+            amount: payment.total,
+          });
+        }
+
         return {
           id: transactionId,
           items: cartItems,
-          timestamp: Date.now(),
+          timestamp: now,
+          staff_id: staffId,
           ...payment,
         };
       }
@@ -267,6 +280,43 @@ export const dbHelpers = {
         return { ...txn, items };
       })
     );
+  },
+
+  // ── Staff helpers ─────────────────────────────────────────────────────────
+
+  async getAllStaff() {
+    return await db.staff.toArray();
+  },
+
+  async getStaffByPin(pin) {
+    return await db.staff
+      .filter((s) => s.pin === pin && s.active)
+      .first();
+  },
+
+  async addStaff(name, pin) {
+    return await db.staff.add({
+      name,
+      pin,
+      active: true,
+      created_at: new Date().toISOString(),
+    });
+  },
+
+  async updateStaffPin(staffId, newPin) {
+    return await db.staff.update(staffId, { pin: newPin });
+  },
+
+  async updateStaffName(staffId, name) {
+    return await db.staff.update(staffId, { name });
+  },
+
+  async toggleStaffActive(staffId, active) {
+    return await db.staff.update(staffId, { active });
+  },
+
+  async deleteStaff(staffId) {
+    return await db.staff.delete(staffId);
   },
 };
 

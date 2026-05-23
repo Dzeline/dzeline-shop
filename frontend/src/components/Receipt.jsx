@@ -2,15 +2,19 @@ import { formatPrice, formatDate } from "../utils/formatters";
 import { SHOP_INFO } from "../utils/constants";
 
 export default function Receipt({ sale, onNewSale }) {
+  const isMpesa = sale.method === "MPESA";
+
   return (
     <div className="p-4 max-w-sm mx-auto">
       {/* Receipt Card */}
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
         {/* Success Banner */}
-        <div className="bg-green-500 text-white text-center py-5">
+        <div className={`text-white text-center py-5 ${isMpesa ? "bg-green-600" : "bg-primary"}`}>
           <div className="text-4xl mb-1">✓</div>
           <p className="font-bold text-lg">Sale Complete!</p>
-          <p className="text-green-100 text-sm">Payment received successfully</p>
+          <p className={`text-sm ${isMpesa ? "text-green-100" : "text-blue-100"}`}>
+            {isMpesa ? `M-Pesa · ${sale.mpesaCode}` : "Cash payment received"}
+          </p>
         </div>
 
         {/* Receipt Body */}
@@ -23,6 +27,9 @@ export default function Receipt({ sale, onNewSale }) {
               Receipt #{String(sale.id).padStart(6, "0")}
             </p>
             <p className="text-gray-400 text-xs">{formatDate(sale.timestamp)}</p>
+            {sale.staff_name && (
+              <p className="text-gray-400 text-xs">Cashier: {sale.staff_name}</p>
+            )}
           </div>
 
           {/* Items */}
@@ -58,16 +65,34 @@ export default function Receipt({ sale, onNewSale }) {
             </div>
           </div>
 
-          {/* Payment */}
+          {/* Payment details */}
           <div className="space-y-1 mb-4">
-            <div className="flex justify-between text-gray-500 text-xs">
-              <span>Cash Paid</span>
-              <span>{formatPrice(sale.amount)}</span>
-            </div>
-            <div className="flex justify-between font-bold text-green-600 text-sm">
-              <span>Change</span>
-              <span>{formatPrice(sale.change)}</span>
-            </div>
+            {isMpesa ? (
+              <>
+                <div className="flex justify-between text-gray-500 text-xs">
+                  <span>Payment</span>
+                  <span>M-Pesa</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Code</span>
+                  <span className="font-bold text-green-700 tracking-wider">{sale.mpesaCode}</span>
+                </div>
+                <div className="mt-2 text-center text-xs text-orange-600 font-semibold bg-orange-50 rounded-lg py-1.5">
+                  Pending verification
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between text-gray-500 text-xs">
+                  <span>Cash Paid</span>
+                  <span>{formatPrice(sale.amount)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-green-600 text-sm">
+                  <span>Change</span>
+                  <span>{formatPrice(sale.change)}</span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Footer */}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useCartStore } from "../store/cartStore";
+import { useStaffStore } from "../store/staffStore";
 import { VAT_RATE } from "../utils/constants";
 import { formatPrice } from "../utils/formatters";
 import { dbHelpers } from "../services/db";
@@ -13,6 +14,7 @@ export default function Cart({ onNewSale }) {
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const getTotal = useCartStore((state) => state.getTotal);
   const clearCart = useCartStore((state) => state.clearCart);
+  const currentStaff = useStaffStore((s) => s.currentStaff);
 
   const [view, setView] = useState("cart"); // 'cart' | 'checkout' | 'receipt'
   const [completedSale, setCompletedSale] = useState(null);
@@ -25,8 +27,9 @@ export default function Cart({ onNewSale }) {
   async function handleCheckoutComplete(payment) {
     setProcessing(true);
     try {
-      const sale = await dbHelpers.completeTransaction(items, payment);
-      setCompletedSale(sale);
+      const staffId = currentStaff?.id ?? 1;
+      const sale = await dbHelpers.completeTransaction(items, payment, staffId);
+      setCompletedSale({ ...sale, staff_name: currentStaff?.name });
       clearCart();
       setView("receipt");
     } catch (err) {
@@ -88,8 +91,9 @@ export default function Cart({ onNewSale }) {
                 </button>
                 <span className="w-8 text-center font-bold text-sm">{item.quantity}</span>
                 <button
-                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                  className="w-8 h-8 bg-gray-100 rounded-full hover:bg-gray-200 font-bold text-gray-600 flex items-center justify-center"
+                  onClick={() => updateQuantity(item.id, Math.min(item.stock, item.quantity + 1))}
+                  disabled={item.quantity >= item.stock}
+                  className="w-8 h-8 bg-gray-100 rounded-full hover:bg-gray-200 font-bold text-gray-600 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   +
                 </button>
@@ -135,7 +139,7 @@ export default function Cart({ onNewSale }) {
             Proceed to Checkout
           </button>
           <button
-            onClick={clearCart}
+            onClick={() => { if (window.confirm("Clear all items from cart?")) clearCart(); }}
             className="w-full py-3 bg-gray-100 text-gray-600 rounded-xl font-semibold hover:bg-gray-200 transition"
           >
             Clear Cart
