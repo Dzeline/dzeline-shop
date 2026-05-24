@@ -28,6 +28,10 @@ db.version(1).stores({
   settings: "key, value",
 });
 
+db.version(2).stores({
+  stock_receipts: "++id, timestamp, supplier, staff_id",
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   console.log("🌱 Seeding database with initial data...");
@@ -317,6 +321,74 @@ export const dbHelpers = {
 
   async deleteStaff(staffId) {
     return await db.staff.delete(staffId);
+  },
+
+  // ── Stock receiving ───────────────────────────────────────────────────────
+
+  async addStockReceipt({ supplier, invoice_number, photo_blob, items, staff_id }) {
+    return await db.transaction("rw", [db.stock_receipts, db.products], async () => {
+      const itemsWithBefore = await Promise.all(
+        items.map(async ({ product_id, qty_added }) => {
+          const product = await db.products.get(product_id);
+          const qty_before = product ? product.stock : 0;
+          if (product) await db.products.update(product_id, { stock: qty_before + qty_added });
+          return { product_id, product_name: product?.name ?? "Unknown", qty_before, qty_added };
+        })
+      );
+      return await db.stock_receipts.add({
+        timestamp: Date.now(),
+        supplier,
+        invoice_number: invoice_number || null,
+        photo_blob: photo_blob || null,
+        items: itemsWithBefore,
+        staff_id,
+      });
+    });
+  },
+
+  async getStockReceiptHistory(limit = 20) {
+    return await db.stock_receipts.orderBy("timestamp").reverse().limit(limit).toArray();
+  },
+
+  // ── Daily analytics ───────────────────────────────────────────────────────
+
+  async getDailySummary() {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const todayTxns = await db.transactions
+      .where("timestamp")
+      .above(startOfDay.getTime())
+      .toArray();
+
+    if (todayTxns.length === 0) {
+      return { totalSales: 0, transactionCount: 0, cashTotal: 0, mpesaTotal: 0, vatCollected: 0, topProducts: [] };
+    }
+
+    const allItems = await db.transaction_items
+      .where("transaction_id")
+      .anyOf(todayTxns.map((t) => t.id))
+      .toArray();
+
+    const productMap = new Map();
+    for (const item of allItems) {
+      const e = productMap.get(item.product_id) || { product_id: item.product_id, name: null, totalQty: 0, totalRevenue: 0 };
+      e.totalQty += item.quantity;
+      e.totalRevenue += item.subtotal;
+      productMap.set(item.product_id, e);
+    }
+
+    const products = await db.products.bulkGet([...productMap.keys()]);
+    products.forEach((p) => { if (p) productMap.get(p.id).name = p.name; });
+
+    return {
+      totalSales: todayTxns.reduce((s, t) => s + t.total, 0),
+      transactionCount: todayTxns.length,
+      cashTotal: todayTxns.filter((t) => t.payment_method === "CASH").reduce((s, t) => s + t.total, 0),
+      mpesaTotal: todayTxns.filter((t) => t.payment_method === "MPESA").reduce((s, t) => s + t.total, 0),
+      vatCollected: todayTxns.reduce((s, t) => s + (t.vat || 0), 0),
+      topProducts: [...productMap.values()].sort((a, b) => b.totalQty - a.totalQty).slice(0, 5),
+    };
   },
 };
 

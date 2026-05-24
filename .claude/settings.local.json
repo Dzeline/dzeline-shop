@@ -1,7 +1,26 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(git remote *)",
+      "Bash(git fetch *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git branch *)",
+      "Bash(npx skills *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"c:\\Users\\Deline\\Documents\\github repos\\Dzeline\\dzeline-shop\\frontend\" && npm run lint --silent 2>&1 | head -20"
+          }
+        ]
+      }
     ]
   }
 }

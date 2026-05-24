@@ -72,3 +72,4 @@ ENV/
 secrets/
 *.pem
 *.key
+.vercel
