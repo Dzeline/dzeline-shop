@@ -418,7 +418,7 @@ export const dbHelpers = {
       .toArray();
 
     if (todayTxns.length === 0) {
-      return { totalSales: 0, transactionCount: 0, cashTotal: 0, mpesaTotal: 0, vatCollected: 0, topProducts: [] };
+      return { totalSales: 0, transactionCount: 0, cashTotal: 0, mpesaTotal: 0, pochiTotal: 0, vatCollected: 0, topProducts: [] };
     }
 
     const allItems = await db.transaction_items
@@ -442,6 +442,7 @@ export const dbHelpers = {
       transactionCount: todayTxns.length,
       cashTotal: todayTxns.filter((t) => t.payment_method === "CASH").reduce((s, t) => s + t.total, 0),
       mpesaTotal: todayTxns.filter((t) => t.payment_method === "MPESA").reduce((s, t) => s + t.total, 0),
+      pochiTotal: todayTxns.filter((t) => t.payment_method === "POCHI").reduce((s, t) => s + t.total, 0),
       vatCollected: todayTxns.reduce((s, t) => s + (t.vat || 0), 0),
       topProducts: [...productMap.values()].sort((a, b) => b.totalQty - a.totalQty).slice(0, 5),
     };

@@ -103,15 +103,19 @@ export default function DailySummary({ onClose }) {
               </div>
             </div>
 
-            {/* Row 2: Cash vs M-Pesa */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Row 2: Cash / M-Pesa / Pochi */}
+            <div className="grid grid-cols-3 gap-3">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Cash</p>
-                <p className="text-xl font-bold text-gray-800">{formatPrice(summary.cashTotal)}</p>
+                <p className="text-lg font-bold text-gray-800">{formatPrice(summary.cashTotal)}</p>
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">M-Pesa</p>
-                <p className="text-xl font-bold text-green-600">{formatPrice(summary.mpesaTotal)}</p>
+                <p className="text-lg font-bold text-green-600">{formatPrice(summary.mpesaTotal)}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Pochi</p>
+                <p className="text-lg font-bold text-orange-500">{formatPrice(summary.pochiTotal)}</p>
               </div>
             </div>
 

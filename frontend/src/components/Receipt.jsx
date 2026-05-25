@@ -5,6 +5,7 @@ export default function Receipt({ sale, onNewSale }) {
   const shopName = useSettingsStore((s) => s.shopName);
   const kraPin = useSettingsStore((s) => s.kraPin);
   const kraRegistered = useSettingsStore((s) => s.kraRegistered);
+  const vatRate = useSettingsStore((s) => s.vatRate);
   const isMpesa = sale.method === "MPESA";
   const isPochi = sale.method === "POCHI";
   const isDigital = isMpesa || isPochi;
@@ -69,7 +70,7 @@ export default function Receipt({ sale, onNewSale }) {
               <span>{formatPrice(sale.subtotal)}</span>
             </div>
             <div className="flex justify-between text-gray-500 text-xs">
-              <span>VAT 16%</span>
+              <span>VAT {Math.round(vatRate * 100)}%</span>
               <span>{formatPrice(sale.vat)}</span>
             </div>
             <div className="flex justify-between font-bold text-gray-800 text-sm pt-1">
