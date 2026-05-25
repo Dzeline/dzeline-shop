@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dzeline.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dzeline.db").replace(
+    "postgres://", "postgresql://", 1
+)
 
 engine = create_engine(
     DATABASE_URL,
