@@ -19,6 +19,7 @@ function Skeletons() {
 
 export default function DailySummary({ onClose }) {
   const [summary, setSummary] = useState(null);
+  const [lowStock, setLowStock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -26,8 +27,12 @@ export default function DailySummary({ onClose }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await dbHelpers.getDailySummary();
+      const [data, low] = await Promise.all([
+        dbHelpers.getDailySummary(),
+        dbHelpers.getLowStockProducts(),
+      ]);
       setSummary(data);
+      setLowStock(low);
     } catch (err) {
       console.error(err);
       setError("Failed to load summary");
@@ -123,6 +128,33 @@ export default function DailySummary({ onClose }) {
                 </svg>
               </div>
             </div>
+
+            {/* Low stock alert */}
+            {lowStock.length > 0 && (
+              <div className="bg-white rounded-2xl border border-orange-200 shadow-sm p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                    <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <p className="font-bold text-gray-700 text-sm">
+                    Low Stock — {lowStock.length} product{lowStock.length !== 1 ? "s" : ""} need reordering
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {lowStock.map((p) => (
+                    <div key={p.id} className="flex justify-between items-center text-sm">
+                      <span className="text-gray-700 font-medium truncate flex-1">{p.name}</span>
+                      <span className={`font-bold shrink-0 ml-2 ${p.stock === 0 ? "text-red-500" : "text-orange-500"}`}>
+                        {p.stock === 0 ? "Out of stock" : `${p.stock} left`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Top products */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">

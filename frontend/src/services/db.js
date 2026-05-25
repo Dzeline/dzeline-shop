@@ -32,6 +32,10 @@ db.version(2).stores({
   stock_receipts: "++id, timestamp, supplier, staff_id",
 });
 
+db.version(3).stores({
+  products: "++id, barcode, name, price, stock, category, reorder_level, *tags",
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   console.log("🌱 Seeding database with initial data...");
@@ -171,6 +175,18 @@ export const dbHelpers = {
     return await db.products.update(productId, { stock: newStock });
   },
 
+  // Update any product fields (name, price, image_blob, reorder_level, etc.)
+  async updateProduct(productId, updates) {
+    return await db.products.update(productId, updates);
+  },
+
+  // Get products at or below their reorder level
+  async getLowStockProducts(threshold = 10) {
+    return await db.products
+      .filter((p) => p.stock <= (p.reorder_level ?? threshold) && p.stock >= 0)
+      .toArray();
+  },
+
   // Add transaction
   async addTransaction(transaction) {
     return await db.transactions.add(transaction);
@@ -246,10 +262,10 @@ export const dbHelpers = {
           }
         }
 
-        if (payment.method === "MPESA") {
+        if (payment.method === "MPESA" || payment.method === "POCHI") {
           await db.pending_mpesa.add({
             transaction_id: transactionId,
-            code: payment.mpesaCode,
+            code: payment.mpesaCode ?? payment.pochiCode,
             timestamp: now,
             verified: false,
             amount: payment.total,

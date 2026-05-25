@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { useCartStore } from "../store/cartStore";
+import { useStaffStore } from "../store/staffStore";
 import { useDebounce } from "../utils/useDebounce";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
+import ProductEditModal from "./ProductEditModal";
 
-function StockBadge({ stock }) {
+function StockBadge({ stock, reorderLevel }) {
   if (stock === 0) {
     return (
       <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-600">
@@ -13,10 +15,10 @@ function StockBadge({ stock }) {
       </span>
     );
   }
-  if (stock <= 10) {
+  if (stock <= (reorderLevel ?? 10)) {
     return (
-      <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
-        Low: {stock}
+      <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-600">
+        ⚠ Low: {stock}
       </span>
     );
   }
@@ -31,7 +33,11 @@ export default function ProductList() {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [editingProduct, setEditingProduct] = useState(null);
+
   const addItem = useCartStore((state) => state.addItem);
+  const currentStaff = useStaffStore((s) => s.currentStaff);
+  const isAdmin = currentStaff?.id === 1;
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -110,13 +116,22 @@ export default function ProductList() {
             key={product.id}
             className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col shadow-sm hover:shadow-md transition-shadow"
           >
+            {/* Product image */}
+            {product.image_blob && (
+              <img
+                src={product.image_blob}
+                alt={product.name}
+                className="w-full h-28 object-cover rounded-xl mb-2"
+              />
+            )}
+
             <div className="flex-1">
               <p className="text-xs font-medium text-gray-400 mb-1">{product.category}</p>
               <h3 className="font-bold text-sm text-gray-800 mb-2 leading-snug">{product.name}</h3>
               <p className="text-xl font-extrabold text-primary mb-2">
                 {formatPrice(product.price)}
               </p>
-              <StockBadge stock={product.stock} />
+              <StockBadge stock={product.stock} reorderLevel={product.reorder_level} />
             </div>
 
             <button
@@ -130,6 +145,16 @@ export default function ProductList() {
             >
               {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
             </button>
+
+            {/* Admin edit button */}
+            {isAdmin && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setEditingProduct(product); }}
+                className="mt-2 w-full py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-500 hover:bg-gray-200 transition"
+              >
+                Edit
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -139,6 +164,18 @@ export default function ProductList() {
           <p className="text-lg font-semibold">No products found</p>
           <p className="text-sm mt-1">Try a different search term</p>
         </div>
+      )}
+
+      {/* Product edit modal */}
+      {editingProduct && (
+        <ProductEditModal
+          product={editingProduct}
+          onSave={(updated) => {
+            setProducts((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+            setEditingProduct(null);
+          }}
+          onClose={() => setEditingProduct(null)}
+        />
       )}
     </div>
   );

@@ -180,6 +180,64 @@ function MpesaTab({ grandTotal, onComplete }) {
   );
 }
 
+function PochiTab({ grandTotal, onComplete }) {
+  const [code, setCode] = useState("");
+  const trimmedCode = code.trim().toUpperCase();
+  const canComplete = trimmedCode.length >= 8;
+
+  function handleComplete() {
+    if (!canComplete) return;
+    onComplete({ method: "POCHI", amount: grandTotal, change: 0, pochiCode: trimmedCode });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+        <p className="text-sm font-semibold text-orange-800 mb-1">Customer sends via M-Pesa:</p>
+        <p className="text-lg font-extrabold text-orange-700">
+          Send Money → {SHOP_INFO.pochiNumber}
+        </p>
+        <p className="text-sm text-orange-600 mt-1">
+          Amount: <span className="font-bold">{formatPrice(grandTotal)}</span>
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-gray-600 mb-2">
+          M-Pesa Confirmation Code
+        </label>
+        <input
+          type="text"
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="e.g. QF94ELB2HX"
+          maxLength={12}
+          className="w-full px-4 py-4 text-xl font-bold tracking-widest border-2 border-gray-200 rounded-xl focus:outline-none focus:border-orange-500 uppercase"
+        />
+        <p className="text-xs text-gray-400 mt-1">Customer receives this code via SMS after sending</p>
+      </div>
+
+      {canComplete && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700 font-medium">
+          Code <span className="font-extrabold">{trimmedCode}</span> will be saved for verification
+        </div>
+      )}
+
+      <button
+        onClick={handleComplete}
+        disabled={!canComplete}
+        className={`w-full py-4 rounded-xl font-bold text-base transition ${
+          canComplete
+            ? "bg-orange-500 text-white hover:bg-orange-600 active:scale-95"
+            : "bg-gray-200 text-gray-400 cursor-not-allowed"
+        }`}
+      >
+        Confirm Pochi Payment
+      </button>
+    </div>
+  );
+}
+
 export default function CheckoutModal({ items, subtotal, vat, grandTotal, onComplete, onCancel }) {
   const [tab, setTab] = useState("cash");
 
@@ -239,14 +297,20 @@ export default function CheckoutModal({ items, subtotal, vat, grandTotal, onComp
             >
               M-Pesa
             </button>
+            <button
+              onClick={() => setTab("pochi")}
+              className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${
+                tab === "pochi" ? "bg-white text-orange-500 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Pochi
+            </button>
           </div>
 
           {/* Tab content */}
-          {tab === "cash" ? (
-            <CashTab grandTotal={grandTotal} onComplete={onComplete} />
-          ) : (
-            <MpesaTab grandTotal={grandTotal} onComplete={onComplete} />
-          )}
+          {tab === "cash" && <CashTab grandTotal={grandTotal} onComplete={onComplete} />}
+          {tab === "mpesa" && <MpesaTab grandTotal={grandTotal} onComplete={onComplete} />}
+          {tab === "pochi" && <PochiTab grandTotal={grandTotal} onComplete={onComplete} />}
         </div>
 
         {/* Cancel footer */}
