@@ -38,7 +38,7 @@ export default function PinLogin() {
     if (key === "✓") {
       if (pin.length === 0) return;
       const staff = await dbHelpers.getStaffByPin(pin);
-      if (staff) {
+      if (staff && staff.id === selected.id) {
         setStaff(staff);
       } else {
         setError("Wrong PIN — try again");
@@ -52,16 +52,16 @@ export default function PinLogin() {
     const next = pin + key;
     setPin(next);
 
-    // Auto-submit at 4 digits only if correct — otherwise let user keep typing up to 6
+    // Auto-submit at 4 digits only if correct for the selected user
     if (next.length === 4) {
       const staff = await dbHelpers.getStaffByPin(next);
-      if (staff) { setStaff(staff); return; }
+      if (staff && staff.id === selected.id) { setStaff(staff); return; }
     }
 
     // Force-submit at 6 digits regardless
     if (next.length === 6) {
       const staff = await dbHelpers.getStaffByPin(next);
-      if (staff) {
+      if (staff && staff.id === selected.id) {
         setStaff(staff);
       } else {
         setError("Wrong PIN — try again");
