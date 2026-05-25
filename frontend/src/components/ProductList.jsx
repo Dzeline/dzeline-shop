@@ -111,16 +111,16 @@ export default function ProductList() {
 
   if (loading) {
     return (
-      <div className="bg-gray-100 min-h-screen px-3 pt-3">
+      <div className="bg-zinc-200 min-h-screen px-3 pt-3">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="bg-white rounded-2xl shadow-sm overflow-hidden animate-pulse">
-              <div className="h-24 bg-gray-100" />
+              <div className="h-24 bg-zinc-200" />
               <div className="p-3 space-y-2">
-                <div className="h-3 bg-gray-100 rounded w-1/2" />
-                <div className="h-4 bg-gray-100 rounded w-4/5" />
-                <div className="h-4 bg-gray-100 rounded w-3/5" />
-                <div className="h-9 bg-gray-100 rounded-xl mt-2" />
+                <div className="h-3 bg-zinc-200 rounded w-1/2" />
+                <div className="h-4 bg-zinc-200 rounded w-4/5" />
+                <div className="h-4 bg-zinc-200 rounded w-3/5" />
+                <div className="h-9 bg-zinc-200 rounded-xl mt-2" />
               </div>
             </div>
           ))}
@@ -130,7 +130,7 @@ export default function ProductList() {
   }
 
   return (
-    <div className="bg-gray-100 min-h-screen px-3 pt-3 pb-4">
+    <div className="bg-zinc-200 min-h-screen px-3 pt-3 pb-4">
       {/* Search + Add */}
       <div className="flex gap-2 mb-3">
         <div className="relative flex-1">
@@ -209,7 +209,7 @@ export default function ProductList() {
                   className={`w-full py-2.5 rounded-xl font-bold text-sm transition active:scale-95 ${
                     product.stock > 0
                       ? "bg-primary text-white hover:bg-blue-600"
-                      : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                      : "bg-zinc-200 text-gray-400 cursor-not-allowed"
                   }`}
                 >
                   {product.stock > 0 ? "Add to Cart" : "Out of Stock"}

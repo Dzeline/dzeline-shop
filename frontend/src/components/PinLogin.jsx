@@ -4,6 +4,8 @@ import { useStaffStore } from "../store/staffStore";
 
 const PAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✓"];
 
+const LOGIN_BG = "linear-gradient(162deg, #d1d5db 0%, #9ca3af 28%, #93c5fd 62%, #3b82f6 100%)";
+
 export default function PinLogin() {
   const setStaff = useStaffStore((s) => s.setStaff);
 
@@ -52,13 +54,11 @@ export default function PinLogin() {
     const next = pin + key;
     setPin(next);
 
-    // Auto-submit at 4 digits only if correct for the selected user
     if (next.length === 4) {
       const staff = await dbHelpers.getStaffByPin(next);
       if (staff && staff.id === selected.id) { setStaff(staff); return; }
     }
 
-    // Force-submit at 6 digits regardless
     if (next.length === 6) {
       const staff = await dbHelpers.getStaffByPin(next);
       if (staff && staff.id === selected.id) {
@@ -72,26 +72,42 @@ export default function PinLogin() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-primary to-blue-800 flex flex-col items-center justify-center p-6">
-      {/* Logo */}
-      <div className="text-center text-white mb-8">
-        <h1 className="text-3xl font-extrabold tracking-tight">Dzeline Shop</h1>
-        <p className="text-blue-200 text-sm mt-1">Point of Sale</p>
+    <div
+      className="min-h-screen flex flex-col items-center justify-start pt-14 sm:pt-20 px-6 pb-10"
+      style={{ background: LOGIN_BG }}
+    >
+      {/* Logo — rises in with a gentle fade */}
+      <div className="text-center mb-8 animate-fade-logo">
+        <h1
+          className="text-3xl font-extrabold tracking-tight text-white"
+          style={{ textShadow: "0 2px 14px rgba(0,0,0,0.22)" }}
+        >
+          Dzeline Shop
+        </h1>
+        <p className="text-white/65 text-sm mt-1 font-medium tracking-wide">
+          Point of Sale
+        </p>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6">
+      {/* Card — key forces remount (re-triggers drop-in) when view changes */}
+      <div
+        key={selected ? "pin-entry" : "staff-select"}
+        className="animate-drop-in bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6"
+      >
         {!selected ? (
           <>
             <p className="text-sm font-semibold text-gray-400 uppercase tracking-wide text-center mb-4">
               Who&apos;s working today?
             </p>
-            {loadingStaff ? (
+
+            {loadingStaff && (
               <div className="grid grid-cols-2 gap-3">
                 {[1, 2].map((i) => (
-                  <div key={i} className="h-14 rounded-2xl animate-pulse bg-gray-100" />
+                  <div key={i} className="h-14 rounded-2xl animate-pulse" />
                 ))}
               </div>
-            ) : null}
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               {staffList.map((s) => (
                 <button
@@ -106,7 +122,7 @@ export default function PinLogin() {
           </>
         ) : (
           <>
-            {/* Selected staff header */}
+            {/* Back + selected name */}
             <div className="flex items-center gap-3 mb-5">
               <button
                 onClick={() => { setSelected(null); setPin(""); setError(""); }}
@@ -120,15 +136,13 @@ export default function PinLogin() {
               </div>
             </div>
 
-            {/* PIN dots — up to 6 */}
+            {/* PIN dots */}
             <div className={`flex justify-center gap-3 mb-4 ${shake ? "animate-shake" : ""}`}>
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
                   className={`w-4 h-4 rounded-full border-2 transition-colors ${
-                    i < pin.length
-                      ? "bg-primary border-primary"
-                      : "bg-transparent border-gray-300"
+                    i < pin.length ? "bg-primary border-primary" : "bg-transparent border-gray-300"
                   }`}
                 />
               ))}

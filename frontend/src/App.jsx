@@ -11,6 +11,21 @@ import { useCartStore } from "./store/cartStore";
 import { useStaffStore } from "./store/staffStore";
 import { syncService } from "./services/sync";
 
+// Pastel header gradients — index 0 is always Admin
+const HEADER_THEMES = [
+  "linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)",  // Admin    — violet → indigo
+  "linear-gradient(135deg, #0d9488 0%, #0891b2 100%)",  // Cashier  — teal → cyan
+  "linear-gradient(135deg, #e11d48 0%, #db2777 100%)",  // Cashier  — rose → pink
+  "linear-gradient(135deg, #b45309 0%, #d97706 100%)",  // Cashier  — amber → orange
+  "linear-gradient(135deg, #1d4ed8 0%, #0284c7 100%)",  // Cashier  — blue → sky
+  "linear-gradient(135deg, #7e22ce 0%, #c026d3 100%)",  // Cashier  — purple → fuchsia
+];
+
+function getHeaderGradient(staff) {
+  if (!staff || staff.id === 1) return HEADER_THEMES[0];
+  return HEADER_THEMES[((staff.id - 2) % (HEADER_THEMES.length - 1)) + 1];
+}
+
 function StaffMenu({ staff, onManage, onStockReceive, onDailySummary, onHistory, onLogout }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -137,11 +152,14 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="sticky-header bg-linear-to-r from-primary to-blue-700 text-white px-4 py-3">
+      <header
+        className="sticky-header text-white px-4 py-3"
+        style={{ background: getHeaderGradient(currentStaff) }}
+      >
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold tracking-tight">Dzeline Shop</h1>
-            <p className="text-blue-200 text-xs">Point of Sale</p>
+            <p className="text-white/60 text-xs">Point of Sale</p>
           </div>
 
           <div className="flex items-center gap-3">
