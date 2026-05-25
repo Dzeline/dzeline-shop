@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { formatPrice } from "../utils/formatters";
-import { SHOP_INFO } from "../utils/constants";
+import { useSettingsStore } from "../store/settingsStore";
 
 const DENOMINATIONS = [50, 100, 200, 500, 1000, 2000];
 
 function CashTab({ grandTotal, onComplete }) {
   const [cashInput, setCashInput] = useState("");
+  const currency = useSettingsStore((s) => s.currency);
 
   const cashAmount = parseFloat(cashInput) || 0;
   const change = cashAmount - grandTotal;
@@ -30,7 +31,7 @@ function CashTab({ grandTotal, onComplete }) {
       {/* Cash Input */}
       <div>
         <label className="block text-sm font-semibold text-gray-600 mb-2">
-          Cash Received ({SHOP_INFO.currency})
+          Cash Received ({currency})
         </label>
         <input
           type="number"
@@ -115,6 +116,7 @@ function CashTab({ grandTotal, onComplete }) {
 
 function MpesaTab({ grandTotal, onComplete }) {
   const [code, setCode] = useState("");
+  const mpesaTill = useSettingsStore((s) => s.mpesaTill);
   const trimmedCode = code.trim().toUpperCase();
   const canComplete = trimmedCode.length >= 8;
 
@@ -134,7 +136,7 @@ function MpesaTab({ grandTotal, onComplete }) {
       <div className="bg-green-50 border border-green-200 rounded-xl p-4">
         <p className="text-sm font-semibold text-green-800 mb-1">Customer sends to:</p>
         <p className="text-2xl font-extrabold text-green-700">
-          Till {SHOP_INFO.mpesaTill}
+          Till {mpesaTill || "—"}
         </p>
         <p className="text-sm text-green-600 mt-1">
           Amount: <span className="font-bold">{formatPrice(grandTotal)}</span>
@@ -182,6 +184,7 @@ function MpesaTab({ grandTotal, onComplete }) {
 
 function PochiTab({ grandTotal, onComplete }) {
   const [code, setCode] = useState("");
+  const pochiNumber = useSettingsStore((s) => s.pochiNumber);
   const trimmedCode = code.trim().toUpperCase();
   const canComplete = trimmedCode.length >= 8;
 
@@ -195,7 +198,7 @@ function PochiTab({ grandTotal, onComplete }) {
       <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
         <p className="text-sm font-semibold text-orange-800 mb-1">Customer sends via M-Pesa:</p>
         <p className="text-lg font-extrabold text-orange-700">
-          Send Money → {SHOP_INFO.pochiNumber}
+          Send Money → {pochiNumber || "—"}
         </p>
         <p className="text-sm text-orange-600 mt-1">
           Amount: <span className="font-bold">{formatPrice(grandTotal)}</span>
@@ -240,6 +243,8 @@ function PochiTab({ grandTotal, onComplete }) {
 
 export default function CheckoutModal({ items, subtotal, vat, grandTotal, onComplete, onCancel }) {
   const [tab, setTab] = useState("cash");
+  const vatEnabled = useSettingsStore((s) => s.vatEnabled);
+  const vatRate = useSettingsStore((s) => s.vatRate);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50">
@@ -269,9 +274,11 @@ export default function CheckoutModal({ items, subtotal, vat, grandTotal, onComp
               <div className="flex justify-between text-sm text-gray-500">
                 <span>Subtotal</span><span>{formatPrice(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>VAT (16%)</span><span>{formatPrice(vat)}</span>
-              </div>
+              {vatEnabled && (
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>VAT ({Math.round(vatRate * 100)}%)</span><span>{formatPrice(vat)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-base font-bold text-gray-800 pt-1">
                 <span>Total</span>
                 <span className="text-primary">{formatPrice(grandTotal)}</span>

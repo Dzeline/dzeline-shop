@@ -1,7 +1,10 @@
 import { formatPrice, formatDate } from "../utils/formatters";
-import { SHOP_INFO } from "../utils/constants";
+import { useSettingsStore } from "../store/settingsStore";
 
 export default function Receipt({ sale, onNewSale }) {
+  const shopName = useSettingsStore((s) => s.shopName);
+  const kraPin = useSettingsStore((s) => s.kraPin);
+  const kraRegistered = useSettingsStore((s) => s.kraRegistered);
   const isMpesa = sale.method === "MPESA";
   const isPochi = sale.method === "POCHI";
   const isDigital = isMpesa || isPochi;
@@ -29,8 +32,10 @@ export default function Receipt({ sale, onNewSale }) {
         <div className="p-5 font-mono text-sm">
           {/* Shop Header */}
           <div className="text-center mb-4 pb-4 border-b border-dashed border-gray-200">
-            <p className="font-bold text-base text-gray-800">{SHOP_INFO.name}</p>
-            <p className="text-gray-400 text-xs">KRA PIN: {SHOP_INFO.kraPin}</p>
+            <p className="font-bold text-base text-gray-800">{shopName}</p>
+            {kraRegistered && kraPin && (
+              <p className="text-gray-400 text-xs">KRA PIN: {kraPin}</p>
+            )}
             <p className="text-gray-400 text-xs mt-1">
               Receipt #{String(sale.id).padStart(6, "0")}
             </p>
@@ -108,7 +113,7 @@ export default function Receipt({ sale, onNewSale }) {
           {/* Footer */}
           <div className="text-center text-gray-400 text-xs pt-4 border-t border-dashed border-gray-200">
             <p>Thank you for shopping at</p>
-            <p className="font-semibold text-gray-500">{SHOP_INFO.name}!</p>
+            <p className="font-semibold text-gray-500">{shopName}!</p>
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import ProductList from "./components/ProductList";
 import Cart from "./components/Cart";
 import PinLogin from "./components/PinLogin";
+import SetupWizard from "./components/SetupWizard";
 import StaffManagement from "./components/StaffManagement";
 import StockReceiving from "./components/StockReceiving";
 import DailySummary from "./components/DailySummary";
@@ -9,6 +10,8 @@ import TransactionHistory from "./components/TransactionHistory";
 import { useOnline } from "./utils/useOnline";
 import { useCartStore } from "./store/cartStore";
 import { useStaffStore } from "./store/staffStore";
+import { useSettingsStore } from "./store/settingsStore";
+import { dbHelpers } from "./services/db";
 import { syncService } from "./services/sync";
 
 // Pastel header gradients — index 0 is always Admin
@@ -136,14 +139,39 @@ function App() {
   const [showStockReceiving, setShowStockReceiving] = useState(false);
   const [showDailySummary, setShowDailySummary] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [setupReady, setSetupReady] = useState(null); // null=checking, false=needs setup, true=done
   const isOnline = useOnline();
+
+  const loadSettings = useSettingsStore((s) => s.load);
+  const shopName = useSettingsStore((s) => s.shopName);
+
+  useEffect(() => {
+    dbHelpers.isSetupComplete().then((done) => {
+      setSetupReady(done);
+      if (done) loadSettings();
+    });
+  }, [loadSettings]);
 
   useEffect(() => {
     if (isOnline) syncService.pushUnsynced().catch(() => {});
   }, [isOnline]);
+
   const itemCount = useCartStore((state) => state.getItemCount());
   const currentStaff = useStaffStore((s) => s.currentStaff);
   const logout = useStaffStore((s) => s.logout);
+
+  if (setupReady === null) return null; // brief flash while checking IndexedDB
+
+  if (!setupReady) {
+    return (
+      <SetupWizard
+        onComplete={() => {
+          setSetupReady(true);
+          loadSettings();
+        }}
+      />
+    );
+  }
 
   if (!currentStaff) {
     return <PinLogin />;
@@ -158,7 +186,7 @@ function App() {
       >
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Dzeline Shop</h1>
+            <h1 className="text-xl font-bold tracking-tight">{shopName}</h1>
             <p className="text-white/60 text-xs">Point of Sale</p>
           </div>
 

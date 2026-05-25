@@ -374,6 +374,38 @@ export const dbHelpers = {
     return await db.stock_receipts.orderBy("timestamp").reverse().limit(limit).toArray();
   },
 
+  // ── Shop settings ────────────────────────────────────────────────────────
+
+  async getShopSettings() {
+    const keys = [
+      "shop_name", "town", "phone", "kra_pin",
+      "vat_enabled", "vat_rate", "mpesa_till", "pochi_number",
+      "currency", "setup_complete",
+    ];
+    const rows = await db.settings.bulkGet(keys);
+    const result = {};
+    keys.forEach((k, i) => { result[k] = rows[i]?.value ?? null; });
+    return result;
+  },
+
+  async saveShopSettings(obj) {
+    const entries = Object.entries(obj).map(([key, value]) => ({ key, value: String(value) }));
+    await db.settings.bulkPut(entries);
+  },
+
+  async isSetupComplete() {
+    const flag = await this.getSetting("setup_complete");
+    if (flag === "true") return true;
+    if (flag !== null) return false;
+    // Auto-migrate: existing install with staff already seeded
+    const staffCount = await db.staff.count();
+    if (staffCount > 0) {
+      await this.updateSetting("setup_complete", "true");
+      return true;
+    }
+    return false;
+  },
+
   // ── Daily analytics ───────────────────────────────────────────────────────
 
   async getDailySummary() {

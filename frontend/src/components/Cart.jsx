@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useCartStore } from "../store/cartStore";
 import { useStaffStore } from "../store/staffStore";
-import { VAT_RATE } from "../utils/constants";
 import { formatPrice } from "../utils/formatters";
 import { dbHelpers } from "../services/db";
 import { showToast } from "../utils/toast";
+import { useSettingsStore } from "../store/settingsStore";
 import CheckoutModal from "./CheckoutModal";
 import Receipt from "./Receipt";
 
@@ -15,13 +15,15 @@ export default function Cart({ onNewSale }) {
   const getTotal = useCartStore((state) => state.getTotal);
   const clearCart = useCartStore((state) => state.clearCart);
   const currentStaff = useStaffStore((s) => s.currentStaff);
+  const vatEnabled = useSettingsStore((s) => s.vatEnabled);
+  const vatRate = useSettingsStore((s) => s.vatRate);
 
   const [view, setView] = useState("cart"); // 'cart' | 'checkout' | 'receipt'
   const [completedSale, setCompletedSale] = useState(null);
   const [processing, setProcessing] = useState(false);
 
   const subtotal = getTotal();
-  const vat = subtotal * VAT_RATE;
+  const vat = vatEnabled ? subtotal * vatRate : 0;
   const grandTotal = subtotal + vat;
 
   async function handleCheckoutComplete(payment) {
@@ -120,10 +122,12 @@ export default function Cart({ onNewSale }) {
             <span>Subtotal</span>
             <span>{formatPrice(subtotal)}</span>
           </div>
-          <div className="flex justify-between text-sm text-gray-500">
-            <span>VAT (16%)</span>
-            <span>{formatPrice(vat)}</span>
-          </div>
+          {vatEnabled && (
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>VAT ({Math.round(vatRate * 100)}%)</span>
+              <span>{formatPrice(vat)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-lg font-bold text-gray-800 pt-2 border-t border-gray-100">
             <span>Total</span>
             <span className="text-primary">{formatPrice(grandTotal)}</span>
