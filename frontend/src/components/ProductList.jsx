@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { dbHelpers } from "../services/db";
 import { useCartStore } from "../store/cartStore";
 import { useStaffStore } from "../store/staffStore";
@@ -34,11 +34,104 @@ const CATEGORY_TEXT = {
   Other:     "text-gray-400",
 };
 
+function BarcodeScanner({ onScan, onClose }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const timerRef = useRef(null);
+  const [status, setStatus] = useState("starting"); // starting | scanning | error
+
+  useEffect(() => {
+    if (!("BarcodeDetector" in window)) {
+      setStatus("unsupported");
+      return;
+    }
+    const detector = new window.BarcodeDetector({
+      formats: ["ean_13", "ean_8", "code_128", "upc_a", "upc_e", "code_39", "qr_code"],
+    });
+
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment" } })
+      .then((stream) => {
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+          setStatus("scanning");
+          timerRef.current = setInterval(async () => {
+            if (!videoRef.current) return;
+            try {
+              const barcodes = await detector.detect(videoRef.current);
+              if (barcodes.length > 0) {
+                clearInterval(timerRef.current);
+                navigator.vibrate?.(40);
+                onScan(barcodes[0].rawValue);
+              }
+            } catch {}
+          }, 250);
+        }
+      })
+      .catch(() => setStatus("denied"));
+
+    return () => {
+      clearInterval(timerRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, [onScan]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 bg-black/70 shrink-0">
+        <p className="text-white font-semibold text-sm">Scan Barcode</p>
+        <button
+          onClick={onClose}
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 text-white text-lg"
+        >×</button>
+      </div>
+
+      {(status === "error" || status === "denied" || status === "unsupported") ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4">
+          <p className="text-white font-semibold">
+            {status === "unsupported"
+              ? "Barcode scanning not supported on this browser"
+              : "Camera access denied"}
+          </p>
+          <p className="text-white/50 text-sm">Type the barcode number in the search box instead</p>
+          <button onClick={onClose} className="px-5 py-2 bg-white/20 text-white rounded-xl text-sm font-semibold">
+            Close
+          </button>
+        </div>
+      ) : (
+        <div className="flex-1 relative overflow-hidden">
+          <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+          {/* Viewfinder */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="relative w-64 h-32">
+              <div className="absolute inset-0 rounded-lg"
+                style={{ boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)" }} />
+              <div className="absolute inset-0 border-2 border-white/80 rounded-lg" />
+              <div className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-white rounded-tl-lg" />
+              <div className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-white rounded-tr-lg" />
+              <div className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-white rounded-bl-lg" />
+              <div className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-white rounded-br-lg" />
+              {status === "scanning" && (
+                <div className="absolute inset-x-0 top-0 h-0.5 bg-primary/80 animate-bounce" />
+              )}
+            </div>
+          </div>
+          <p className="absolute bottom-10 inset-x-0 text-center text-white/70 text-sm">
+            {status === "starting" ? "Starting camera…" : "Point at a barcode"}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProductPlaceholder({ category }) {
   const gradient = CATEGORY_GRADIENT[category] ?? CATEGORY_GRADIENT.Other;
   const textColor = CATEGORY_TEXT[category] ?? "text-gray-300";
   return (
-    <div className={`w-full h-24 bg-gradient-to-br ${gradient} flex items-center justify-center select-none`}>
+    <div className={`w-full h-24 bg-linear-to-br ${gradient} flex items-center justify-center select-none`}>
       <span className={`text-4xl font-black ${textColor} opacity-60`}>
         {category?.charAt(0) ?? "?"}
       </span>
@@ -68,6 +161,7 @@ export default function ProductList() {
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const addItem = useCartStore((state) => state.addItem);
   const currentStaff = useStaffStore((s) => s.currentStaff);
@@ -109,6 +203,18 @@ export default function ProductList() {
     showToast(`${product.name} added`);
   }
 
+  const handleScan = useCallback(async (barcode) => {
+    setShowScanner(false);
+    const product = await dbHelpers.getProductByBarcode(barcode);
+    if (product) {
+      addItem({ ...product });
+      showToast(`${product.name} added`);
+    } else {
+      setSearch(barcode);
+      showToast(`Barcode ${barcode} — not found`);
+    }
+  }, [addItem]);
+
   if (loading) {
     return (
       <div className="bg-zinc-200 min-h-screen px-3 pt-3">
@@ -131,7 +237,7 @@ export default function ProductList() {
 
   return (
     <div className="bg-zinc-200 min-h-screen px-3 pt-3 pb-4">
-      {/* Search + Add */}
+      {/* Search + Scan + Add */}
       <div className="flex gap-2 mb-3">
         <div className="relative flex-1">
           <svg
@@ -149,6 +255,22 @@ export default function ProductList() {
             className="w-full pl-9 pr-4 py-2.5 bg-white border-0 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary text-sm"
           />
         </div>
+        <button
+          onClick={() => setShowScanner(true)}
+          className="shrink-0 w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm hover:bg-gray-100 active:scale-95 transition"
+          title="Scan barcode"
+        >
+          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
+            <line x1="7" y1="8" x2="7" y2="16" strokeWidth={2} strokeLinecap="round" />
+            <line x1="10" y1="8" x2="10" y2="16" strokeWidth={2} strokeLinecap="round" />
+            <line x1="13" y1="8" x2="13" y2="12" strokeWidth={2} strokeLinecap="round" />
+            <line x1="16" y1="8" x2="16" y2="16" strokeWidth={2} strokeLinecap="round" />
+            <line x1="13" y1="14" x2="13" y2="16" strokeWidth={2} strokeLinecap="round" />
+          </svg>
+        </button>
+
         {isAdmin && (
           <button
             onClick={() => setShowAddModal(true)}
@@ -247,6 +369,13 @@ export default function ProductList() {
             setShowAddModal(false);
           }}
           onClose={() => setShowAddModal(false)}
+        />
+      )}
+
+      {showScanner && (
+        <BarcodeScanner
+          onScan={handleScan}
+          onClose={() => setShowScanner(false)}
         />
       )}
     </div>

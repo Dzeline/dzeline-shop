@@ -1,6 +1,24 @@
 import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { formatPrice } from "../utils/formatters";
+import { useSettingsStore } from "../store/settingsStore";
+
+const RANGES = [
+  { key: "today", label: "Today" },
+  { key: "week",  label: "This Week" },
+  { key: "month", label: "This Month" },
+];
+
+function getRangeStart(range) {
+  const d = new Date();
+  if (range === "week") {
+    d.setDate(d.getDate() - d.getDay());
+  } else if (range === "month") {
+    d.setDate(1);
+  }
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
 
 function Skeletons() {
   return (
@@ -8,8 +26,8 @@ function Skeletons() {
       <div className="grid grid-cols-2 gap-3">
         {[0, 1].map((i) => <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse" />)}
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        {[0, 1].map((i) => <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse" />)}
+      <div className="grid grid-cols-3 gap-3">
+        {[0, 1, 2].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse" />)}
       </div>
       <div className="h-20 bg-gray-100 rounded-2xl animate-pulse" />
       <div className="h-52 bg-gray-100 rounded-2xl animate-pulse" />
@@ -18,17 +36,19 @@ function Skeletons() {
 }
 
 export default function DailySummary({ onClose }) {
+  const [range, setRange] = useState("today");
   const [summary, setSummary] = useState(null);
   const [lowStock, setLowStock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const vatRate = useSettingsStore((s) => s.vatRate);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [data, low] = await Promise.all([
-        dbHelpers.getDailySummary(),
+        dbHelpers.getDailySummary(getRangeStart(range)),
         dbHelpers.getLowStockProducts(),
       ]);
       setSummary(data);
@@ -39,13 +59,13 @@ export default function DailySummary({ onClose }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [range]);
 
   useEffect(() => { load(); }, [load]);
 
-  const today = new Date().toLocaleDateString("en-KE", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
-  });
+  const rangeLabel = range === "today"
+    ? new Date().toLocaleDateString("en-KE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : range === "week" ? "This Week" : "This Month";
 
   return (
     <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
@@ -58,8 +78,8 @@ export default function DailySummary({ onClose }) {
           ‹
         </button>
         <div className="flex-1 min-w-0">
-          <h2 className="font-bold text-gray-800">Daily Summary</h2>
-          <p className="text-xs text-gray-400 truncate">{today}</p>
+          <h2 className="font-bold text-gray-800">Summary</h2>
+          <p className="text-xs text-gray-400 truncate">{rangeLabel}</p>
         </div>
         <button
           onClick={load}
@@ -73,6 +93,23 @@ export default function DailySummary({ onClose }) {
           </svg>
         </button>
       </header>
+
+      {/* Range tabs */}
+      <div className="bg-white border-b border-gray-100 px-4 pb-3 pt-2 shrink-0">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          {RANGES.map((r) => (
+            <button
+              key={r.key}
+              onClick={() => setRange(r.key)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
+                range === r.key ? "bg-white text-primary shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {loading && <Skeletons />}
@@ -122,7 +159,9 @@ export default function DailySummary({ onClose }) {
             {/* VAT */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex justify-between items-center">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">VAT Collected (16%)</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                  VAT Collected ({Math.round(vatRate * 100)}%)
+                </p>
                 <p className="text-xl font-bold text-gray-800">{formatPrice(summary.vatCollected)}</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
@@ -132,6 +171,27 @@ export default function DailySummary({ onClose }) {
                 </svg>
               </div>
             </div>
+
+            {/* Cashier shift report */}
+            {summary.staffBreakdown.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <p className="font-bold text-gray-700 text-sm mb-3">Cashier Breakdown</p>
+                <div className="space-y-2">
+                  {summary.staffBreakdown.map((s) => (
+                    <div key={s.name} className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-bold text-primary">{s.name.charAt(0)}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
+                        <p className="text-xs text-gray-400">{s.count} sale{s.count !== 1 ? "s" : ""}</p>
+                      </div>
+                      <span className="text-sm font-bold text-gray-700 shrink-0">{formatPrice(s.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Low stock alert */}
             {lowStock.length > 0 && (
@@ -162,7 +222,7 @@ export default function DailySummary({ onClose }) {
 
             {/* Top products */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-              <p className="font-bold text-gray-700 text-sm mb-3">Top Products Today</p>
+              <p className="font-bold text-gray-700 text-sm mb-3">Top Products</p>
               {summary.topProducts.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-4">No sales recorded yet</p>
               ) : (
@@ -190,7 +250,7 @@ export default function DailySummary({ onClose }) {
             {/* Zero-state banner */}
             {summary.transactionCount === 0 && (
               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 text-center">
-                <p className="font-semibold text-blue-700">No sales recorded today</p>
+                <p className="font-semibold text-blue-700">No sales recorded</p>
                 <p className="text-sm mt-1 text-blue-400">Summary updates automatically as sales are made</p>
               </div>
             )}

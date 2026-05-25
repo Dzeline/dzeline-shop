@@ -22,15 +22,21 @@ export default function Cart({ onNewSale }) {
   const [completedSale, setCompletedSale] = useState(null);
   const [processing, setProcessing] = useState(false);
 
-  const subtotal = getTotal();
-  const vat = vatEnabled ? subtotal * vatRate : 0;
-  const grandTotal = subtotal + vat;
+  // Prices are VAT-inclusive (shelf price = what customer pays).
+  // VAT is extracted from the total for receipt/KRA purposes, not added on top.
+  const grandTotal = getTotal();
+  const subtotal = vatEnabled ? grandTotal / (1 + vatRate) : grandTotal;
+  const vat = vatEnabled ? grandTotal - subtotal : 0;
 
   async function handleCheckoutComplete(payment) {
     setProcessing(true);
     try {
       const staffId = currentStaff?.id ?? 1;
-      const sale = await dbHelpers.completeTransaction(items, payment, staffId);
+      const sale = await dbHelpers.completeTransaction(
+        items,
+        { ...payment, subtotal, vat, total: grandTotal },
+        staffId
+      );
       setCompletedSale({ ...sale, staff_name: currentStaff?.name });
       clearCart();
       setView("receipt");
@@ -118,10 +124,12 @@ export default function Cart({ onNewSale }) {
 
         {/* Totals */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4 space-y-2 mb-5">
-          <div className="flex justify-between text-sm text-gray-500">
-            <span>Subtotal</span>
-            <span>{formatPrice(subtotal)}</span>
-          </div>
+          {vatEnabled && (
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>Net (ex-VAT)</span>
+              <span>{formatPrice(subtotal)}</span>
+            </div>
+          )}
           {vatEnabled && (
             <div className="flex justify-between text-sm text-gray-500">
               <span>VAT ({Math.round(vatRate * 100)}%)</span>

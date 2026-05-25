@@ -1,15 +1,14 @@
 # Dzeline Shop — Frontend
 
-React 19 + Vite 8 PWA frontend for the Dzeline Shop POS system.
+React 19 + Vite 8 PWA for the Dzeline Shop POS. Runs fully offline via IndexedDB.
 
 ## Quick Start
 
 ```bash
 npm install
-npm run dev        # → http://localhost:5173
-npm run build      # production build → dist/
-npm run lint       # ESLint check
-npm run preview    # preview production build
+npm run dev      # → http://localhost:5173
+npm run build    # production build → dist/
+npm run lint
 ```
 
 First run auto-seeds IndexedDB. Log in as **Admin** with PIN `1234`.
@@ -19,58 +18,78 @@ First run auto-seeds IndexedDB. Log in as **Admin** with PIN `1234`.
 ```text
 src/
 ├── components/
-│   ├── App.jsx               # Root — PIN gate, header, bottom nav
-│   ├── PinLogin.jsx          # Staff PIN entry screen
-│   ├── ProductList.jsx       # Product grid with debounced search
-│   ├── Cart.jsx              # Cart → Checkout → Receipt flow
-│   ├── CheckoutModal.jsx     # Cash / M-Pesa payment tabs
-│   ├── Receipt.jsx           # Post-sale KRA-style receipt
-│   └── StaffManagement.jsx   # Admin CRUD for staff
+│   ├── App.jsx                # Root — setup gate, PIN gate, header, bottom nav
+│   ├── SetupWizard.jsx        # First-launch shop configuration
+│   ├── PinLogin.jsx           # Staff selection + PIN numpad
+│   ├── ProductList.jsx        # Product grid, search, barcode scanner, admin edit/add
+│   ├── Cart.jsx               # Cart → Checkout → Receipt flow
+│   ├── CheckoutModal.jsx      # Cash / M-Pesa / Pochi payment tabs
+│   ├── Receipt.jsx            # KRA-style receipt (VAT-inclusive breakdown)
+│   ├── StaffManagement.jsx    # Admin CRUD for cashiers
+│   ├── StockReceiving.jsx     # Record supplier deliveries with photo
+│   ├── InventoryScreen.jsx    # Stock view grouped by category (admin)
+│   ├── SettingsScreen.jsx     # Shop name, KRA PIN, M-Pesa/Pochi numbers, VAT
+│   ├── DailySummary.jsx       # Today/Week/Month analytics + cashier breakdown
+│   ├── TransactionHistory.jsx # Last 50 sales with expandable line items
+│   ├── ProductAddModal.jsx    # Add new product (admin)
+│   └── ProductEditModal.jsx   # Edit price, photo, reorder level (admin)
 ├── services/
-│   └── db.js                 # Dexie.js schema + all dbHelpers
+│   ├── db.js                  # Dexie schema (v3) + all dbHelpers
+│   └── sync.js                # Push unsynced transactions to backend on reconnect
 ├── store/
-│   ├── cartStore.js          # Zustand cart (persisted)
-│   └── staffStore.js         # Zustand staff session (persisted)
+│   ├── cartStore.js           # Zustand cart (persisted)
+│   ├── staffStore.js          # Zustand staff session (persisted)
+│   └── settingsStore.js       # Zustand shop settings (loaded from IndexedDB)
 └── utils/
-    ├── constants.js          # VAT_RATE, SHOP_INFO, PAYMENT_METHODS
-    ├── formatters.js         # formatPrice, formatDate, calculateVAT
-    ├── toast.js              # DOM-injected toast notifications
-    ├── useDebounce.js        # Debounce hook for search
-    └── useOnline.js          # Browser online/offline event hook
+    ├── constants.js           # DB_VERSION, PAYMENT_METHODS, SHOP_INFO defaults
+    ├── formatters.js          # formatPrice, formatDate
+    ├── toast.js               # DOM-injected toast notifications
+    ├── useDebounce.js         # Debounce hook
+    └── useOnline.js           # Browser online/offline event hook
 ```
 
 ## Key Flows
 
-**Login**: App checks `staffStore` on mount. If no session → shows `PinLogin`. Staff taps name → enters 4-digit PIN → validated against IndexedDB.
+**Sale**: Products → Add to Cart → Proceed to Checkout → Cash / M-Pesa / Pochi → Receipt → New Sale.
 
-**Sale**: Products tab → Add to Cart → Proceed to Checkout → Cash or M-Pesa → Receipt → New Sale.
+**VAT**: Prices are VAT-inclusive. At checkout, VAT is *extracted* from the total (not added on top). `vat = total − total/(1+rate)`.
 
-**M-Pesa**: Manual code entry (customer shows SMS code). Recorded to `pending_mpesa` table for server verification in a future phase.
+**M-Pesa / Pochi**: Cashier enters the customer's SMS confirmation code. Stored to `pending_mpesa` for later verification. M-Pesa STK Push (server-triggered) requires Daraja credentials in `backend/.env`.
 
-**Staff Management**: Admin only (staff ID 1). Access via header avatar dropdown. Add/remove cashiers, change PINs, activate/deactivate.
+**Barcode scanner**: Tap the barcode icon in the search bar. Uses native `BarcodeDetector` API (Chrome/Edge on Android). On scan, adds the product to cart or pre-fills search if not found.
 
-## IndexedDB Tables
+**Stock receiving**: Admin logs deliveries (supplier name, optional invoice + photo), selects products + quantities. Stock is incremented atomically.
+
+**Sync**: On every online reconnect, `syncService.pushUnsynced()` POSTs unsynced transactions to `VITE_API_URL/sync/transactions`.
+
+## IndexedDB Schema (v3)
 
 | Table | Key fields |
 | --- | --- |
-| `products` | `++id, barcode, name, price, stock, category` |
-| `transactions` | `++id, timestamp, total, payment_method, staff_id` |
+| `products` | `++id, barcode, name, price, stock, category, reorder_level` |
+| `transactions` | `++id, timestamp, total, payment_method, staff_id, synced` |
 | `transaction_items` | `++id, transaction_id, product_id, quantity, price` |
 | `pending_mpesa` | `++id, transaction_id, code, verified` |
-| `sync_queue` | `++id, type, status` |
+| `stock_receipts` | `++id, timestamp, supplier, staff_id` |
 | `staff` | `++id, name, pin, active` |
 | `settings` | `key, value` |
 
+## Staff Roles
+
+| Role | Criteria | Access |
+| --- | --- | --- |
+| Admin | `staff.id === 1` | All features including Staff Mgmt, Settings, Inventory, product add/edit |
+| Cashier | All others | POS only (Products, Cart, Daily Summary, Transaction History) |
+
 ## Tech
 
-| Package | Version | Purpose |
-| --- | --- | --- |
-| React | 19 | UI |
-| Vite | 8 | Build tool |
-| Tailwind CSS | 4 | Styling (CSS-first, `@theme`) |
-| Dexie.js | 4 | IndexedDB wrapper |
-| Zustand | 5 | State management |
-| vite-plugin-pwa | latest | Service worker + manifest |
+| Package | Purpose |
+| --- | --- |
+| React 19 + Vite 8 | UI + build |
+| Tailwind CSS 4 | Styling (CSS-first `@theme`) |
+| Dexie.js 4 | IndexedDB wrapper |
+| Zustand 5 | State (cart, staff, settings) |
+| vite-plugin-pwa | Service worker + offline caching |
 
 ## Test Offline
 

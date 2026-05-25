@@ -408,22 +408,28 @@ export const dbHelpers = {
 
   // ── Daily analytics ───────────────────────────────────────────────────────
 
-  async getDailySummary() {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+  async getDailySummary(startMs) {
+    const start = startMs ?? (() => {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    })();
 
-    const todayTxns = await db.transactions
+    const txns = await db.transactions
       .where("timestamp")
-      .above(startOfDay.getTime())
+      .above(start)
       .toArray();
 
-    if (todayTxns.length === 0) {
-      return { totalSales: 0, transactionCount: 0, cashTotal: 0, mpesaTotal: 0, pochiTotal: 0, vatCollected: 0, topProducts: [] };
-    }
+    const empty = {
+      totalSales: 0, transactionCount: 0,
+      cashTotal: 0, mpesaTotal: 0, pochiTotal: 0,
+      vatCollected: 0, topProducts: [], staffBreakdown: [],
+    };
+    if (txns.length === 0) return empty;
 
     const allItems = await db.transaction_items
       .where("transaction_id")
-      .anyOf(todayTxns.map((t) => t.id))
+      .anyOf(txns.map((t) => t.id))
       .toArray();
 
     const productMap = new Map();
@@ -437,14 +443,27 @@ export const dbHelpers = {
     const products = await db.products.bulkGet([...productMap.keys()]);
     products.forEach((p) => { if (p) productMap.get(p.id).name = p.name; });
 
+    // Cashier breakdown
+    const staffIds = [...new Set(txns.map((t) => t.staff_id).filter(Boolean))];
+    const staffMembers = await db.staff.bulkGet(staffIds);
+    const staffNameMap = new Map(staffMembers.filter(Boolean).map((s) => [s.id, s.name]));
+    const staffTotals = {};
+    for (const txn of txns) {
+      const name = staffNameMap.get(txn.staff_id) ?? "Unknown";
+      if (!staffTotals[name]) staffTotals[name] = { name, count: 0, total: 0 };
+      staffTotals[name].count++;
+      staffTotals[name].total += txn.total || 0;
+    }
+
     return {
-      totalSales: todayTxns.reduce((s, t) => s + t.total, 0),
-      transactionCount: todayTxns.length,
-      cashTotal: todayTxns.filter((t) => t.payment_method === "CASH").reduce((s, t) => s + t.total, 0),
-      mpesaTotal: todayTxns.filter((t) => t.payment_method === "MPESA").reduce((s, t) => s + t.total, 0),
-      pochiTotal: todayTxns.filter((t) => t.payment_method === "POCHI").reduce((s, t) => s + t.total, 0),
-      vatCollected: todayTxns.reduce((s, t) => s + (t.vat || 0), 0),
+      totalSales: txns.reduce((s, t) => s + (t.total || 0), 0),
+      transactionCount: txns.length,
+      cashTotal: txns.filter((t) => t.payment_method === "CASH").reduce((s, t) => s + (t.total || 0), 0),
+      mpesaTotal: txns.filter((t) => t.payment_method === "MPESA").reduce((s, t) => s + (t.total || 0), 0),
+      pochiTotal: txns.filter((t) => t.payment_method === "POCHI").reduce((s, t) => s + (t.total || 0), 0),
+      vatCollected: txns.reduce((s, t) => s + (t.vat || 0), 0),
       topProducts: [...productMap.values()].sort((a, b) => b.totalQty - a.totalQty).slice(0, 5),
+      staffBreakdown: Object.values(staffTotals).sort((a, b) => b.total - a.total),
     };
   },
 };
