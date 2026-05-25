@@ -6,6 +6,7 @@ import { useDebounce } from "../utils/useDebounce";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import ProductEditModal from "./ProductEditModal";
+import ProductAddModal from "./ProductAddModal";
 
 function StockBadge({ stock, reorderLevel }) {
   if (stock === 0) {
@@ -38,6 +39,7 @@ export default function ProductList() {
   const addItem = useCartStore((state) => state.addItem);
   const currentStaff = useStaffStore((s) => s.currentStaff);
   const isAdmin = currentStaff?.id === 1;
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -92,7 +94,8 @@ export default function ProductList() {
   return (
     <div className="p-4">
       {/* Search Bar */}
-      <div className="mb-4 relative">
+      <div className="mb-4 flex gap-2">
+        <div className="relative flex-1">
         <svg
           className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
           fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -107,6 +110,18 @@ export default function ProductList() {
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-9 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
         />
+        </div>
+        {isAdmin && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="shrink-0 w-12 h-12 flex items-center justify-center bg-primary text-white rounded-xl shadow-sm hover:bg-blue-600 active:scale-95 transition"
+            title="Add new product"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Product Grid */}
@@ -175,6 +190,17 @@ export default function ProductList() {
             setEditingProduct(null);
           }}
           onClose={() => setEditingProduct(null)}
+        />
+      )}
+
+      {/* Product add modal */}
+      {showAddModal && (
+        <ProductAddModal
+          onSave={(newProduct) => {
+            setProducts((prev) => [newProduct, ...prev]);
+            setShowAddModal(false);
+          }}
+          onClose={() => setShowAddModal(false)}
         />
       )}
     </div>

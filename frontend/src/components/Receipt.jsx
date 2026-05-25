@@ -3,18 +3,26 @@ import { SHOP_INFO } from "../utils/constants";
 
 export default function Receipt({ sale, onNewSale }) {
   const isMpesa = sale.method === "MPESA";
+  const isPochi = sale.method === "POCHI";
+  const isDigital = isMpesa || isPochi;
+
+  const bannerBg = isMpesa ? "bg-green-600" : isPochi ? "bg-orange-500" : "bg-primary";
+  const bannerText = isMpesa ? "text-green-100" : isPochi ? "text-orange-100" : "text-blue-100";
+  const bannerSubtitle = isMpesa
+    ? `M-Pesa · ${sale.mpesaCode}`
+    : isPochi
+    ? `Pochi · ${sale.pochiCode}`
+    : "Cash payment received";
 
   return (
     <div className="p-4 max-w-sm mx-auto">
       {/* Receipt Card */}
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
         {/* Success Banner */}
-        <div className={`text-white text-center py-5 ${isMpesa ? "bg-green-600" : "bg-primary"}`}>
+        <div className={`text-white text-center py-5 ${bannerBg}`}>
           <div className="text-4xl mb-1">✓</div>
           <p className="font-bold text-lg">Sale Complete!</p>
-          <p className={`text-sm ${isMpesa ? "text-green-100" : "text-blue-100"}`}>
-            {isMpesa ? `M-Pesa · ${sale.mpesaCode}` : "Cash payment received"}
-          </p>
+          <p className={`text-sm ${bannerText}`}>{bannerSubtitle}</p>
         </div>
 
         {/* Receipt Body */}
@@ -67,15 +75,17 @@ export default function Receipt({ sale, onNewSale }) {
 
           {/* Payment details */}
           <div className="space-y-1 mb-4">
-            {isMpesa ? (
+            {isDigital ? (
               <>
                 <div className="flex justify-between text-gray-500 text-xs">
                   <span>Payment</span>
-                  <span>M-Pesa</span>
+                  <span>{isMpesa ? "M-Pesa" : "Pochi la Biashara"}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-500">Code</span>
-                  <span className="font-bold text-green-700 tracking-wider">{sale.mpesaCode}</span>
+                  <span className={`font-bold tracking-wider ${isMpesa ? "text-green-700" : "text-orange-600"}`}>
+                    {isMpesa ? sale.mpesaCode : sale.pochiCode}
+                  </span>
                 </div>
                 <div className="mt-2 text-center text-xs text-orange-600 font-semibold bg-orange-50 rounded-lg py-1.5">
                   Pending verification

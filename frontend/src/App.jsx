@@ -5,11 +5,13 @@ import PinLogin from "./components/PinLogin";
 import StaffManagement from "./components/StaffManagement";
 import StockReceiving from "./components/StockReceiving";
 import DailySummary from "./components/DailySummary";
+import TransactionHistory from "./components/TransactionHistory";
 import { useOnline } from "./utils/useOnline";
 import { useCartStore } from "./store/cartStore";
 import { useStaffStore } from "./store/staffStore";
+import { syncService } from "./services/sync";
 
-function StaffMenu({ staff, onManage, onStockReceive, onDailySummary, onLogout }) {
+function StaffMenu({ staff, onManage, onStockReceive, onDailySummary, onHistory, onLogout }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -87,6 +89,17 @@ function StaffMenu({ staff, onManage, onStockReceive, onDailySummary, onLogout }
           </button>
 
           <button
+            onClick={() => { onHistory(); setOpen(false); }}
+            className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            Transaction History
+          </button>
+
+          <button
             onClick={() => { onLogout(); setOpen(false); }}
             className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-red-50 flex items-center gap-2 border-t border-gray-100"
           >
@@ -107,7 +120,12 @@ function App() {
   const [showStaffMgmt, setShowStaffMgmt] = useState(false);
   const [showStockReceiving, setShowStockReceiving] = useState(false);
   const [showDailySummary, setShowDailySummary] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const isOnline = useOnline();
+
+  useEffect(() => {
+    if (isOnline) syncService.pushUnsynced().catch(() => {});
+  }, [isOnline]);
   const itemCount = useCartStore((state) => state.getItemCount());
   const currentStaff = useStaffStore((s) => s.currentStaff);
   const logout = useStaffStore((s) => s.logout);
@@ -137,6 +155,7 @@ function App() {
               onManage={() => setShowStaffMgmt(true)}
               onStockReceive={() => setShowStockReceiving(true)}
               onDailySummary={() => setShowDailySummary(true)}
+              onHistory={() => setShowHistory(true)}
               onLogout={logout}
             />
           </div>
@@ -212,6 +231,10 @@ function App() {
 
       {showDailySummary && (
         <DailySummary onClose={() => setShowDailySummary(false)} />
+      )}
+
+      {showHistory && (
+        <TransactionHistory onClose={() => setShowHistory(false)} />
       )}
     </div>
   );

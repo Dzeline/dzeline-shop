@@ -240,7 +240,7 @@ export const dbHelpers = {
           payment_method: payment.method,
           payment_amount: payment.amount,
           change_given: payment.method === "CASH" ? payment.change : 0,
-          mpesa_code: payment.method === "MPESA" ? payment.mpesaCode : null,
+          mpesa_code: payment.mpesaCode ?? payment.pochiCode ?? null,
           synced: false,
           staff_id: staffId,
         });
@@ -283,7 +283,7 @@ export const dbHelpers = {
     );
   },
 
-  // Get recent transactions with their line items
+  // Get recent transactions with line items enriched with product names
   async getTransactionHistory(limit = 20) {
     const txns = await db.transactions
       .orderBy("timestamp")
@@ -291,15 +291,23 @@ export const dbHelpers = {
       .limit(limit)
       .toArray();
 
-    return await Promise.all(
-      txns.map(async (txn) => {
-        const items = await db.transaction_items
-          .where("transaction_id")
-          .equals(txn.id)
-          .toArray();
-        return { ...txn, items };
-      })
+    const allItems = await Promise.all(
+      txns.map((txn) =>
+        db.transaction_items.where("transaction_id").equals(txn.id).toArray()
+      )
     );
+
+    const productIds = [...new Set(allItems.flat().map((i) => i.product_id))];
+    const products = await db.products.bulkGet(productIds);
+    const nameMap = new Map(products.filter(Boolean).map((p) => [p.id, p.name]));
+
+    return txns.map((txn, i) => ({
+      ...txn,
+      items: allItems[i].map((item) => ({
+        ...item,
+        name: nameMap.get(item.product_id) ?? null,
+      })),
+    }));
   },
 
   // ── Staff helpers ─────────────────────────────────────────────────────────
