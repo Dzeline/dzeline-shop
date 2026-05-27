@@ -36,6 +36,10 @@ db.version(3).stores({
   products: "++id, barcode, name, price, stock, category, reorder_level, *tags",
 });
 
+db.version(4).stores({
+  suppliers: "++id, name, created_at",
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   console.log("🌱 Seeding database with initial data...");
@@ -404,6 +408,32 @@ export const dbHelpers = {
       return true;
     }
     return false;
+  },
+
+  // ── Daily analytics ───────────────────────────────────────────────────────
+
+  // ── Suppliers ─────────────────────────────────────────────────────────────
+
+  async getAllSuppliers() {
+    return await db.suppliers.orderBy("name").toArray();
+  },
+
+  async addSupplier({ name, phone, email, notes }) {
+    return await db.suppliers.add({
+      name,
+      phone: phone || null,
+      email: email || null,
+      notes: notes || null,
+      created_at: new Date().toISOString(),
+    });
+  },
+
+  async updateSupplier(id, updates) {
+    return await db.suppliers.update(id, updates);
+  },
+
+  async deleteSupplier(id) {
+    return await db.suppliers.delete(id);
   },
 
   // ── Daily analytics ───────────────────────────────────────────────────────
