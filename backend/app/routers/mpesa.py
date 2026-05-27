@@ -43,6 +43,8 @@ def stk_push(payload: MpesaStkRequest, db: Session = Depends(get_db)):
     shortcode = os.getenv("MPESA_SHORTCODE", "174379")
     passkey = os.getenv("MPESA_PASSKEY", "")
     callback_url = os.getenv("MPESA_CALLBACK_URL", "https://dzeline.online/api/mpesa/callback")
+    shortcode_type = os.getenv("MPESA_SHORTCODE_TYPE", "paybill").lower()
+    transaction_type = "CustomerBuyGoodsOnline" if shortcode_type == "till" else "CustomerPayBillOnline"
 
     if not passkey:
         raise HTTPException(status_code=503, detail="M-Pesa passkey not configured")
@@ -63,7 +65,7 @@ def stk_push(payload: MpesaStkRequest, db: Session = Depends(get_db)):
                 "BusinessShortCode": shortcode,
                 "Password": password,
                 "Timestamp": timestamp,
-                "TransactionType": "CustomerPayBillOnline",
+                "TransactionType": transaction_type,
                 "Amount": int(payload.amount),
                 "PartyA": phone,
                 "PartyB": shortcode,
