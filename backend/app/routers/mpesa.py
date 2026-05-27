@@ -63,7 +63,7 @@ def stk_push(payload: MpesaStkRequest, db: Session = Depends(get_db)):
                 "BusinessShortCode": shortcode,
                 "Password": password,
                 "Timestamp": timestamp,
-                "TransactionType": "CustomerBuyGoodsOnline",
+                "TransactionType": "CustomerPayBillOnline",
                 "Amount": int(payload.amount),
                 "PartyA": phone,
                 "PartyB": shortcode,
