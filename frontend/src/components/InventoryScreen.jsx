@@ -2,17 +2,17 @@ import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { formatPrice } from "../utils/formatters";
 
-const CATEGORY_DOT = {
-  Grains:    "bg-amber-400",
-  Sugar:     "bg-rose-400",
-  Dairy:     "bg-sky-400",
-  Oils:      "bg-orange-400",
-  Bakery:    "bg-yellow-400",
-  Beverages: "bg-teal-400",
-  Spices:    "bg-red-400",
-  Household: "bg-slate-400",
-  Produce:   "bg-green-500",
-  Other:     "bg-gray-400",
+const CATEGORY_BG_GRADIENT = {
+  Grains:    "from-amber-400 to-gray-900",
+  Sugar:     "from-rose-400 to-gray-900",
+  Dairy:     "from-sky-400 to-gray-900",
+  Oils:      "from-orange-400 to-gray-900",
+  Bakery:    "from-yellow-400 to-gray-900",
+  Beverages: "from-teal-400 to-gray-900",
+  Spices:    "from-red-400 to-gray-900",
+  Household: "from-slate-400 to-gray-900",
+  Produce:   "from-green-500 to-gray-900",
+  Other:     "from-gray-400 to-gray-900",
 };
 
 function stockBorderClass(stock, reorderLevel) {
@@ -43,7 +43,7 @@ function StockPill({ stock, reorderLevel }) {
 
 function ProductRow({ p }) {
   return (
-    <div className={`flex items-start gap-3 px-4 py-3.5 border-l-4 ${stockBorderClass(p.stock, p.reorder_level)}`}>
+    <div className={`flex items-start gap-3 px-4 py-3.5 border-l-[6px] ${stockBorderClass(p.stock, p.reorder_level)}`}>
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-gray-800 text-sm leading-snug">{p.name}</p>
         {p.barcode && (
@@ -280,38 +280,37 @@ export default function InventoryScreen({ onClose }) {
                   const catAlerts = items.filter(
                     (p) => p.stock === 0 || p.stock <= (p.reorder_level ?? 10)
                   ).length;
-                  const dot = CATEGORY_DOT[cat] ?? "bg-gray-400";
+                  const bgGrad = CATEGORY_BG_GRADIENT[cat] ?? "from-gray-400 to-gray-900";
                   const isOpen = expandedCats[cat] !== false;
 
                   return (
-                    <div key={cat} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                    <div key={cat} className="rounded-2xl shadow-sm overflow-hidden">
                       <button
                         onClick={() => toggleCat(cat)}
-                        className="w-full px-4 py-3 hover:bg-gray-50 transition text-left"
+                        className={`w-full px-4 py-3.5 transition text-left bg-linear-to-r ${bgGrad}`}
                       >
-                        {/* Top row: dot + name + alert badge + chevron */}
+                        {/* Top row: name + alert badge + chevron */}
                         <div className="flex items-center gap-2.5">
-                          <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
-                          <span className="font-bold text-gray-800 text-sm flex-1">{cat}</span>
+                          <span className="font-bold text-base flex-1 text-white">{cat}</span>
                           {catAlerts > 0 && (
-                            <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 shrink-0">
+                            <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/20 text-white shrink-0">
                               {catAlerts}
                             </span>
                           )}
                           <svg
-                            className={`w-4 h-4 text-gray-300 transition-transform shrink-0 ${isOpen ? "rotate-180" : ""}`}
+                            className={`w-4 h-4 text-white/70 transition-transform shrink-0 ${isOpen ? "rotate-180" : ""}`}
                             fill="none" stroke="currentColor" viewBox="0 0 24 24"
                           >
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
                         </div>
                         {/* Bottom row: summary stats */}
-                        <div className="flex gap-3 mt-1 ml-5">
-                          <span className="text-xs text-gray-400">{items.length} item{items.length !== 1 ? "s" : ""}</span>
-                          <span className="text-xs text-gray-400">·</span>
-                          <span className="text-xs text-gray-400">{catUnits} units</span>
-                          <span className="text-xs text-gray-400">·</span>
-                          <span className="text-xs font-semibold text-gray-500">{formatPrice(catValue)}</span>
+                        <div className="flex gap-3 mt-1">
+                          <span className="text-xs text-white/60">{items.length} item{items.length !== 1 ? "s" : ""}</span>
+                          <span className="text-xs text-white/40">·</span>
+                          <span className="text-xs text-white/60">{catUnits} units</span>
+                          <span className="text-xs text-white/40">·</span>
+                          <span className="text-xs font-semibold text-white/80">{formatPrice(catValue)}</span>
                         </div>
                       </button>
 

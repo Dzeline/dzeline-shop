@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { formatPrice, formatDate } from "../utils/formatters";
+import { showToast } from "../utils/toast";
 
 function SkeletonList() {
   return (
@@ -13,24 +14,24 @@ function SkeletonList() {
 }
 
 const METHOD_STYLES = {
-  CASH: "bg-blue-100 text-blue-700",
+  CASH:  "bg-blue-100 text-blue-700",
   MPESA: "bg-green-100 text-green-700",
   POCHI: "bg-orange-100 text-orange-700",
 };
 const METHOD_LABELS = { CASH: "Cash", MPESA: "M-Pesa", POCHI: "Pochi" };
 
-export default function TransactionHistory({ onClose }) {
+export default function TransactionHistory({ onClose, isAdmin = false }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [voidingId, setVoidingId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await dbHelpers.getTransactionHistory(50);
-      setTransactions(data);
+      setTransactions(await dbHelpers.getTransactionHistory(50));
     } catch (err) {
       console.error(err);
       setError("Failed to load history");
@@ -43,6 +44,24 @@ export default function TransactionHistory({ onClose }) {
 
   function toggle(id) {
     setExpanded((prev) => (prev === id ? null : id));
+  }
+
+  async function handleVoid(txn) {
+    if (!window.confirm(
+      `Void sale #${String(txn.id).padStart(6, "0")} for ${formatPrice(txn.total)}?\n\nThis cannot be undone. Stock will NOT be automatically restored.`
+    )) return;
+    setVoidingId(txn.id);
+    try {
+      await dbHelpers.voidTransaction(txn.id);
+      setTransactions((prev) =>
+        prev.map((t) => t.id === txn.id ? { ...t, voided: true } : t)
+      );
+      showToast(`Sale #${String(txn.id).padStart(6, "0")} voided`);
+    } catch {
+      showToast("Failed to void transaction");
+    } finally {
+      setVoidingId(null);
+    }
   }
 
   return (
@@ -79,10 +98,7 @@ export default function TransactionHistory({ onClose }) {
         {error && !loading && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
             <p className="text-red-600 font-semibold mb-3">{error}</p>
-            <button
-              onClick={load}
-              className="px-5 py-2 bg-red-100 text-red-600 rounded-xl font-semibold text-sm hover:bg-red-200 transition"
-            >
+            <button onClick={load} className="px-5 py-2 bg-red-100 text-red-600 rounded-xl font-semibold text-sm hover:bg-red-200 transition">
               Retry
             </button>
           </div>
@@ -101,24 +117,36 @@ export default function TransactionHistory({ onClose }) {
 
         {!loading && !error && transactions.map((txn) => {
           const isOpen = expanded === txn.id;
+          const isVoided = !!txn.voided;
           const methodStyle = METHOD_STYLES[txn.payment_method] ?? "bg-gray-100 text-gray-600";
           const methodLabel = METHOD_LABELS[txn.payment_method] ?? txn.payment_method;
 
           return (
-            <div key={txn.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div
+              key={txn.id}
+              className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition ${
+                isVoided ? "border-red-100 opacity-60" : "border-gray-100"
+              }`}
+            >
               <button
                 onClick={() => toggle(txn.id)}
                 className="w-full px-4 py-3 flex items-center gap-3 text-left"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <p className="font-bold text-gray-800 text-sm">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                    <p className={`font-bold text-sm ${isVoided ? "line-through text-gray-400" : "text-gray-800"}`}>
                       #{String(txn.id).padStart(6, "0")}
                     </p>
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${methodStyle}`}>
-                      {methodLabel}
-                    </span>
-                    {!txn.synced && (
+                    {isVoided ? (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">
+                        Voided
+                      </span>
+                    ) : (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${methodStyle}`}>
+                        {methodLabel}
+                      </span>
+                    )}
+                    {!txn.synced && !isVoided && (
                       <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
                         Local
                       </span>
@@ -129,7 +157,9 @@ export default function TransactionHistory({ onClose }) {
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="font-extrabold text-primary text-sm">{formatPrice(txn.total)}</p>
+                  <p className={`font-extrabold text-sm ${isVoided ? "text-gray-400 line-through" : "text-primary"}`}>
+                    {formatPrice(txn.total)}
+                  </p>
                   <svg
                     className={`w-3 h-3 text-gray-400 mx-auto mt-1 transition-transform ${isOpen ? "rotate-180" : ""}`}
                     fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -152,14 +182,13 @@ export default function TransactionHistory({ onClose }) {
 
                   <div className="border-t border-gray-200 pt-1.5 mt-1 space-y-0.5">
                     <div className="flex justify-between text-xs text-gray-400">
-                      <span>Subtotal</span>
+                      <span>Subtotal (ex-VAT)</span>
                       <span>{formatPrice(txn.subtotal)}</span>
                     </div>
                     <div className="flex justify-between text-xs text-gray-400">
-                      <span>VAT 16%</span>
+                      <span>VAT</span>
                       <span>{formatPrice(txn.vat)}</span>
                     </div>
-
                     {txn.payment_method === "MPESA" && txn.mpesa_code && (
                       <div className="flex justify-between text-xs text-gray-400">
                         <span>M-Pesa Code</span>
@@ -179,6 +208,18 @@ export default function TransactionHistory({ onClose }) {
                       </div>
                     )}
                   </div>
+
+                  {isAdmin && !isVoided && (
+                    <div className="pt-2 border-t border-gray-200">
+                      <button
+                        onClick={() => handleVoid(txn)}
+                        disabled={voidingId === txn.id}
+                        className="w-full py-2 rounded-xl text-xs font-bold bg-red-50 text-red-500 hover:bg-red-100 transition disabled:opacity-50"
+                      >
+                        {voidingId === txn.id ? "Voiding…" : "Void this sale"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

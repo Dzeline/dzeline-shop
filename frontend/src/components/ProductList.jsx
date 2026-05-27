@@ -165,7 +165,7 @@ export default function ProductList() {
 
   const addItem = useCartStore((state) => state.addItem);
   const currentStaff = useStaffStore((s) => s.currentStaff);
-  const isAdmin = currentStaff?.id === 1;
+  const isAdmin = currentStaff?.role === "admin";
 
   const debouncedSearch = useDebounce(search, 300);
 

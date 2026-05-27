@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import httpx
 from ..database import get_db
-from ..schemas import MpesaStkRequest, MpesaStkResponse
+from ..models import StkRequest
+from ..schemas import MpesaStkRequest, MpesaStkResponse, StkStatusResponse
 
 router = APIRouter(prefix="/mpesa", tags=["mpesa"])
 
@@ -48,6 +49,7 @@ def stk_push(payload: MpesaStkRequest, db: Session = Depends(get_db)):
         phone = "254" + phone[1:]
 
     token = _get_access_token()
+    ref = f"TXN{payload.transaction_id}" if payload.transaction_id else f"DZL{timestamp}"
     response = httpx.post(
         f"{MPESA_BASE}/mpesa/stkpush/v1/processrequest",
         headers={"Authorization": f"Bearer {token}"},
@@ -61,15 +63,26 @@ def stk_push(payload: MpesaStkRequest, db: Session = Depends(get_db)):
             "PartyB": shortcode,
             "PhoneNumber": phone,
             "CallBackURL": callback_url,
-            "AccountReference": f"TXN{payload.transaction_id}",
+            "AccountReference": ref,
             "TransactionDesc": "Dzeline Shop Payment",
         },
         timeout=30,
     )
     response.raise_for_status()
     data = response.json()
+
+    checkout_request_id = data.get("CheckoutRequestID", "")
+    if checkout_request_id:
+        db.add(StkRequest(
+            checkout_request_id=checkout_request_id,
+            status="pending",
+            phone_number=payload.phone_number,
+            amount=payload.amount,
+        ))
+        db.commit()
+
     return MpesaStkResponse(
-        checkout_request_id=data.get("CheckoutRequestID", ""),
+        checkout_request_id=checkout_request_id,
         response_code=data.get("ResponseCode", ""),
         response_description=data.get("ResponseDescription", ""),
         customer_message=data.get("CustomerMessage", ""),
@@ -83,9 +96,32 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     result_code = stk_callback.get("ResultCode")
     checkout_id = stk_callback.get("CheckoutRequestID")
 
+    row = db.query(StkRequest).filter(StkRequest.checkout_request_id == checkout_id).first()
+
     if result_code == 0:
         metadata = stk_callback.get("CallbackMetadata", {}).get("Item", [])
         mpesa_code = next((i["Value"] for i in metadata if i["Name"] == "MpesaReceiptNumber"), None)
-        return {"status": "success", "code": mpesa_code, "checkout_id": checkout_id}
+        if row:
+            row.status = "confirmed"
+            row.mpesa_code = mpesa_code
+            db.commit()
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
-    return {"status": "failed", "result_code": result_code}
+    if row:
+        row.status = "failed"
+        db.commit()
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+
+@router.get("/status/{checkout_request_id}", response_model=StkStatusResponse)
+def stk_status(checkout_request_id: str, db: Session = Depends(get_db)):
+    row = db.query(StkRequest).filter(
+        StkRequest.checkout_request_id == checkout_request_id
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return StkStatusResponse(
+        checkout_request_id=row.checkout_request_id,
+        status=row.status,
+        mpesa_code=row.mpesa_code,
+    )

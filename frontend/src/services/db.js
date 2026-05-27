@@ -1,5 +1,14 @@
 import Dexie from "dexie";
 
+// SHA-256 PIN hashing via Web Crypto (no external dependency)
+export async function hashPin(pin) {
+  const encoded = new TextEncoder().encode(String(pin));
+  const buf = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 // Initialize database
 export const db = new Dexie("DzelineShop");
 
@@ -38,6 +47,22 @@ db.version(3).stores({
 
 db.version(4).stores({
   suppliers: "++id, name, created_at",
+});
+
+db.version(5).stores({
+  sync_queue: null,                                                        // drop unused table
+  staff: "++id, name, pin, role, active, created_at",                     // add role index
+  stock_receipts: "++id, timestamp, supplier, supplier_id, staff_id",     // add supplier_id FK
+}).upgrade(async (tx) => {
+  // Assign roles from the old id===1 convention and hash any plaintext PINs
+  await tx.table("staff").toCollection().modify(async (s) => {
+    s.role = s.id === 1 ? "admin" : "cashier";
+    if (s.pin && s.pin.length < 64) {
+      s.pin = await hashPin(s.pin);
+    }
+  });
+  await tx.table("stock_receipts").toCollection().modify({ supplier_id: null });
+  await tx.table("transactions").toCollection().modify({ voided: false });
 });
 
 // Seed initial data on first run
@@ -128,10 +153,11 @@ db.on("populate", async () => {
     },
   ]);
 
-  // Add default staff (admin)
+  // Add default staff (admin) — PIN is hashed even in seed
   await db.staff.add({
     name: "Admin",
-    pin: "1234", // CHANGE THIS IN PRODUCTION!
+    pin: await hashPin("1234"),
+    role: "admin",
     active: true,
     created_at: new Date().toISOString(),
   });
@@ -196,9 +222,17 @@ export const dbHelpers = {
     return await db.transactions.add(transaction);
   },
 
-  // Get unsynced transactions
+  // Get unsynced transactions (excludes voided)
   async getUnsyncedTransactions() {
-    return await db.transactions.where("synced").equals(false).toArray();
+    return await db.transactions
+      .where("synced").equals(false)
+      .filter((t) => !t.voided)
+      .toArray();
+  },
+
+  // Void a transaction — marks it as voided and resets synced flag
+  async voidTransaction(id) {
+    return await db.transactions.update(id, { voided: true, synced: false });
   },
 
   // Get setting value
@@ -244,8 +278,8 @@ export const dbHelpers = {
           payment_method: payment.method,
           payment_amount: payment.amount,
           change_given: payment.method === "CASH" ? payment.change : 0,
-          mpesa_code: payment.mpesaCode ?? payment.pochiCode ?? null,
           synced: false,
+          voided: false,
           staff_id: staffId,
         });
 
@@ -287,7 +321,7 @@ export const dbHelpers = {
     );
   },
 
-  // Get recent transactions with line items enriched with product names
+  // Get recent transactions with line items enriched with product names and mpesa codes
   async getTransactionHistory(limit = 20) {
     const txns = await db.transactions
       .orderBy("timestamp")
@@ -305,8 +339,15 @@ export const dbHelpers = {
     const products = await db.products.bulkGet(productIds);
     const nameMap = new Map(products.filter(Boolean).map((p) => [p.id, p.name]));
 
+    // Attach M-Pesa / Pochi codes from pending_mpesa (single source of truth)
+    const txnIds = txns.map((t) => t.id);
+    const mpesaRecs = await db.pending_mpesa
+      .where("transaction_id").anyOf(txnIds).toArray();
+    const mpesaMap = new Map(mpesaRecs.map((r) => [r.transaction_id, r.code]));
+
     return txns.map((txn, i) => ({
       ...txn,
+      mpesa_code: mpesaMap.get(txn.id) ?? null,
       items: allItems[i].map((item) => ({
         ...item,
         name: nameMap.get(item.product_id) ?? null,
@@ -321,22 +362,24 @@ export const dbHelpers = {
   },
 
   async getStaffByPin(pin) {
-    return await db.staff
-      .filter((s) => s.pin === pin && s.active)
-      .first();
+    const hashed = await hashPin(pin);
+    return await db.staff.filter((s) => s.pin === hashed && s.active).first();
   },
 
-  async addStaff(name, pin) {
+  async addStaff(name, pin, role = "cashier") {
+    const hashed = await hashPin(pin);
     return await db.staff.add({
       name,
-      pin,
+      pin: hashed,
+      role,
       active: true,
       created_at: new Date().toISOString(),
     });
   },
 
   async updateStaffPin(staffId, newPin) {
-    return await db.staff.update(staffId, { pin: newPin });
+    const hashed = await hashPin(newPin);
+    return await db.staff.update(staffId, { pin: hashed });
   },
 
   async updateStaffName(staffId, name) {
@@ -353,7 +396,7 @@ export const dbHelpers = {
 
   // ── Stock receiving ───────────────────────────────────────────────────────
 
-  async addStockReceipt({ supplier, invoice_number, photo_blob, items, staff_id }) {
+  async addStockReceipt({ supplier, supplier_id, invoice_number, photo_blob, items, staff_id }) {
     return await db.transaction("rw", [db.stock_receipts, db.products], async () => {
       const itemsWithBefore = await Promise.all(
         items.map(async ({ product_id, qty_added }) => {
@@ -366,6 +409,7 @@ export const dbHelpers = {
       return await db.stock_receipts.add({
         timestamp: Date.now(),
         supplier,
+        supplier_id: supplier_id ?? null,
         invoice_number: invoice_number || null,
         photo_blob: photo_blob || null,
         items: itemsWithBefore,
@@ -445,10 +489,11 @@ export const dbHelpers = {
       return d.getTime();
     })();
 
-    const txns = await db.transactions
+    const txns = (await db.transactions
       .where("timestamp")
       .above(start)
-      .toArray();
+      .toArray())
+      .filter((t) => !t.voided);
 
     const empty = {
       totalSales: 0, transactionCount: 0,

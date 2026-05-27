@@ -5,10 +5,12 @@ import { useDebounce } from "../utils/useDebounce";
 
 export default function StockReceiving({ currentStaffId, onClose }) {
   const [products, setProducts] = useState([]);
+  const [savedSuppliers, setSavedSuppliers] = useState([]);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 200);
 
   const [supplier, setSupplier] = useState("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState(null);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [photoBlob, setPhotoBlob] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -17,7 +19,10 @@ export default function StockReceiving({ currentStaffId, onClose }) {
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
-    dbHelpers.getAllProducts().then(setProducts);
+    Promise.all([
+      dbHelpers.getAllProducts().then(setProducts),
+      dbHelpers.getAllSuppliers().then(setSavedSuppliers),
+    ]);
   }, []);
 
   const filteredProducts = useMemo(() => {
@@ -70,6 +75,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     try {
       await dbHelpers.addStockReceipt({
         supplier: supplier.trim(),
+        supplier_id: selectedSupplierId,
         invoice_number: invoiceNumber.trim() || null,
         photo_blob: photoBlob,
         items: lineItems.map(({ product_id, qty_added }) => ({ product_id, qty_added })),
@@ -110,12 +116,36 @@ export default function StockReceiving({ currentStaffId, onClose }) {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
               <p className="font-bold text-gray-700 text-sm">Supplier Details</p>
 
+              {savedSuppliers.length > 0 && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1.5 block">Saved Suppliers</label>
+                  <div className="flex flex-wrap gap-2">
+                    {savedSuppliers.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => { setSupplier(s.name); setSelectedSupplierId(s.id); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                          selectedSupplierId === s.id
+                            ? "bg-primary text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        {s.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Supplier Name *</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Supplier Name *{selectedSupplierId ? " (linked)" : ""}
+                </label>
                 <input
                   type="text"
                   value={supplier}
-                  onChange={(e) => setSupplier(e.target.value)}
+                  onChange={(e) => { setSupplier(e.target.value); setSelectedSupplierId(null); }}
                   placeholder="e.g. Unga Group, Bidco"
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />

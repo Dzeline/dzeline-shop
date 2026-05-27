@@ -25,7 +25,7 @@ function StaffRow({ staff, isCurrentUser, onToggle, onChangePin, onDelete }) {
             {isCurrentUser && (
               <span className="text-xs font-semibold bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">You</span>
             )}
-            {staff.id === 1 && (
+            {staff.role === "admin" && (
               <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Admin</span>
             )}
           </div>
@@ -36,7 +36,7 @@ function StaffRow({ staff, isCurrentUser, onToggle, onChangePin, onDelete }) {
 
         <div className="flex items-center gap-2">
           {/* Active toggle — cannot deactivate yourself or admin */}
-          {staff.id !== 1 && !isCurrentUser && (
+          {staff.role !== "admin" && !isCurrentUser && (
             <button
               onClick={() => onToggle(staff.id, !staff.active)}
               className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
@@ -56,7 +56,7 @@ function StaffRow({ staff, isCurrentUser, onToggle, onChangePin, onDelete }) {
             Change PIN
           </button>
 
-          {staff.id !== 1 && !isCurrentUser && (
+          {staff.role !== "admin" && !isCurrentUser && (
             <button
               onClick={() => onDelete(staff.id)}
               className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 text-red-400 hover:bg-red-100 transition"

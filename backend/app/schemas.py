@@ -56,7 +56,7 @@ class ProductOut(ProductIn):
 
 
 class MpesaStkRequest(BaseModel):
-    transaction_id: int
+    transaction_id: Optional[int] = None
     phone_number: str
     amount: float
 
@@ -66,3 +66,9 @@ class MpesaStkResponse(BaseModel):
     response_code: str
     response_description: str
     customer_message: str
+
+
+class StkStatusResponse(BaseModel):
+    checkout_request_id: str
+    status: str  # pending | confirmed | failed
+    mpesa_code: Optional[str] = None

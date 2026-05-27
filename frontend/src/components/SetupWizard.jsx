@@ -141,7 +141,7 @@ export default function SetupWizard({ onComplete }) {
       });
 
       const adminDisplayName = adminName.trim() || "Admin";
-      await dbHelpers.addStaff(adminDisplayName, pin);
+      await dbHelpers.addStaff(adminDisplayName, pin, "admin");
 
       showToast("Setup complete!");
       onComplete();

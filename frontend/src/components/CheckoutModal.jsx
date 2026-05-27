@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { formatPrice } from "../utils/formatters";
 import { useSettingsStore } from "../store/settingsStore";
+import { useOnline } from "../utils/useOnline";
+import { syncService } from "../services/sync";
 
 const DENOMINATIONS = [50, 100, 200, 500, 1000, 2000];
 
@@ -114,36 +116,12 @@ function CashTab({ grandTotal, onComplete }) {
   );
 }
 
-function MpesaTab({ grandTotal, onComplete }) {
+function MpesaManualEntry({ grandTotal, onComplete }) {
   const [code, setCode] = useState("");
-  const mpesaTill = useSettingsStore((s) => s.mpesaTill);
   const trimmedCode = code.trim().toUpperCase();
   const canComplete = trimmedCode.length >= 8;
-
-  function handleComplete() {
-    if (!canComplete) return;
-    onComplete({
-      method: "MPESA",
-      amount: grandTotal,
-      change: 0,
-      mpesaCode: trimmedCode,
-    });
-  }
-
   return (
-    <div className="space-y-4">
-      {/* Instructions */}
-      <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-        <p className="text-sm font-semibold text-green-800 mb-1">Customer sends to:</p>
-        <p className="text-2xl font-extrabold text-green-700">
-          Till {mpesaTill || "—"}
-        </p>
-        <p className="text-sm text-green-600 mt-1">
-          Amount: <span className="font-bold">{formatPrice(grandTotal)}</span>
-        </p>
-      </div>
-
-      {/* Code input */}
+    <div className="space-y-3">
       <div>
         <label className="block text-sm font-semibold text-gray-600 mb-2">
           M-Pesa Confirmation Code
@@ -156,28 +134,202 @@ function MpesaTab({ grandTotal, onComplete }) {
           maxLength={12}
           className="w-full px-4 py-4 text-xl font-bold tracking-widest border-2 border-gray-200 rounded-xl focus:outline-none focus:border-green-500 uppercase"
         />
-        <p className="text-xs text-gray-400 mt-1">
-          Customer receives this code via SMS after payment
-        </p>
+        <p className="text-xs text-gray-400 mt-1">Customer receives this code via SMS after payment</p>
       </div>
-
       {canComplete && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700 font-medium">
           Code <span className="font-extrabold">{trimmedCode}</span> will be saved for verification
         </div>
       )}
-
       <button
-        onClick={handleComplete}
+        onClick={() => { if (canComplete) onComplete({ method: "MPESA", amount: grandTotal, change: 0, mpesaCode: trimmedCode }); }}
         disabled={!canComplete}
         className={`w-full py-4 rounded-xl font-bold text-base transition ${
-          canComplete
-            ? "bg-green-600 text-white hover:bg-green-700 active:scale-95"
-            : "bg-gray-200 text-gray-400 cursor-not-allowed"
+          canComplete ? "bg-green-600 text-white hover:bg-green-700 active:scale-95" : "bg-gray-200 text-gray-400 cursor-not-allowed"
         }`}
       >
         Confirm M-Pesa Payment
       </button>
+    </div>
+  );
+}
+
+function MpesaTab({ grandTotal, onComplete }) {
+  // phase: idle | requesting | waiting | manual | failed
+  const [phase, setPhase] = useState("idle");
+  const [phone, setPhone] = useState("");
+  const [checkoutId, setCheckoutId] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [secondsLeft, setSecondsLeft] = useState(120);
+
+  const mpesaTill = useSettingsStore((s) => s.mpesaTill);
+  const isOnline = useOnline();
+
+  useEffect(() => {
+    if (phase !== "waiting" || !checkoutId) return;
+    let alive = true;
+    let pollTimer;
+
+    const countdownId = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(countdownId);
+          if (alive) {
+            setPhase("failed");
+            setErrorMsg("Payment request expired. Enter the code manually or try again.");
+          }
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+
+    async function poll() {
+      if (!alive) return;
+      try {
+        const res = await syncService.getMpesaStkStatus(checkoutId);
+        if (!alive) return;
+        if (res.status === "confirmed") {
+          clearInterval(countdownId);
+          onComplete({ method: "MPESA", amount: grandTotal, change: 0, mpesaCode: res.mpesa_code });
+          return;
+        }
+        if (res.status === "failed") {
+          clearInterval(countdownId);
+          setPhase("failed");
+          setErrorMsg("Payment was declined. Enter the code manually or try again.");
+          return;
+        }
+      } catch { /* network hiccup — keep polling */ }
+      pollTimer = setTimeout(poll, 3000);
+    }
+
+    pollTimer = setTimeout(poll, 3000);
+    return () => {
+      alive = false;
+      clearInterval(countdownId);
+      clearTimeout(pollTimer);
+    };
+  }, [phase, checkoutId, grandTotal, onComplete]);
+
+  async function handleRequest() {
+    setErrorMsg("");
+    setPhase("requesting");
+    setSecondsLeft(120);
+    try {
+      const result = await syncService.initiateMpesaStk(null, phone, grandTotal);
+      setCheckoutId(result.checkout_request_id);
+      setPhase("waiting");
+    } catch {
+      setPhase("failed");
+      setErrorMsg("Could not send payment request. Check connection or enter the code manually.");
+    }
+  }
+
+  function reset() {
+    setPhase("idle");
+    setCheckoutId(null);
+    setSecondsLeft(120);
+    setErrorMsg("");
+  }
+
+  const validPhone = phone.replace(/\D/g, "").length >= 9;
+
+  if (phase === "requesting") {
+    return (
+      <div className="flex flex-col items-center py-10 gap-4">
+        <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+        <p className="font-semibold text-gray-700">Sending payment request…</p>
+      </div>
+    );
+  }
+
+  if (phase === "waiting") {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col items-center py-6 gap-3">
+          <div className="relative w-20 h-20">
+            <div className="absolute inset-0 border-4 border-green-100 rounded-full" />
+            <div className="absolute inset-0 border-4 border-green-500 border-b-transparent border-r-transparent rounded-full animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-sm font-bold text-green-600">{secondsLeft}s</span>
+            </div>
+          </div>
+          <p className="font-bold text-gray-800">Waiting for payment</p>
+          <p className="text-sm text-gray-500">{phone}</p>
+          <div className="bg-green-50 border border-green-200 rounded-xl px-8 py-3 text-center">
+            <p className="text-2xl font-extrabold text-green-700">{formatPrice(grandTotal)}</p>
+          </div>
+          <p className="text-xs text-gray-400 text-center">Customer will see an M-Pesa prompt on their phone</p>
+        </div>
+        <button onClick={reset} className="w-full py-3 rounded-xl text-sm font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 transition">
+          Cancel
+        </button>
+        <button onClick={() => setPhase("manual")} className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition text-center">
+          Enter code manually instead →
+        </button>
+      </div>
+    );
+  }
+
+  if (phase === "manual") {
+    return (
+      <div className="space-y-4">
+        <button onClick={reset} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 transition">
+          ← Back
+        </button>
+        <MpesaManualEntry grandTotal={grandTotal} onComplete={onComplete} />
+      </div>
+    );
+  }
+
+  // idle or failed
+  return (
+    <div className="space-y-4">
+      <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+        <p className="text-sm font-semibold text-green-800 mb-1">Customer pays to Till:</p>
+        <p className="text-2xl font-extrabold text-green-700">{mpesaTill || "—"}</p>
+        <p className="text-sm text-green-600 mt-1">Amount: <span className="font-bold">{formatPrice(grandTotal)}</span></p>
+      </div>
+
+      {phase === "failed" && errorMsg && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-600 font-medium">{errorMsg}</div>
+      )}
+
+      {isOnline ? (
+        <>
+          <div>
+            <label className="block text-sm font-semibold text-gray-600 mb-2">Customer's Phone Number</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => { setPhone(e.target.value); setErrorMsg(""); }}
+              placeholder="e.g. 0712 345 678"
+              className="w-full px-4 py-3.5 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:border-green-500"
+            />
+          </div>
+          <button
+            onClick={handleRequest}
+            disabled={!validPhone}
+            className={`w-full py-4 rounded-xl font-bold text-base transition ${
+              validPhone ? "bg-green-600 text-white hover:bg-green-700 active:scale-95" : "bg-gray-200 text-gray-400 cursor-not-allowed"
+            }`}
+          >
+            Send Payment Request
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 border-t border-gray-200" />
+            <span className="text-xs text-gray-400">or enter code manually</span>
+            <div className="flex-1 border-t border-gray-200" />
+          </div>
+        </>
+      ) : (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700 font-medium">
+          Device is offline — enter confirmation code below
+        </div>
+      )}
+
+      <MpesaManualEntry grandTotal={grandTotal} onComplete={onComplete} />
     </div>
   );
 }

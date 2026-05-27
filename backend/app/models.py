@@ -4,6 +4,18 @@ from sqlalchemy.orm import relationship
 from .database import Base
 
 
+class StkRequest(Base):
+    __tablename__ = "stk_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    checkout_request_id = Column(String(100), unique=True, index=True, nullable=False)
+    status = Column(String(20), default="pending", nullable=False)  # pending | confirmed | failed
+    mpesa_code = Column(String(30), nullable=True)
+    phone_number = Column(String(20), nullable=True)
+    amount = Column(Float, nullable=True)
+    created_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
 

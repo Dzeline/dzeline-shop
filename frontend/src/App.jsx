@@ -28,7 +28,7 @@ const HEADER_THEMES = [
 ];
 
 function getHeaderGradient(staff) {
-  if (!staff || staff.id === 1) return HEADER_THEMES[0];
+  if (!staff || staff.role === "admin") return HEADER_THEMES[0];
   return HEADER_THEMES[((staff.id - 2) % (HEADER_THEMES.length - 1)) + 1];
 }
 
@@ -48,7 +48,7 @@ function StaffMenu({ staff, onManage, onStockReceive, onInventory, onSuppliers, 
     };
   }, []);
 
-  const isAdmin = staff.id === 1;
+  const isAdmin = staff.role === "admin";
 
   return (
     <div className="relative" ref={ref}>
@@ -329,7 +329,10 @@ function App() {
       )}
 
       {showHistory && (
-        <TransactionHistory onClose={() => setShowHistory(false)} />
+        <TransactionHistory
+          onClose={() => setShowHistory(false)}
+          isAdmin={currentStaff?.role === "admin"}
+        />
       )}
 
       {showSettings && (

@@ -58,18 +58,20 @@ Shelf prices **include** VAT. At checkout:
 
 ---
 
-## Database Schema (IndexedDB v3 via Dexie)
+## Database Schema (IndexedDB v5 via Dexie)
 
 | Table | Indexed fields | Notable unindexed fields |
 | --- | --- | --- |
 | `products` | `++id, barcode, name, price, stock, category, reorder_level, *tags` | `image_blob` |
-| `transactions` | `++id, timestamp, total, payment_method, synced, staff_id` | `subtotal, vat, payment_amount, change_given, mpesa_code` |
+| `transactions` | `++id, timestamp, total, payment_method, synced, staff_id` | `subtotal, vat, payment_amount, change_given, voided` |
 | `transaction_items` | `++id, transaction_id, product_id, quantity, price, subtotal` | |
-| `pending_mpesa` | `++id, transaction_id, code, timestamp, verified, amount` | |
-| `sync_queue` | `++id, type, data, attempts, last_attempt, status` | |
-| `staff` | `++id, name, pin, active, created_at` | |
+| `pending_mpesa` | `++id, transaction_id, code, timestamp, verified, amount` | stores codes for both M-Pesa and Pochi |
+| `staff` | `++id, name, pin, role, active, created_at` | `pin` is SHA-256 hex (64 chars) |
 | `settings` | `key, value` | shop_name, kra_pin, mpesa_till, pochi_number, vat_rate, vat_enabled |
-| `stock_receipts` | `++id, timestamp, supplier, staff_id` | `items[]` (JSON), `photo_blob`, `invoice_number` |
+| `stock_receipts` | `++id, timestamp, supplier, supplier_id, staff_id` | `items[]` (JSON), `photo_blob`, `invoice_number` |
+| `suppliers` | `++id, name, created_at` | `phone, email, notes` |
+
+`sync_queue` was dropped in v5. `mpesa_code` was removed from `transactions` — codes live exclusively in `pending_mpesa` and are joined in `getTransactionHistory`.
 
 ---
 

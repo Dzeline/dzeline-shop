@@ -40,10 +40,19 @@ export const syncService = {
     const res = await fetch(`${API_BASE}/mpesa/stk-push`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transaction_id: transactionId, phone_number: phoneNumber, amount }),
+      body: JSON.stringify({ transaction_id: transactionId ?? null, phone_number: phoneNumber, amount }),
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) throw new Error("STK Push failed");
     return res.json();
+  },
+
+  async getMpesaStkStatus(checkoutRequestId) {
+    const res = await fetch(
+      `${API_BASE}/mpesa/status/${encodeURIComponent(checkoutRequestId)}`,
+      { signal: AbortSignal.timeout(10_000) },
+    );
+    if (!res.ok) throw new Error("Status check failed");
+    return res.json(); // { checkout_request_id, status, mpesa_code }
   },
 };

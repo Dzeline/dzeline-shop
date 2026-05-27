@@ -17,24 +17,25 @@ First run auto-seeds IndexedDB. Log in as **Admin** with PIN `1234`.
 
 ```text
 src/
+├── App.jsx                    # Root — setup gate, PIN gate, header, bottom nav
 ├── components/
-│   ├── App.jsx                # Root — setup gate, PIN gate, header, bottom nav
 │   ├── SetupWizard.jsx        # First-launch shop configuration
 │   ├── PinLogin.jsx           # Staff selection + PIN numpad
 │   ├── ProductList.jsx        # Product grid, search, barcode scanner, admin edit/add
+│   ├── ProductAddModal.jsx    # Add new product (admin)
+│   ├── ProductEditModal.jsx   # Edit price, photo, reorder level (admin)
 │   ├── Cart.jsx               # Cart → Checkout → Receipt flow
 │   ├── CheckoutModal.jsx      # Cash / M-Pesa / Pochi payment tabs
 │   ├── Receipt.jsx            # KRA-style receipt (VAT-inclusive breakdown)
 │   ├── StaffManagement.jsx    # Admin CRUD for cashiers
 │   ├── StockReceiving.jsx     # Record supplier deliveries with photo
-│   ├── InventoryScreen.jsx    # Stock view grouped by category (admin)
+│   ├── SuppliersScreen.jsx    # Supplier directory + WhatsApp/email purchase orders
+│   ├── InventoryScreen.jsx    # Stock view grouped by category, Alerts tab (admin)
 │   ├── SettingsScreen.jsx     # Shop name, KRA PIN, M-Pesa/Pochi numbers, VAT
-│   ├── DailySummary.jsx       # Today/Week/Month analytics + cashier breakdown
-│   ├── TransactionHistory.jsx # Last 50 sales with expandable line items
-│   ├── ProductAddModal.jsx    # Add new product (admin)
-│   └── ProductEditModal.jsx   # Edit price, photo, reorder level (admin)
+│   ├── DailySummary.jsx       # Today/Week/Month analytics + cashier breakdown + low stock
+│   └── TransactionHistory.jsx # Last 50 sales with expandable line items, void (admin)
 ├── services/
-│   ├── db.js                  # Dexie schema (v3) + all dbHelpers
+│   ├── db.js                  # Dexie schema (v5) + all dbHelpers
 │   └── sync.js                # Push unsynced transactions to backend on reconnect
 ├── store/
 │   ├── cartStore.js           # Zustand cart (persisted)
@@ -60,26 +61,33 @@ src/
 
 **Stock receiving**: Admin logs deliveries (supplier name, optional invoice + photo), selects products + quantities. Stock is incremented atomically.
 
+**Suppliers**: Admin manages a supplier directory. The order builder pre-populates low-stock items; orders are sent via WhatsApp (`wa.me/`) or `mailto:` links.
+
 **Sync**: On every online reconnect, `syncService.pushUnsynced()` POSTs unsynced transactions to `VITE_API_URL/sync/transactions`.
 
-## IndexedDB Schema (v3)
+## IndexedDB Schema (v5)
 
 | Table | Key fields |
 | --- | --- |
-| `products` | `++id, barcode, name, price, stock, category, reorder_level` |
-| `transactions` | `++id, timestamp, total, payment_method, staff_id, synced` |
+| `products` | `++id, barcode, name, price, stock, category, reorder_level` — `image_blob` unindexed |
+| `transactions` | `++id, timestamp, total, payment_method, staff_id, synced` — `voided` unindexed |
 | `transaction_items` | `++id, transaction_id, product_id, quantity, price` |
-| `pending_mpesa` | `++id, transaction_id, code, verified` |
-| `stock_receipts` | `++id, timestamp, supplier, staff_id` |
-| `staff` | `++id, name, pin, active` |
+| `pending_mpesa` | `++id, transaction_id, code, verified` — stores codes for M-Pesa and Pochi |
+| `stock_receipts` | `++id, timestamp, supplier, supplier_id, staff_id` |
+| `suppliers` | `++id, name, created_at` — `phone, email, notes` unindexed |
+| `staff` | `++id, name, pin, role, active` — `pin` is SHA-256 hex |
 | `settings` | `key, value` |
+
+`sync_queue` was dropped in v5. M-Pesa/Pochi codes live in `pending_mpesa` only (not duplicated on the transaction row).
 
 ## Staff Roles
 
-| Role | Criteria | Access |
+| Role | Field value | Access |
 | --- | --- | --- |
-| Admin | `staff.id === 1` | All features including Staff Mgmt, Settings, Inventory, product add/edit |
-| Cashier | All others | POS only (Products, Cart, Daily Summary, Transaction History) |
+| Admin | `staff.role === "admin"` | All features — Staff Mgmt, Settings, Inventory, Suppliers, product add/edit, void transactions |
+| Cashier | `staff.role === "cashier"` | POS only — Products, Cart, Daily Summary, Transaction History |
+
+PINs are hashed with SHA-256 (Web Crypto API) before storage. The v5 migration hashes any legacy plaintext PINs on first open.
 
 ## Tech
 
