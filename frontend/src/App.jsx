@@ -223,8 +223,10 @@ function App() {
     return <PinLogin />;
   }
 
+  const isAdmin = currentStaff?.role === "admin";
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-900">
       {/* Header */}
       <header
         className="sticky-header text-white px-4 py-3"
@@ -232,15 +234,40 @@ function App() {
       >
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">{shopName}</h1>
-            <p className="text-white/60 text-xs">Point of Sale</p>
+            <h1 className="text-lg font-bold tracking-tight leading-tight">{shopName}</h1>
+            <p className="text-white/50 text-xs">Point of Sale</p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-2.5 py-1">
-              <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-400" : "bg-red-400"}`} />
-              <span className="text-xs font-medium">{isOnline ? "Online" : "Offline"}</span>
-            </div>
+          <div className="flex items-center gap-2">
+            {/* Online/offline dot */}
+            <div
+              className={`w-2.5 h-2.5 rounded-full ring-2 ring-white/20 ${isOnline ? "bg-green-400" : "bg-red-400"}`}
+              title={isOnline ? "Online" : "Offline"}
+            />
+
+            {/* Quick actions — visible in header */}
+            {isAdmin && (
+              <button
+                onClick={() => setShowStockReceiving(true)}
+                className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full transition"
+                title="Stock Receiving"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={() => setShowDailySummary(true)}
+              className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full transition"
+              title="Daily Summary"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </button>
 
             <StaffMenu
               staff={currentStaff}
@@ -266,13 +293,13 @@ function App() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex shadow-lg">
+      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 flex shadow-2xl">
         <button
           onClick={() => setActiveTab("products")}
           className={`flex-1 py-4 flex flex-col items-center gap-1 transition ${
             activeTab === "products"
               ? "text-primary border-t-2 border-primary -mt-px"
-              : "text-gray-400 hover:text-gray-600"
+              : "text-gray-500 hover:text-gray-300"
           }`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -289,7 +316,7 @@ function App() {
           className={`flex-1 py-4 flex flex-col items-center gap-1 relative transition ${
             activeTab === "cart"
               ? "text-primary border-t-2 border-primary -mt-px"
-              : "text-gray-400 hover:text-gray-600"
+              : "text-gray-500 hover:text-gray-300"
           }`}
         >
           <div className="relative">

@@ -163,6 +163,8 @@ export default function ProductList() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
 
+  const [editMode, setEditMode] = useState(false);
+
   const addItem = useCartStore((state) => state.addItem);
   const currentStaff = useStaffStore((s) => s.currentStaff);
   const isAdmin = currentStaff?.role === "admin";
@@ -217,16 +219,16 @@ export default function ProductList() {
 
   if (loading) {
     return (
-      <div className="bg-zinc-200 min-h-screen px-3 pt-3">
+      <div className="bg-gray-900 min-h-screen px-3 pt-3">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="bg-white rounded-2xl shadow-sm overflow-hidden animate-pulse">
-              <div className="h-24 bg-zinc-200" />
+              <div className="h-24 bg-gray-200" />
               <div className="p-3 space-y-2">
-                <div className="h-3 bg-zinc-200 rounded w-1/2" />
-                <div className="h-4 bg-zinc-200 rounded w-4/5" />
-                <div className="h-4 bg-zinc-200 rounded w-3/5" />
-                <div className="h-9 bg-zinc-200 rounded-xl mt-2" />
+                <div className="h-3 bg-gray-200 rounded w-1/2" />
+                <div className="h-4 bg-gray-200 rounded w-4/5" />
+                <div className="h-4 bg-gray-200 rounded w-3/5" />
+                <div className="h-9 bg-gray-200 rounded-xl mt-2" />
               </div>
             </div>
           ))}
@@ -236,8 +238,8 @@ export default function ProductList() {
   }
 
   return (
-    <div className="bg-zinc-200 min-h-screen px-3 pt-3 pb-4">
-      {/* Search + Scan + Add */}
+    <div className="bg-gray-900 min-h-screen px-3 pt-3 pb-4">
+      {/* Search + Scan + Edit Mode + Add */}
       <div className="flex gap-2 mb-3">
         <div className="relative flex-1">
           <svg
@@ -252,15 +254,15 @@ export default function ProductList() {
             placeholder="Search products..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-white border-0 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+            className="w-full pl-9 pr-4 py-2.5 bg-gray-800 border border-gray-700 text-white placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm"
           />
         </div>
         <button
           onClick={() => setShowScanner(true)}
-          className="shrink-0 w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm hover:bg-gray-100 active:scale-95 transition"
+          className="shrink-0 w-10 h-10 flex items-center justify-center bg-gray-800 text-gray-300 rounded-xl hover:bg-gray-700 active:scale-95 transition"
           title="Scan barcode"
         >
-          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
             <line x1="7" y1="8" x2="7" y2="16" strokeWidth={2} strokeLinecap="round" />
@@ -273,8 +275,25 @@ export default function ProductList() {
 
         {isAdmin && (
           <button
+            onClick={() => setEditMode((v) => !v)}
+            className={`shrink-0 w-10 h-10 flex items-center justify-center rounded-xl active:scale-95 transition ${
+              editMode
+                ? "bg-primary text-white shadow-lg shadow-primary/30"
+                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+            }`}
+            title={editMode ? "Exit edit mode" : "Edit products"}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+
+        {isAdmin && (
+          <button
             onClick={() => setShowAddModal(true)}
-            className="shrink-0 w-10 h-10 flex items-center justify-center bg-primary text-white rounded-xl shadow-sm hover:bg-blue-600 active:scale-95 transition"
+            className="shrink-0 w-10 h-10 flex items-center justify-center bg-primary text-white rounded-xl hover:bg-blue-600 active:scale-95 transition"
             title="Add new product"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -284,18 +303,33 @@ export default function ProductList() {
         )}
       </div>
 
+      {/* Edit mode banner */}
+      {editMode && (
+        <div className="mb-3 flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-xl px-3 py-2">
+          <svg className="w-4 h-4 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          <p className="text-primary text-xs font-semibold flex-1">Edit mode — tap a product card to edit it</p>
+          <button onClick={() => setEditMode(false)} className="text-primary/60 hover:text-primary text-xs font-bold">Done</button>
+        </div>
+      )}
+
       {/* Product Grid */}
       {products.length === 0 ? (
-        <div className="text-center text-gray-400 mt-20">
-          <p className="text-lg font-semibold">No products found</p>
-          <p className="text-sm mt-1">Try a different search term</p>
+        <div className="text-center text-gray-500 mt-20">
+          <p className="text-lg font-semibold text-gray-400">No products found</p>
+          <p className="text-sm mt-1 text-gray-600">Try a different search term</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
           {products.map((product) => (
             <div
               key={product.id}
-              className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col"
+              onClick={() => editMode && isAdmin && setEditingProduct(product)}
+              className={`bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col transition-shadow ${
+                editMode ? "ring-2 ring-primary/40 cursor-pointer hover:ring-primary" : "hover:shadow-md"
+              }`}
             >
               {/* Image or gradient placeholder */}
               {product.image_blob ? (
@@ -325,24 +359,24 @@ export default function ProductList() {
                   <StockBadge stock={product.stock} reorderLevel={product.reorder_level} />
                 </div>
 
-                <button
-                  onClick={() => handleAddToCart(product)}
-                  disabled={product.stock === 0}
-                  className={`w-full py-2.5 rounded-xl font-bold text-sm transition active:scale-95 ${
-                    product.stock > 0
-                      ? "bg-primary text-white hover:bg-blue-600"
-                      : "bg-zinc-200 text-gray-400 cursor-not-allowed"
-                  }`}
-                >
-                  {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
-                </button>
-
-                {isAdmin && (
+                {editMode && isAdmin ? (
                   <button
                     onClick={(e) => { e.stopPropagation(); setEditingProduct(product); }}
-                    className="mt-1.5 w-full py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition"
+                    className="w-full py-2.5 rounded-xl font-bold text-sm bg-primary/10 text-primary hover:bg-primary/20 transition active:scale-95"
                   >
-                    Edit
+                    Edit Product
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleAddToCart(product)}
+                    disabled={product.stock === 0}
+                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition active:scale-95 ${
+                      product.stock > 0
+                        ? "bg-primary text-white hover:bg-blue-600"
+                        : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    }`}
+                  >
+                    {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
                   </button>
                 )}
               </div>

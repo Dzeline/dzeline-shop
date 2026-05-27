@@ -8,6 +8,9 @@ const CATEGORIES = [
   "Beverages", "Spices", "Household", "Produce", "Other",
 ];
 
+const LABEL = "text-sm font-semibold text-gray-700 mb-1.5 block";
+const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary";
+
 export default function ProductAddModal({ onSave, onClose }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Grains");
@@ -71,7 +74,7 @@ export default function ProductAddModal({ onSave, onClose }) {
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
           {/* Photo */}
           <div>
-            <label className="text-xs text-gray-500 mb-1 block font-semibold">Product Photo</label>
+            <label className={LABEL}>Product Photo</label>
             {imagePreview ? (
               <div className="relative">
                 <img src={imagePreview} alt={name} className="w-full h-40 object-cover rounded-xl border border-gray-200" />
@@ -97,23 +100,23 @@ export default function ProductAddModal({ onSave, onClose }) {
 
           {/* Name */}
           <div>
-            <label className="text-xs text-gray-500 mb-1 block font-semibold">Product Name *</label>
+            <label className={LABEL}>Product Name *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Unga 2kg"
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className={INPUT}
             />
           </div>
 
           {/* Category */}
           <div>
-            <label className="text-xs text-gray-500 mb-1 block font-semibold">Category</label>
+            <label className={LABEL}>Category</label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+              className={`${INPUT} bg-white`}
             >
               {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -122,7 +125,7 @@ export default function ProductAddModal({ onSave, onClose }) {
           {/* Price + Stock */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-500 mb-1 block font-semibold">
+              <label className={LABEL}>
                 Price {price && `(${formatPrice(parseFloat(price) || 0)})`}
               </label>
               <input
@@ -132,11 +135,11 @@ export default function ProductAddModal({ onSave, onClose }) {
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 placeholder="0.00"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className={INPUT}
               />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block font-semibold">Opening Stock</label>
+              <label className={LABEL}>Opening Stock</label>
               <input
                 type="number"
                 inputMode="numeric"
@@ -144,7 +147,7 @@ export default function ProductAddModal({ onSave, onClose }) {
                 value={stock}
                 onChange={(e) => setStock(e.target.value)}
                 placeholder="0"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className={INPUT}
               />
             </div>
           </div>
@@ -152,25 +155,25 @@ export default function ProductAddModal({ onSave, onClose }) {
           {/* Barcode + Reorder */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-500 mb-1 block font-semibold">Barcode (optional)</label>
+              <label className={LABEL}>Barcode (optional)</label>
               <input
                 type="text"
                 inputMode="numeric"
                 value={barcode}
                 onChange={(e) => setBarcode(e.target.value)}
                 placeholder="e.g. 2011"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className={INPUT}
               />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block font-semibold">Reorder at (units)</label>
+              <label className={LABEL}>Reorder at (units)</label>
               <input
                 type="number"
                 inputMode="numeric"
                 min="1"
                 value={reorderLevel}
                 onChange={(e) => setReorderLevel(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className={INPUT}
               />
             </div>
           </div>

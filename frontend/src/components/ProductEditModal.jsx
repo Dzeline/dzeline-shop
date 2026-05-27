@@ -3,10 +3,20 @@ import { dbHelpers } from "../services/db";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 
+const CATEGORIES = [
+  "Grains", "Sugar", "Dairy", "Oils", "Bakery",
+  "Beverages", "Spices", "Household", "Produce", "Other",
+];
+
+const LABEL = "text-sm font-semibold text-gray-700 mb-1.5 block";
+const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary";
+
 export default function ProductEditModal({ product, onSave, onClose }) {
   const [name, setName] = useState(product.name);
   const [price, setPrice] = useState(String(product.price));
   const [reorderLevel, setReorderLevel] = useState(String(product.reorder_level ?? 10));
+  const [barcode, setBarcode] = useState(product.barcode ?? "");
+  const [category, setCategory] = useState(product.category ?? "Other");
   const [imageBlob, setImageBlob] = useState(null);
   const [imagePreview, setImagePreview] = useState(product.image_blob ?? null);
   const [saving, setSaving] = useState(false);
@@ -30,6 +40,8 @@ export default function ProductEditModal({ product, onSave, onClose }) {
         name: name.trim(),
         price: parsedPrice,
         reorder_level: Math.max(1, parseInt(reorderLevel) || 10),
+        category,
+        barcode: barcode.trim() || product.barcode,
       };
       if (imageBlob) updates.image_blob = imageBlob;
       await dbHelpers.updateProduct(product.id, updates);
@@ -63,7 +75,7 @@ export default function ProductEditModal({ product, onSave, onClose }) {
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
           {/* Product image */}
           <div>
-            <label className="text-xs text-gray-500 mb-1 block font-semibold">Product Photo</label>
+            <label className={LABEL}>Product Photo</label>
             {imagePreview ? (
               <div className="relative">
                 <img
@@ -99,19 +111,31 @@ export default function ProductEditModal({ product, onSave, onClose }) {
 
           {/* Name */}
           <div>
-            <label className="text-xs text-gray-500 mb-1 block font-semibold">Product Name</label>
+            <label className={LABEL}>Product Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className={INPUT}
             />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className={LABEL}>Category</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className={`${INPUT} bg-white`}
+            >
+              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
 
           {/* Price + Reorder level */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-500 mb-1 block font-semibold">
+              <label className={LABEL}>
                 Price ({formatPrice(parseFloat(price) || 0)})
               </label>
               <input
@@ -120,20 +144,33 @@ export default function ProductEditModal({ product, onSave, onClose }) {
                 min="0"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className={INPUT}
               />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block font-semibold">Reorder at (units)</label>
+              <label className={LABEL}>Reorder at (units)</label>
               <input
                 type="number"
                 inputMode="numeric"
                 min="1"
                 value={reorderLevel}
                 onChange={(e) => setReorderLevel(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className={INPUT}
               />
             </div>
+          </div>
+
+          {/* Barcode */}
+          <div>
+            <label className={LABEL}>Barcode</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              placeholder="Leave blank to keep current"
+              className={INPUT}
+            />
           </div>
 
           {/* Current stock — read only info */}
