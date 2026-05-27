@@ -236,7 +236,7 @@ export default function InventoryScreen({ onClose }) {
                 placeholder="Search products or barcode…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-white border-0 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                className="w-full pl-9 pr-4 py-2.5 bg-gray-800 border border-gray-700 text-white placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm"
               />
             </div>
 
@@ -284,7 +284,7 @@ export default function InventoryScreen({ onClose }) {
                   const isOpen = expandedCats[cat] !== false;
 
                   return (
-                    <div key={cat} className="rounded-2xl shadow-sm overflow-hidden">
+                    <div key={cat} className="bg-white rounded-2xl shadow-sm overflow-hidden">
                       <button
                         onClick={() => toggleCat(cat)}
                         className={`w-full px-4 py-3.5 transition text-left bg-linear-to-r ${bgGrad}`}
