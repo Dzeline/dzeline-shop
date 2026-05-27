@@ -7,7 +7,7 @@ function SkeletonList() {
   return (
     <div className="space-y-3">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse" />
+        <div key={i} className="h-20 bg-gray-800 rounded-2xl animate-pulse" />
       ))}
     </div>
   );
@@ -65,16 +65,16 @@ export default function TransactionHistory({ onClose, isAdmin = false }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
-      <header className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3 shadow-sm shrink-0">
+    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col">
+      <header className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
         <button
           onClick={onClose}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 shrink-0"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
         >
           ‹
         </button>
         <div className="flex-1 min-w-0">
-          <h2 className="font-bold text-gray-800">Transaction History</h2>
+          <h2 className="font-bold text-white">Transaction History</h2>
           <p className="text-xs text-gray-400">
             {loading ? "Loading…" : `${transactions.length} recent sale${transactions.length !== 1 ? "s" : ""}`}
           </p>

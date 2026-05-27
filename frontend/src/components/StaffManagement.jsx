@@ -155,17 +155,17 @@ export default function StaffManagement({ currentStaffId, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
+    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3 shadow-sm">
+      <header className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3">
         <button
           onClick={onClose}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 shrink-0"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
         >
           ‹
         </button>
         <div>
-          <h2 className="font-bold text-gray-800">Staff Management</h2>
+          <h2 className="font-bold text-white">Staff Management</h2>
           <p className="text-xs text-gray-400">{staffList.length} member{staffList.length !== 1 ? "s" : ""}</p>
         </div>
       </header>

@@ -60,14 +60,14 @@ export default function Cart({ onNewSale }) {
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-gray-400 gap-3">
+      <div className="flex flex-col items-center justify-center h-64 text-gray-600 gap-3">
         <svg className="w-16 h-16 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
             d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.5 6h13M7 13l-1-4m9 10a1 1 0 100 2 1 1 0 000-2zm-6 0a1 1 0 100 2 1 1 0 000-2z" />
         </svg>
         <div className="text-center">
-          <p className="text-lg font-semibold text-gray-500">Cart is empty</p>
-          <p className="text-sm">Add products to get started</p>
+          <p className="text-lg font-semibold text-gray-400">Cart is empty</p>
+          <p className="text-sm text-gray-600">Add products to get started</p>
         </div>
       </div>
     );
@@ -152,7 +152,7 @@ export default function Cart({ onNewSale }) {
           </button>
           <button
             onClick={() => { if (window.confirm("Clear all items from cart?")) clearCart(); }}
-            className="w-full py-3 bg-gray-100 text-gray-600 rounded-xl font-semibold hover:bg-gray-200 transition"
+            className="w-full py-3 bg-gray-800 text-gray-300 rounded-xl font-semibold hover:bg-gray-700 transition"
           >
             Clear Cart
           </button>

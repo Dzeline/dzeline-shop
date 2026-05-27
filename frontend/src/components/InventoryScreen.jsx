@@ -117,26 +117,26 @@ export default function InventoryScreen({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-zinc-100 flex flex-col">
+    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-sm px-4 py-3 flex items-center gap-3 shrink-0">
+      <header className="sticky top-0 z-10 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
         <button
           onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 shrink-0"
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <h2 className="font-bold text-gray-800 text-base flex-1">Inventory</h2>
+        <h2 className="font-bold text-white text-base flex-1">Inventory</h2>
         {alertCount > 0 && (
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600 shrink-0">
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-900/50 text-red-400 shrink-0">
             {alertCount} alert{alertCount !== 1 ? "s" : ""}
           </span>
         )}
         <button
           onClick={load}
-          className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 shrink-0"
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
           title="Refresh"
         >
           <svg className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -153,24 +153,24 @@ export default function InventoryScreen({ onClose }) {
       ) : (
         <div className="flex-1 overflow-y-auto flex flex-col">
           {/* Stats bar — horizontally scrollable on small screens */}
-          <div className="bg-white border-b border-gray-100 px-4 py-3 flex gap-5 overflow-x-auto shrink-0">
+          <div className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex gap-5 overflow-x-auto shrink-0">
             <div className="shrink-0">
-              <p className="text-xl font-extrabold text-gray-800 leading-none">{totalSKUs}</p>
+              <p className="text-xl font-extrabold text-white leading-none">{totalSKUs}</p>
               <p className="text-xs text-gray-400 font-medium mt-0.5">Products</p>
             </div>
-            <div className="w-px bg-gray-100 shrink-0 self-stretch" />
+            <div className="w-px bg-gray-700 shrink-0 self-stretch" />
             <div className="shrink-0">
-              <p className="text-xl font-extrabold text-gray-800 leading-none">{totalUnits.toLocaleString()}</p>
+              <p className="text-xl font-extrabold text-white leading-none">{totalUnits.toLocaleString()}</p>
               <p className="text-xs text-gray-400 font-medium mt-0.5">Units</p>
             </div>
-            <div className="w-px bg-gray-100 shrink-0 self-stretch" />
+            <div className="w-px bg-gray-700 shrink-0 self-stretch" />
             <div className="shrink-0">
               <p className="text-xl font-extrabold text-primary leading-none">{formatPrice(totalValue)}</p>
               <p className="text-xs text-gray-400 font-medium mt-0.5">Stock Value</p>
             </div>
             {outOfStockCount > 0 && (
               <>
-                <div className="w-px bg-gray-100 shrink-0 self-stretch" />
+                <div className="w-px bg-gray-700 shrink-0 self-stretch" />
                 <div className="shrink-0">
                   <p className="text-xl font-extrabold text-red-500 leading-none">{outOfStockCount}</p>
                   <p className="text-xs text-gray-400 font-medium mt-0.5">Out of stock</p>
@@ -179,7 +179,7 @@ export default function InventoryScreen({ onClose }) {
             )}
             {lowStockCount > 0 && (
               <>
-                <div className="w-px bg-gray-100 shrink-0 self-stretch" />
+                <div className="w-px bg-gray-700 shrink-0 self-stretch" />
                 <div className="shrink-0">
                   <p className="text-xl font-extrabold text-orange-500 leading-none">{lowStockCount}</p>
                   <p className="text-xs text-gray-400 font-medium mt-0.5">Low stock</p>
@@ -189,8 +189,8 @@ export default function InventoryScreen({ onClose }) {
           </div>
 
           {/* View tabs */}
-          <div className="bg-white border-b border-gray-100 px-4 pb-3 pt-2 shrink-0">
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          <div className="bg-gray-900 border-b border-gray-800 px-4 pb-3 pt-2 shrink-0">
+            <div className="flex gap-1 bg-gray-800 p-1 rounded-xl">
               <button
                 onClick={() => setViewMode("category")}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${

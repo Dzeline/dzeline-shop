@@ -24,13 +24,13 @@ function Skeletons() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        {[0, 1].map((i) => <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse" />)}
+        {[0, 1].map((i) => <div key={i} className="h-24 bg-gray-800 rounded-2xl animate-pulse" />)}
       </div>
       <div className="grid grid-cols-3 gap-3">
-        {[0, 1, 2].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse" />)}
+        {[0, 1, 2].map((i) => <div key={i} className="h-20 bg-gray-800 rounded-2xl animate-pulse" />)}
       </div>
-      <div className="h-20 bg-gray-100 rounded-2xl animate-pulse" />
-      <div className="h-52 bg-gray-100 rounded-2xl animate-pulse" />
+      <div className="h-20 bg-gray-800 rounded-2xl animate-pulse" />
+      <div className="h-52 bg-gray-800 rounded-2xl animate-pulse" />
     </div>
   );
 }
@@ -68,23 +68,23 @@ export default function DailySummary({ onClose }) {
     : range === "week" ? "This Week" : "This Month";
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
+    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3 shadow-sm shrink-0">
+      <header className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
         <button
           onClick={onClose}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 shrink-0"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
         >
           ‹
         </button>
         <div className="flex-1 min-w-0">
-          <h2 className="font-bold text-gray-800">Summary</h2>
+          <h2 className="font-bold text-white">Summary</h2>
           <p className="text-xs text-gray-400 truncate">{rangeLabel}</p>
         </div>
         <button
           onClick={load}
           disabled={loading}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition disabled:opacity-40"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 transition disabled:opacity-40"
           title="Refresh"
         >
           <svg className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -95,8 +95,8 @@ export default function DailySummary({ onClose }) {
       </header>
 
       {/* Range tabs */}
-      <div className="bg-white border-b border-gray-100 px-4 pb-3 pt-2 shrink-0">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+      <div className="bg-gray-900 border-b border-gray-800 px-4 pb-3 pt-2 shrink-0">
+        <div className="flex gap-1 bg-gray-800 p-1 rounded-xl">
           {RANGES.map((r) => (
             <button
               key={r.key}
