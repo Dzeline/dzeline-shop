@@ -24,13 +24,18 @@ def _get_access_token() -> str:
     if not key or not secret:
         raise HTTPException(status_code=503, detail="M-Pesa credentials not configured")
     creds = base64.b64encode(f"{key}:{secret}".encode()).decode()
-    response = httpx.get(
-        f"{MPESA_BASE}/oauth/v1/generate?grant_type=client_credentials",
-        headers={"Authorization": f"Basic {creds}"},
-        timeout=15,
-    )
-    response.raise_for_status()
-    return response.json()["access_token"]
+    try:
+        response = httpx.get(
+            f"{MPESA_BASE}/oauth/v1/generate?grant_type=client_credentials",
+            headers={"Authorization": f"Basic {creds}"},
+            timeout=15,
+        )
+        response.raise_for_status()
+        return response.json()["access_token"]
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"Daraja auth failed: {e.response.status_code} — {e.response.text}")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Daraja unreachable: {e}")
 
 
 @router.post("/stk-push", response_model=MpesaStkResponse)
@@ -50,26 +55,31 @@ def stk_push(payload: MpesaStkRequest, db: Session = Depends(get_db)):
 
     token = _get_access_token()
     ref = f"TXN{payload.transaction_id}" if payload.transaction_id else f"DZL{timestamp}"
-    response = httpx.post(
-        f"{MPESA_BASE}/mpesa/stkpush/v1/processrequest",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "BusinessShortCode": shortcode,
-            "Password": password,
-            "Timestamp": timestamp,
-            "TransactionType": "CustomerBuyGoodsOnline",
-            "Amount": int(payload.amount),
-            "PartyA": phone,
-            "PartyB": shortcode,
-            "PhoneNumber": phone,
-            "CallBackURL": callback_url,
-            "AccountReference": ref,
-            "TransactionDesc": "Dzeline Shop Payment",
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    data = response.json()
+    try:
+        response = httpx.post(
+            f"{MPESA_BASE}/mpesa/stkpush/v1/processrequest",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "BusinessShortCode": shortcode,
+                "Password": password,
+                "Timestamp": timestamp,
+                "TransactionType": "CustomerBuyGoodsOnline",
+                "Amount": int(payload.amount),
+                "PartyA": phone,
+                "PartyB": shortcode,
+                "PhoneNumber": phone,
+                "CallBackURL": callback_url,
+                "AccountReference": ref,
+                "TransactionDesc": "Dzeline Shop Payment",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"STK Push failed: {e.response.status_code} — {e.response.text}")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Daraja unreachable: {e}")
 
     checkout_request_id = data.get("CheckoutRequestID", "")
     if checkout_request_id:

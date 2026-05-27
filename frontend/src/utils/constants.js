@@ -9,7 +9,7 @@ export const PAYMENT_METHODS = {
 export const SHOP_INFO = {
   name: "Dzeline Supermarket",
   kraPin: "P051234567X", // TODO: Replace with real PIN
-  mpesaTill: "1234567", // TODO: Replace with real Till
+  mpesaTill: "174379", // Sandbox shortcode — replace with real Till for production
   pochiNumber: "0700000000", // TODO: Replace with real Pochi la Biashara number
   currency: "KES",
 };
