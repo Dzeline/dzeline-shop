@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { dbHelpers } from "../services/db";
 import { showToast } from "../utils/toast";
+import { formatPrice } from "../utils/formatters";
 import { useDebounce } from "../utils/useDebounce";
+import ProductAddModal from "./ProductAddModal";
 
 export default function StockReceiving({ currentStaffId, onClose }) {
   const [products, setProducts] = useState([]);
@@ -17,6 +19,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
   const [lineItems, setLineItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showAddProduct, setShowAddProduct] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -31,8 +34,8 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     return products.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
-        p.barcode.includes(debouncedSearch.trim()) ||
-        p.tags.some((t) => t.includes(q))
+        (p.barcode || "").includes(debouncedSearch.trim()) ||
+        (p.tags || []).some((t) => t.includes(q))
     );
   }, [products, debouncedSearch]);
 
@@ -52,7 +55,13 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     }
     setLineItems((prev) => [
       ...prev,
-      { product_id: product.id, product_name: product.name, qty_added: 1, current_stock: product.stock },
+      {
+        product_id: product.id,
+        product_name: product.name,
+        qty_added: 1,
+        unit_cost: "",
+        current_stock: product.stock,
+      },
     ]);
     setSearch("");
   }
@@ -64,8 +73,21 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     );
   }
 
+  function handleCostChange(product_id, value) {
+    setLineItems((prev) =>
+      prev.map((li) => li.product_id === product_id ? { ...li, unit_cost: value } : li)
+    );
+  }
+
   function handleRemoveLine(product_id) {
     setLineItems((prev) => prev.filter((li) => li.product_id !== product_id));
+  }
+
+  function handleNewProductSaved(newProduct) {
+    setProducts((prev) => [...prev, newProduct]);
+    setShowAddProduct(false);
+    handleAddProduct(newProduct);
+    showToast(`${newProduct.name} created and added`);
   }
 
   async function handleSubmit() {
@@ -78,7 +100,11 @@ export default function StockReceiving({ currentStaffId, onClose }) {
         supplier_id: selectedSupplierId,
         invoice_number: invoiceNumber.trim() || null,
         photo_blob: photoBlob,
-        items: lineItems.map(({ product_id, qty_added }) => ({ product_id, qty_added })),
+        items: lineItems.map(({ product_id, qty_added, unit_cost }) => ({
+          product_id,
+          qty_added,
+          unit_cost: parseFloat(unit_cost) || null,
+        })),
         staff_id: currentStaffId,
       });
       setSubmitted(true);
@@ -89,6 +115,15 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (showAddProduct) {
+    return (
+      <ProductAddModal
+        onSave={handleNewProductSaved}
+        onClose={() => setShowAddProduct(false)}
+      />
+    );
   }
 
   return (
@@ -183,7 +218,6 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                     <input
                       type="file"
                       accept="image/*"
-                      capture="environment"
                       className="hidden"
                       onChange={handlePhotoCapture}
                     />
@@ -193,7 +227,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                         d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    <span className="text-sm text-gray-400">Tap to capture invoice photo</span>
+                    <span className="text-sm text-gray-400">Tap to capture or upload invoice photo</span>
                   </label>
                 )}
               </div>
@@ -201,7 +235,15 @@ export default function StockReceiving({ currentStaffId, onClose }) {
 
             {/* Products received */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
-              <p className="font-bold text-gray-700 text-sm">Products Received</p>
+              <div className="flex items-center justify-between">
+                <p className="font-bold text-gray-700 text-sm">Products Received</p>
+                <button
+                  onClick={() => setShowAddProduct(true)}
+                  className="text-xs font-semibold text-primary hover:text-blue-700 transition"
+                >
+                  + New product
+                </button>
+              </div>
 
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -209,7 +251,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                 </svg>
                 <input
                   type="text"
-                  placeholder="Search products to add..."
+                  placeholder="Search existing products to add..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -231,49 +273,104 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                   ))}
                 </div>
               )}
+
               {debouncedSearch.trim() && filteredProducts.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-2">No products found</p>
+                <div className="text-center py-3 space-y-2">
+                  <p className="text-sm text-gray-400">No existing products found</p>
+                  <button
+                    onClick={() => setShowAddProduct(true)}
+                    className="text-sm font-semibold text-primary hover:text-blue-700 transition"
+                  >
+                    + Create "{debouncedSearch.trim()}" as a new product
+                  </button>
+                </div>
               )}
 
               {/* Line items */}
               {lineItems.length > 0 && (
                 <div className="space-y-2 pt-1">
                   {lineItems.map((li) => (
-                    <div key={li.product_id} className="flex items-center gap-2 bg-gray-50 rounded-xl p-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-800 truncate">{li.product_name}</p>
-                        <p className="text-xs text-gray-400">Current stock: {li.current_stock}</p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                    <div key={li.product_id} className="bg-gray-50 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm text-gray-800 truncate">{li.product_name}</p>
+                          <p className="text-xs text-gray-400">Stock before: {li.current_stock}</p>
+                        </div>
                         <button
-                          onClick={() => handleQtyChange(li.product_id, li.qty_added - 1)}
-                          className="w-7 h-7 bg-white border border-gray-200 rounded-lg text-gray-600 font-bold flex items-center justify-center hover:bg-gray-100"
+                          onClick={() => handleRemoveLine(li.product_id)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 text-red-400 hover:bg-red-100 transition shrink-0"
                         >
-                          −
-                        </button>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min="1"
-                          value={li.qty_added}
-                          onChange={(e) => handleQtyChange(li.product_id, e.target.value)}
-                          className="w-12 text-center text-sm font-bold border border-gray-200 rounded-lg py-1 focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
-                        <button
-                          onClick={() => handleQtyChange(li.product_id, li.qty_added + 1)}
-                          className="w-7 h-7 bg-white border border-gray-200 rounded-lg text-gray-600 font-bold flex items-center justify-center hover:bg-gray-100"
-                        >
-                          +
+                          ×
                         </button>
                       </div>
-                      <button
-                        onClick={() => handleRemoveLine(li.product_id)}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 text-red-400 hover:bg-red-100 transition shrink-0"
-                      >
-                        ×
-                      </button>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Qty */}
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Qty received</label>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleQtyChange(li.product_id, li.qty_added - 1)}
+                              className="w-7 h-7 bg-white border border-gray-200 rounded-lg text-gray-600 font-bold flex items-center justify-center hover:bg-gray-100"
+                            >
+                              −
+                            </button>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min="1"
+                              value={li.qty_added}
+                              onChange={(e) => handleQtyChange(li.product_id, e.target.value)}
+                              className="flex-1 text-center text-sm font-bold border border-gray-200 rounded-lg py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                            <button
+                              onClick={() => handleQtyChange(li.product_id, li.qty_added + 1)}
+                              className="w-7 h-7 bg-white border border-gray-200 rounded-lg text-gray-600 font-bold flex items-center justify-center hover:bg-gray-100"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Unit cost */}
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">
+                            Unit cost {li.unit_cost && `(${formatPrice(parseFloat(li.unit_cost) || 0)})`}
+                          </label>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            value={li.unit_cost}
+                            onChange={(e) => handleCostChange(li.product_id, e.target.value)}
+                            placeholder="0.00"
+                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Total cost for this line */}
+                      {li.unit_cost && parseFloat(li.unit_cost) > 0 && (
+                        <p className="text-xs text-gray-500 text-right">
+                          Line total: <span className="font-semibold text-gray-700">
+                            {formatPrice(li.qty_added * parseFloat(li.unit_cost))}
+                          </span>
+                        </p>
+                      )}
                     </div>
                   ))}
+
+                  {/* Invoice total */}
+                  {lineItems.some((li) => parseFloat(li.unit_cost) > 0) && (
+                    <div className="flex justify-between items-center px-3 py-2 bg-primary/5 border border-primary/20 rounded-xl">
+                      <span className="text-sm font-semibold text-gray-700">Invoice Total</span>
+                      <span className="text-sm font-bold text-primary">
+                        {formatPrice(
+                          lineItems.reduce((sum, li) => sum + li.qty_added * (parseFloat(li.unit_cost) || 0), 0)
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 

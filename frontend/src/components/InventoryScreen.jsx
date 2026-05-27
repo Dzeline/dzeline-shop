@@ -42,6 +42,10 @@ function StockPill({ stock, reorderLevel }) {
 }
 
 function ProductRow({ p }) {
+  const margin = p.cost_price && p.price
+    ? Math.round(((p.price - p.cost_price) / p.price) * 100)
+    : null;
+
   return (
     <div className={`flex items-start gap-3 px-4 py-3.5 border-l-[6px] ${stockBorderClass(p.stock, p.reorder_level)}`}>
       <div className="flex-1 min-w-0">
@@ -55,9 +59,20 @@ function ProductRow({ p }) {
       </div>
       <div className="text-right shrink-0 pt-0.5">
         <p className="font-bold text-gray-800 text-sm">{formatPrice(p.price)}</p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          {formatPrice((p.stock || 0) * p.price)} val
-        </p>
+        {p.cost_price ? (
+          <p className="text-xs text-gray-400 mt-0.5">
+            cost {formatPrice(p.cost_price)}
+            {margin !== null && (
+              <span className={`ml-1 font-semibold ${margin >= 20 ? "text-green-600" : "text-orange-500"}`}>
+                {margin}%
+              </span>
+            )}
+          </p>
+        ) : (
+          <p className="text-xs text-gray-400 mt-0.5">
+            {formatPrice((p.stock || 0) * p.price)} val
+          </p>
+        )}
       </div>
     </div>
   );

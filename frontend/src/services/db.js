@@ -65,6 +65,11 @@ db.version(5).stores({
   await tx.table("transactions").toCollection().modify({ voided: false });
 });
 
+// Version 6: add cost_price to products index (stored as field since v1, now indexed)
+db.version(6).stores({
+  products: "++id, barcode, name, price, cost_price, stock, category, reorder_level, *tags",
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   console.log("🌱 Seeding database with initial data...");
@@ -399,11 +404,13 @@ export const dbHelpers = {
   async addStockReceipt({ supplier, supplier_id, invoice_number, photo_blob, items, staff_id }) {
     return await db.transaction("rw", [db.stock_receipts, db.products], async () => {
       const itemsWithBefore = await Promise.all(
-        items.map(async ({ product_id, qty_added }) => {
+        items.map(async ({ product_id, qty_added, unit_cost }) => {
           const product = await db.products.get(product_id);
           const qty_before = product ? product.stock : 0;
-          if (product) await db.products.update(product_id, { stock: qty_before + qty_added });
-          return { product_id, product_name: product?.name ?? "Unknown", qty_before, qty_added };
+          const productUpdate = { stock: qty_before + qty_added };
+          if (unit_cost != null && unit_cost > 0) productUpdate.cost_price = unit_cost;
+          if (product) await db.products.update(product_id, productUpdate);
+          return { product_id, product_name: product?.name ?? "Unknown", qty_before, qty_added, unit_cost: unit_cost ?? null };
         })
       );
       return await db.stock_receipts.add({

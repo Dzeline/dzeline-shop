@@ -2,6 +2,7 @@ import { useState } from "react";
 import { db } from "../services/db";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
+import BarcodeScanner from "./BarcodeScanner";
 
 const CATEGORIES = [
   "Grains", "Sugar", "Dairy", "Oils", "Bakery",
@@ -15,12 +16,14 @@ export default function ProductAddModal({ onSave, onClose }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Grains");
   const [price, setPrice] = useState("");
+  const [costPrice, setCostPrice] = useState("");
   const [stock, setStock] = useState("");
   const [barcode, setBarcode] = useState("");
   const [reorderLevel, setReorderLevel] = useState("10");
   const [imageBlob, setImageBlob] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   function handlePhotoCapture(e) {
     const file = e.target.files?.[0];
@@ -41,6 +44,7 @@ export default function ProductAddModal({ onSave, onClose }) {
         name: name.trim(),
         category,
         price: parsedPrice,
+        cost_price: parseFloat(costPrice) || null,
         stock: Math.max(0, parseInt(stock) || 0),
         barcode: barcode.trim() || String(Date.now()),
         reorder_level: Math.max(1, parseInt(reorderLevel) || 10),
@@ -56,6 +60,15 @@ export default function ProductAddModal({ onSave, onClose }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (showScanner) {
+    return (
+      <BarcodeScanner
+        onScan={(code) => { setBarcode(code); setShowScanner(false); }}
+        onClose={() => setShowScanner(false)}
+      />
+    );
   }
 
   return (
@@ -87,13 +100,13 @@ export default function ProductAddModal({ onSave, onClose }) {
               </div>
             ) : (
               <label className="block w-full py-5 border-2 border-dashed border-gray-200 rounded-xl text-center cursor-pointer hover:border-primary hover:bg-blue-50 transition">
-                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoCapture} />
                 <svg className="w-7 h-7 text-gray-300 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                     d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <span className="text-sm text-gray-400">Tap to add photo (optional)</span>
+                <span className="text-sm text-gray-400">Tap to add photo — camera or gallery</span>
               </label>
             )}
           </div>
@@ -122,11 +135,11 @@ export default function ProductAddModal({ onSave, onClose }) {
             </select>
           </div>
 
-          {/* Price + Stock */}
+          {/* Selling Price + Cost Price */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>
-                Price {price && `(${formatPrice(parseFloat(price) || 0)})`}
+                Selling Price {price && `(${formatPrice(parseFloat(price) || 0)})`}
               </label>
               <input
                 type="number"
@@ -139,6 +152,24 @@ export default function ProductAddModal({ onSave, onClose }) {
               />
             </div>
             <div>
+              <label className={LABEL}>
+                Cost Price {costPrice && `(${formatPrice(parseFloat(costPrice) || 0)})`}
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={costPrice}
+                onChange={(e) => setCostPrice(e.target.value)}
+                placeholder="0.00 (optional)"
+                className={INPUT}
+              />
+            </div>
+          </div>
+
+          {/* Opening Stock + Reorder */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
               <label className={LABEL}>Opening Stock</label>
               <input
                 type="number"
@@ -147,21 +178,6 @@ export default function ProductAddModal({ onSave, onClose }) {
                 value={stock}
                 onChange={(e) => setStock(e.target.value)}
                 placeholder="0"
-                className={INPUT}
-              />
-            </div>
-          </div>
-
-          {/* Barcode + Reorder */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LABEL}>Barcode (optional)</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                placeholder="e.g. 2011"
                 className={INPUT}
               />
             </div>
@@ -176,6 +192,35 @@ export default function ProductAddModal({ onSave, onClose }) {
                 className={INPUT}
               />
             </div>
+          </div>
+
+          {/* Barcode with scan button */}
+          <div>
+            <label className={LABEL}>Barcode (optional)</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                placeholder="e.g. 2011"
+                className={`${INPUT} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowScanner(true)}
+                className="shrink-0 w-12 h-12 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+                title="Scan barcode"
+              >
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 4H4v8M20 4h-4v4m4 4v8h-8M4 20h4v-4M3 3h4M17 3h4M3 21h4M17 21h4" />
+                </svg>
+              </button>
+            </div>
+            {barcode && (
+              <p className="text-xs text-green-600 font-semibold mt-1">Barcode: {barcode}</p>
+            )}
           </div>
         </div>
 
