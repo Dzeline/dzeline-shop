@@ -27,6 +27,14 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         sync: false
+      - key: ETIMS_ENV
+        value: production
+      - key: ETIMS_TIN
+        sync: false
+      - key: ETIMS_BHF_ID
+        value: "00"
+      - key: ETIMS_DEVICE_SERIAL
+        sync: false
 
 databases:
   - name: dzeline-db
