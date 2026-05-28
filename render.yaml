@@ -35,6 +35,8 @@ services:
         value: "00"
       - key: ETIMS_DEVICE_SERIAL
         sync: false
+      - key: SMS_WEBHOOK_SECRET
+        sync: false
 
 databases:
   - name: dzeline-db

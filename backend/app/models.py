@@ -98,6 +98,23 @@ class EtimsCounter(Base):
     last_invc_no = Column(Integer, default=0, nullable=False)
 
 
+class SmsVerifiedCode(Base):
+    """
+    M-Pesa confirmation codes extracted from SMS received by android-sms-gateway
+    on the shop device.  The frontend reconciles these against pending_mpesa rows.
+    """
+    __tablename__ = "sms_verified_codes"
+
+    id                = Column(Integer, primary_key=True, index=True)
+    confirmation_code = Column(String(20), unique=True, index=True, nullable=False)
+    amount            = Column(Float, nullable=True)
+    sender_name       = Column(String(200), nullable=True)
+    sender_phone      = Column(String(30), nullable=True)   # may be masked since 2024
+    received_at       = Column(BigInteger, nullable=False)   # ms epoch from SMS timestamp
+    created_at        = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+    raw_sms           = Column(Text, nullable=True)
+
+
 class EtimsConfig(Base):
     """Single-row table storing eTIMS credentials configured from the UI."""
     __tablename__ = "etims_config"

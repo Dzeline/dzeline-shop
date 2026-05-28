@@ -137,3 +137,70 @@ def stk_status(checkout_request_id: str, db: Session = Depends(get_db)):
         status=row.status,
         mpesa_code=row.mpesa_code,
     )
+
+
+# ResultCode meanings from Daraja stkpushquery
+_STK_RESULT_CODES = {
+    0:    "confirmed",
+    1:    "failed",       # insufficient balance
+    1032: "failed",       # cancelled by user
+    1037: "failed",       # timed out
+    2001: "failed",       # wrong PIN
+}
+
+
+@router.get("/stk-query/{checkout_request_id}")
+def stk_query(checkout_request_id: str, db: Session = Depends(get_db)):
+    """
+    Actively query Daraja for a pending STK Push result.
+    Used by the frontend on reconnect to resolve payments that were
+    in-flight while the device was offline.
+    """
+    shortcode = os.getenv("MPESA_SHORTCODE", "174379")
+    passkey = os.getenv("MPESA_PASSKEY", "")
+    if not passkey:
+        raise HTTPException(status_code=503, detail="M-Pesa passkey not configured")
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    password = base64.b64encode(f"{shortcode}{passkey}{timestamp}".encode()).decode()
+    token = _get_access_token()
+
+    try:
+        response = httpx.post(
+            f"{MPESA_BASE}/mpesa/stkpushquery/v1/query",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "BusinessShortCode": shortcode,
+                "Password": password,
+                "Timestamp": timestamp,
+                "CheckoutRequestID": checkout_request_id,
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"STK query failed: {e.response.status_code}")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Daraja unreachable: {e}")
+
+    try:
+        result_code = int(data.get("ResultCode", -1))
+    except (TypeError, ValueError):
+        result_code = -1
+
+    status = _STK_RESULT_CODES.get(result_code, "pending")
+
+    # Persist result so the callback path stays consistent
+    row = db.query(StkRequest).filter(
+        StkRequest.checkout_request_id == checkout_request_id
+    ).first()
+    if row and status in ("confirmed", "failed") and row.status == "pending":
+        row.status = status
+        db.commit()
+
+    return StkStatusResponse(
+        checkout_request_id=checkout_request_id,
+        status=status,
+        mpesa_code=row.mpesa_code if row else None,
+    )

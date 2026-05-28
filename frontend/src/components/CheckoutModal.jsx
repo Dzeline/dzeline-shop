@@ -191,7 +191,7 @@ function MpesaTab({ grandTotal, onComplete }) {
         if (!alive) return;
         if (res.status === "confirmed") {
           clearInterval(countdownId);
-          onComplete({ method: "MPESA", amount: grandTotal, change: 0, mpesaCode: res.mpesa_code });
+          onComplete({ method: "MPESA", amount: grandTotal, change: 0, mpesaCode: res.mpesa_code, checkoutRequestId: checkoutId });
           return;
         }
         if (res.status === "failed") {

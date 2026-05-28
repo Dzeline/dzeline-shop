@@ -79,6 +79,11 @@ db.version(7).stores({
   return tx.table("transactions").toCollection().modify({ etims_status: "pending" });
 });
 
+// Version 8: M-Pesa deferred verification — index checkout_request_id on pending_mpesa
+db.version(8).stores({
+  pending_mpesa: "++id, transaction_id, code, checkout_request_id, timestamp, verified, amount",
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -234,7 +239,8 @@ export const dbHelpers = {
         if (payment.method === "MPESA" || payment.method === "POCHI") {
           await db.pending_mpesa.add({
             transaction_id: transactionId,
-            code: payment.mpesaCode ?? payment.pochiCode,
+            code: payment.mpesaCode ?? payment.pochiCode ?? null,
+            checkout_request_id: payment.checkoutRequestId ?? null,
             timestamp: now,
             verified: false,
             amount: payment.total,

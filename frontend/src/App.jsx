@@ -231,7 +231,11 @@ function App() {
   }, [loadSettings]);
 
   useEffect(() => {
-    if (isOnline) syncService.pushUnsynced().catch(() => {});
+    if (isOnline) {
+      syncService.pushUnsynced().catch(() => {});
+      syncService.resumePendingStkChecks().catch(() => {});
+      syncService.reconcileSmsVerifications().catch(() => {});
+    }
   }, [isOnline]);
 
   const itemCount = useCartStore((state) => state.getItemCount());
