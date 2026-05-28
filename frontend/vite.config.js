@@ -15,7 +15,7 @@ export default defineConfig({
         short_name: "Dzeline",
         description: "Offline-first supermarket POS system for Kenya",
         theme_color: "#2563eb",
-        background_color: "#ffffff",
+        background_color: "#1e1b4b",
         display: "standalone",
         orientation: "portrait",
         start_url: "/",

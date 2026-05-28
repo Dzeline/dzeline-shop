@@ -68,7 +68,7 @@ export default function DailySummary({ onClose }) {
     : range === "week" ? "This Week" : "This Month";
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col">
+    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col animate-slide-up">
       {/* Header */}
       <header className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
         <button
