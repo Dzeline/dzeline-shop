@@ -18,6 +18,65 @@ export const etimsService = {
   },
 
   /**
+   * Load current eTIMS config from backend DB.
+   */
+  async loadConfig() {
+    const resp = await fetch(`${BACKEND_URL}/etims/config`);
+    if (!resp.ok) throw new Error(`eTIMS config load failed: ${resp.status}`);
+    return resp.json();
+  },
+
+  /**
+   * Save eTIMS config to backend DB.
+   * @param {{ tin: string, bhf_id: string, dvc_srl_no: string, env: string }} cfg
+   */
+  async saveConfig(cfg) {
+    const resp = await fetch(`${BACKEND_URL}/etims/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cfg),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `Config save failed: ${resp.status}`);
+    }
+    return resp.json();
+  },
+
+  /**
+   * Query KRA for branches registered under a TIN.
+   * @param {string} tin
+   * @param {string} bhfId
+   */
+  async getBranches(tin, bhfId = "00") {
+    const resp = await fetch(`${BACKEND_URL}/etims/branches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tin, bhf_id: bhfId }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `Branch query failed: ${resp.status}`);
+    }
+    return resp.json();
+  },
+
+  /**
+   * Initialize device with KRA. Backend reads config from DB.
+   */
+  async initDevice() {
+    const resp = await fetch(`${BACKEND_URL}/etims/device/init`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `Device init failed: ${resp.status}`);
+    }
+    return resp.json();
+  },
+
+  /**
    * Submit a batch of transactions to KRA via the backend.
    * @param {number[]} txnIds - Local transaction IDs to submit
    * @param {object}   opts   - { vatRate, taxpayerName }

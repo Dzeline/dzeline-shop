@@ -3,9 +3,12 @@ eTIMS router — handles all KRA electronic invoice submissions.
 
 Endpoints:
   GET  /etims/status               — check device/connection health
+  GET  /etims/config               — load current eTIMS config
+  POST /etims/config               — save eTIMS config to DB
+  POST /etims/branches             — proxy selectBhfList to KRA
   POST /etims/items/register       — register product catalogue with KRA
+  POST /etims/device/init          — initialize the eTIMS device with KRA
   POST /etims/submit-batch         — submit one or more transactions to KRA
-  POST /etims/device/init          — initialize the eTIMS device (first-time setup)
 """
 import os
 from datetime import datetime, timezone
@@ -13,10 +16,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import EtimsInvoice, EtimsCounter
+from ..models import EtimsInvoice, EtimsCounter, EtimsConfig
 from ..schemas import (
     EtimsBatchRequest,
     EtimsBatchResponse,
+    EtimsConfigIn,
+    EtimsConfigOut,
+    EtimsBranch,
+    EtimsBranchesResponse,
     EtimsInvoiceResult,
     EtimsItemsRegisterRequest,
     EtimsTransactionIn,
@@ -32,7 +39,20 @@ PMT_TYPE = {
     "POCHI": "05",
 }
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Config helper ────────────────────────────────────────────────────────────
+
+def _load_config(db: Session) -> dict:
+    """Load eTIMS config from DB, falling back to environment variables."""
+    cfg = db.query(EtimsConfig).filter(EtimsConfig.id == 1).first()
+    return {
+        "tin":         (cfg.tin        if cfg and cfg.tin        else os.getenv("ETIMS_TIN", "")),
+        "bhf_id":      (cfg.bhf_id     if cfg                    else os.getenv("ETIMS_BHF_ID", "00")),
+        "dvc_srl_no":  (cfg.dvc_srl_no if cfg and cfg.dvc_srl_no else os.getenv("ETIMS_DEVICE_SERIAL", "")),
+        "env":         (cfg.env        if cfg                    else os.getenv("ETIMS_ENV", "sandbox")),
+        "initialized": (cfg.initialized if cfg                   else False),
+    }
+
+# ── Other helpers ─────────────────────────────────────────────────────────────
 
 def _next_invc_no(db: Session) -> int:
     """Atomically increment and return the next sequential eTIMS invoice number."""
@@ -71,10 +91,10 @@ def _auto_item_cd(product_id: int) -> str:
     return f"KE1NTXU{product_id:07d}"
 
 
-def _build_kra_payload(txn: EtimsTransactionIn, invc_no: int, vat_rate: float, taxpayer_name: str) -> dict:
+def _build_kra_payload(txn: EtimsTransactionIn, invc_no: int, vat_rate: float, taxpayer_name: str, config: dict) -> dict:
     """Build the full KRA saveTrns / saveTrns (refund) JSON payload."""
-    tin = os.getenv("ETIMS_TIN", "")
-    bhf_id = os.getenv("ETIMS_BHF_ID", "00")
+    tin = config.get("tin", "")
+    bhf_id = config.get("bhf_id", "00")
     pmt_cd = PMT_TYPE.get(txn.payment_method.upper(), "01")
     rcpt_typ = txn.rcpt_typ or ("R" if txn.voided else "S")
     sales_dt = _fmt_date(txn.timestamp)
@@ -186,42 +206,157 @@ def _build_kra_payload(txn: EtimsTransactionIn, invc_no: int, vat_rate: float, t
 # ── Routes ───────────────────────────────────────────────────────────────────
 
 @router.get("/status")
-def etims_status():
-    """Return current eTIMS configuration (no credentials, just env info)."""
+def etims_status(db: Session = Depends(get_db)):
+    """Return current eTIMS configuration (no device serial returned)."""
+    config = _load_config(db)
+    env = config.get("env", "sandbox")
+    base = (
+        "https://etims-sbx.kra.go.ke/etims-api"
+        if env == "sandbox"
+        else "https://etims.kra.go.ke/etims-api"
+    )
     return {
-        "env":    os.getenv("ETIMS_ENV", "sandbox"),
-        "tin":    os.getenv("ETIMS_TIN", ""),
-        "bhf_id": os.getenv("ETIMS_BHF_ID", "00"),
-        "base_url": etims_client.ETIMS_BASE,
-        "configured": bool(os.getenv("ETIMS_TIN")),
+        "env":         env,
+        "tin":         config.get("tin", ""),
+        "bhf_id":      config.get("bhf_id", "00"),
+        "base_url":    base,
+        "configured":  bool(config.get("tin")),
+        "initialized": config.get("initialized", False),
     }
 
 
-@router.post("/device/init")
-def init_device(dvc_srl_no: str):
-    """
-    Send device initialisation request to KRA.
-    Call once when setting up eTIMS for the first time.
-    """
-    if not os.getenv("ETIMS_TIN"):
-        raise HTTPException(status_code=503, detail="ETIMS_TIN not configured")
-    result = etims_client.init_device(dvc_srl_no)
+@router.get("/config", response_model=EtimsConfigOut)
+def get_config(db: Session = Depends(get_db)):
+    """Return current eTIMS config stored in the DB (device serial masked)."""
+    cfg = db.query(EtimsConfig).filter(EtimsConfig.id == 1).first()
+    if not cfg:
+        # Return defaults
+        return EtimsConfigOut(
+            tin=os.getenv("ETIMS_TIN") or None,
+            bhf_id=os.getenv("ETIMS_BHF_ID", "00"),
+            dvc_srl_no=None,
+            env=os.getenv("ETIMS_ENV", "sandbox"),
+            initialized=False,
+            initialized_at=None,
+        )
+    return cfg
+
+
+@router.post("/config", response_model=EtimsConfigOut)
+def save_config(payload: EtimsConfigIn, db: Session = Depends(get_db)):
+    """Upsert eTIMS config. Resets initialized=False when credentials change."""
+    now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+    cfg = db.query(EtimsConfig).filter(EtimsConfig.id == 1).first()
+    if cfg:
+        cfg.tin = payload.tin.strip()
+        cfg.bhf_id = payload.bhf_id.strip() or "00"
+        cfg.dvc_srl_no = payload.dvc_srl_no.strip()
+        cfg.env = payload.env
+        cfg.initialized = False          # needs re-init after config change
+        cfg.activation_key = None
+        cfg.initialized_at = None
+        cfg.updated_at = now_ms
+    else:
+        cfg = EtimsConfig(
+            id=1,
+            tin=payload.tin.strip(),
+            bhf_id=payload.bhf_id.strip() or "00",
+            dvc_srl_no=payload.dvc_srl_no.strip(),
+            env=payload.env,
+            initialized=False,
+            activation_key=None,
+            initialized_at=None,
+            updated_at=now_ms,
+        )
+        db.add(cfg)
+    db.commit()
+    db.refresh(cfg)
+    return cfg
+
+
+@router.post("/branches", response_model=EtimsBranchesResponse)
+def query_branches(payload: dict, db: Session = Depends(get_db)):
+    """Proxy selectBhfList to KRA and return branch list."""
+    # Accept optional tin/bhf_id overrides from body; fall back to DB config
+    config = _load_config(db)
+    if payload.get("tin"):
+        config["tin"] = payload["tin"]
+    if payload.get("bhf_id"):
+        config["bhf_id"] = payload["bhf_id"]
+
+    if not config.get("tin"):
+        raise HTTPException(status_code=422, detail="TIN is required to query branches")
+
+    result = etims_client.get_branches(config)
     if result.get("resultCd") not in ("000", None):
         raise HTTPException(status_code=502, detail=result.get("resultMsg", "KRA error"))
-    return result
+
+    raw_branches = (result.get("data") or {}).get("bhfList") or []
+    branches = [
+        EtimsBranch(
+            bhfId=b.get("bhfId", ""),
+            bhfNm=b.get("bhfNm"),
+            bhfSttsCd=b.get("bhfSttsCd"),
+        )
+        for b in raw_branches
+    ]
+    return EtimsBranchesResponse(branches=branches)
+
+
+@router.post("/device/init")
+def init_device(db: Session = Depends(get_db)):
+    """
+    Send device initialisation request to KRA.
+    Reads config from DB; stores activation_key on success.
+    """
+    config = _load_config(db)
+    if not config.get("tin"):
+        raise HTTPException(status_code=503, detail="eTIMS TIN not configured. Save config first.")
+    if not config.get("dvc_srl_no"):
+        raise HTTPException(status_code=503, detail="Device serial not configured. Save config first.")
+
+    result = etims_client.init_device(config)
+    result_cd = result.get("resultCd")
+
+    if result_cd == "000":
+        # Success — persist activation key and mark initialized
+        now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+        data = result.get("data") or {}
+        activation_key = data.get("activationKey") or data.get("ackYn") or ""
+
+        cfg = db.query(EtimsConfig).filter(EtimsConfig.id == 1).first()
+        if cfg:
+            cfg.initialized = True
+            cfg.activation_key = str(activation_key)
+            cfg.initialized_at = now_ms
+            cfg.updated_at = now_ms
+            db.commit()
+
+        return {
+            "initialized": True,
+            "resultCd": result_cd,
+            "resultMsg": result.get("resultMsg", "Device initialized"),
+            "data": data,
+        }
+
+    # Non-success
+    raise HTTPException(
+        status_code=502,
+        detail=result.get("resultMsg") or f"KRA returned code {result_cd}",
+    )
 
 
 @router.post("/items/register")
-def register_items(payload: EtimsItemsRegisterRequest):
+def register_items(payload: EtimsItemsRegisterRequest, db: Session = Depends(get_db)):
     """
     Register or update product catalogue items with KRA.
     Should be called whenever new products are added or prices change.
     """
-    if not os.getenv("ETIMS_TIN"):
+    config = _load_config(db)
+    if not config.get("tin"):
         raise HTTPException(status_code=503, detail="ETIMS_TIN not configured")
 
-    tin = os.getenv("ETIMS_TIN", "")
-    bhf_id = os.getenv("ETIMS_BHF_ID", "00")
+    tin = config["tin"]
     now = _now_dt()
 
     item_list = []
@@ -250,7 +385,7 @@ def register_items(payload: EtimsItemsRegisterRequest):
             "modrNm":      tin,
         })
 
-    result = etims_client.save_items(item_list)
+    result = etims_client.save_items(item_list, config)
     if result.get("resultCd") not in ("000", None):
         raise HTTPException(status_code=502, detail=result.get("resultMsg", "KRA error"))
     return {"registered": len(item_list), "kra_result": result}
@@ -263,7 +398,8 @@ def submit_batch(payload: EtimsBatchRequest, db: Session = Depends(get_db)):
     Frontend sends the full transaction data; we build the KRA payload here.
     Already-submitted invoices (found by local_id) are skipped.
     """
-    if not os.getenv("ETIMS_TIN"):
+    config = _load_config(db)
+    if not config.get("tin"):
         raise HTTPException(status_code=503, detail="ETIMS_TIN not configured")
 
     results: list[EtimsInvoiceResult] = []
@@ -300,13 +436,13 @@ def submit_batch(payload: EtimsBatchRequest, db: Session = Depends(get_db)):
         invc_no = _next_invc_no(db)
 
         # Build KRA payload
-        kra_payload = _build_kra_payload(txn, invc_no, vat_rate, taxpayer_name)
+        kra_payload = _build_kra_payload(txn, invc_no, vat_rate, taxpayer_name, config)
 
         # Call KRA
         if txn.voided or txn.rcpt_typ == "R":
-            kra_resp = etims_client.save_refund_transaction(kra_payload)
+            kra_resp = etims_client.save_refund_transaction(kra_payload, config)
         else:
-            kra_resp = etims_client.save_sales_transaction(kra_payload)
+            kra_resp = etims_client.save_sales_transaction(kra_payload, config)
 
         result_cd = kra_resp.get("resultCd", "ERR")
         success = result_cd == "000"

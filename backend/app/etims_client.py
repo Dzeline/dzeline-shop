@@ -1,8 +1,15 @@
 """
 KRA eTIMS HTTP client.
-All calls go through this module so sandbox/production switching is centralised.
+All calls accept an explicit `config` dict so sandbox/production switching is
+driven by the DB-stored config, not module-level env vars.
 
-Sandbox base URL: https://etims-sbx.kra.go.ke/etims-api
+config dict keys:
+  tin        — KRA PIN (string)
+  bhf_id     — Branch ID, default "00"
+  dvc_srl_no — Device serial number
+  env        — "sandbox" | "production"
+
+Sandbox base URL:    https://etims-sbx.kra.go.ke/etims-api
 Production base URL: https://etims.kra.go.ke/etims-api
 
 KRA eTIMS result codes:
@@ -11,31 +18,27 @@ KRA eTIMS result codes:
   101 = Duplicate invoice number
   801+ = Validation errors
 """
-import os
 import httpx
 
-ETIMS_ENV = os.getenv("ETIMS_ENV", "sandbox")
-ETIMS_BASE = (
-    "https://etims-sbx.kra.go.ke/etims-api"
-    if ETIMS_ENV == "sandbox"
-    else "https://etims.kra.go.ke/etims-api"
-)
 ETIMS_TIMEOUT = 30
 
 
-def _headers() -> dict:
-    return {
-        "Content-Type": "application/json",
-        "tin": os.getenv("ETIMS_TIN", ""),
-        "bhfId": os.getenv("ETIMS_BHF_ID", "00"),
-    }
-
-
-def _post(path: str, body: dict) -> dict:
+def _post(path: str, body: dict, config: dict) -> dict:
     """Make a POST call to KRA eTIMS and return the parsed JSON response."""
-    url = f"{ETIMS_BASE}{path}"
+    env = config.get("env", "sandbox")
+    base = (
+        "https://etims-sbx.kra.go.ke/etims-api"
+        if env == "sandbox"
+        else "https://etims.kra.go.ke/etims-api"
+    )
+    url = f"{base}{path}"
+    headers = {
+        "Content-Type": "application/json",
+        "tin": config.get("tin", ""),
+        "bhfId": config.get("bhf_id", "00"),
+    }
     try:
-        resp = httpx.post(url, json=body, headers=_headers(), timeout=ETIMS_TIMEOUT)
+        resp = httpx.post(url, json=body, headers=headers, timeout=ETIMS_TIMEOUT)
         resp.raise_for_status()
         return resp.json()
     except httpx.HTTPStatusError as exc:
@@ -50,7 +53,7 @@ def _post(path: str, body: dict) -> dict:
         }
 
 
-def init_device(dvc_srl_no: str) -> dict:
+def init_device(config: dict) -> dict:
     """
     POST /initializer/selectInitInfo
     Called once per device to activate it with KRA.
@@ -58,14 +61,31 @@ def init_device(dvc_srl_no: str) -> dict:
     return _post(
         "/initializer/selectInitInfo",
         {
-            "tin": os.getenv("ETIMS_TIN", ""),
-            "bhfId": os.getenv("ETIMS_BHF_ID", "00"),
-            "dvcSrlNo": dvc_srl_no,
+            "tin": config.get("tin", ""),
+            "bhfId": config.get("bhf_id", "00"),
+            "dvcSrlNo": config.get("dvc_srl_no", ""),
         },
+        config,
     )
 
 
-def save_items(item_list: list[dict]) -> dict:
+def get_branches(config: dict) -> dict:
+    """
+    POST /branches/selectBhfList
+    Retrieve the list of branches registered under the TIN.
+    """
+    return _post(
+        "/branches/selectBhfList",
+        {
+            "tin": config.get("tin", ""),
+            "bhfId": "00",
+            "lastReqDt": "20190101000000",
+        },
+        config,
+    )
+
+
+def save_items(item_list: list, config: dict) -> dict:
     """
     POST /items/saveItems
     Register or update stock items in KRA's system.
@@ -74,25 +94,26 @@ def save_items(item_list: list[dict]) -> dict:
     return _post(
         "/items/saveItems",
         {
-            "tin": os.getenv("ETIMS_TIN", ""),
-            "bhfId": os.getenv("ETIMS_BHF_ID", "00"),
+            "tin": config.get("tin", ""),
+            "bhfId": config.get("bhf_id", "00"),
             "itemList": item_list,
         },
+        config,
     )
 
 
-def save_sales_transaction(payload: dict) -> dict:
+def save_sales_transaction(payload: dict, config: dict) -> dict:
     """
     POST /trnsSales/saveTrns
     Submit a completed sale transaction.
     payload must already be a fully-formed KRA transaction body.
     """
-    return _post("/trnsSales/saveTrns", payload)
+    return _post("/trnsSales/saveTrns", payload, config)
 
 
-def save_refund_transaction(payload: dict) -> dict:
+def save_refund_transaction(payload: dict, config: dict) -> dict:
     """
     POST /trnsRefunds/saveTrns
     Submit a refund/void transaction (credit note).
     """
-    return _post("/trnsRefunds/saveTrns", payload)
+    return _post("/trnsRefunds/saveTrns", payload, config)

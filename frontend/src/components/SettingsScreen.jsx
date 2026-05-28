@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { dbHelpers } from "../services/db";
+import { etimsService } from "../services/etims";
 import { useSettingsStore } from "../store/settingsStore";
 import { showToast } from "../utils/toast";
 
@@ -63,6 +64,18 @@ export default function SettingsScreen({ onClose }) {
   const [mpesaTill, setMpesaTill] = useState("");
   const [pochiNumber, setPochiNumber] = useState("");
 
+  // eTIMS
+  const [etimsEnv, setEtimsEnv] = useState("sandbox");
+  const [etimsTin, setEtimsTin] = useState("");
+  const [etimsBhfId, setEtimsBhfId] = useState("00");
+  const [etimsDvcSrlNo, setEtimsDvcSrlNo] = useState("");
+  const [etimsInitialized, setEtimsInitialized] = useState(false);
+  const [etimsBranches, setEtimsBranches] = useState([]);
+  const [etimsSaving, setEtimsSaving] = useState(false);
+  const [etimsIniting, setEtimsIniting] = useState(false);
+  const [etimsConfigSaved, setEtimsConfigSaved] = useState(false);
+  const [etimsInitResult, setEtimsInitResult] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -74,12 +87,29 @@ export default function SettingsScreen({ onClose }) {
       setPhone(s.phone || "");
       const registered = !!s.kra_pin && s.kra_pin !== "NOT_REGISTERED";
       setKraRegistered(registered);
-      setKraPin(registered ? s.kra_pin : "");
+      const pin = registered ? s.kra_pin : "";
+      setKraPin(pin);
       setVatEnabled(s.vat_enabled !== "false");
       setVatRate(s.vat_rate ? String(Math.round(parseFloat(s.vat_rate) * 100)) : "16");
       setMpesaTill(s.mpesa_till || "");
       setPochiNumber(s.pochi_number || "");
+
+      // Pre-fill eTIMS TIN from KRA PIN
+      if (registered && pin) setEtimsTin(pin);
+
       setLoading(false);
+    });
+
+    // Load eTIMS config from backend (non-fatal if offline)
+    etimsService.loadConfig().then((cfg) => {
+      if (cfg.tin) setEtimsTin(cfg.tin);
+      if (cfg.bhf_id) setEtimsBhfId(cfg.bhf_id);
+      if (cfg.dvc_srl_no) setEtimsDvcSrlNo(cfg.dvc_srl_no);
+      if (cfg.env) setEtimsEnv(cfg.env);
+      setEtimsInitialized(!!cfg.initialized);
+      setEtimsConfigSaved(!!cfg.tin);
+    }).catch(() => {
+      // Backend offline — show gracefully below
     });
   }, []);
 
@@ -109,6 +139,61 @@ export default function SettingsScreen({ onClose }) {
       showToast("Failed to save — try again");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function autoSerial(tin) {
+    return "VSCU" + tin.replace(/[^A-Z0-9]/g, "").slice(0, 8).padEnd(8, "0");
+  }
+
+  async function handleEtimsSave() {
+    if (!etimsTin.trim()) { showToast("TIN is required"); return; }
+    setEtimsSaving(true);
+    try {
+      await etimsService.saveConfig({
+        tin: etimsTin.trim(),
+        bhf_id: etimsBhfId.trim() || "00",
+        dvc_srl_no: etimsDvcSrlNo.trim(),
+        env: etimsEnv,
+      });
+      setEtimsConfigSaved(true);
+      setEtimsInitialized(false);
+      setEtimsInitResult(null);
+      showToast("eTIMS config saved");
+    } catch (err) {
+      showToast(err.message || "Failed to save eTIMS config");
+    } finally {
+      setEtimsSaving(false);
+    }
+  }
+
+  async function handleEtimsInit() {
+    setEtimsIniting(true);
+    setEtimsInitResult(null);
+    try {
+      const res = await etimsService.initDevice();
+      setEtimsInitialized(true);
+      setEtimsInitResult({ success: true, message: "Device initialized successfully" });
+      showToast("Device initialized with KRA");
+      // Refresh config to get updated initialized_at
+      etimsService.loadConfig().then((cfg) => {
+        setEtimsInitialized(!!cfg.initialized);
+      }).catch(() => {});
+    } catch (err) {
+      setEtimsInitResult({ success: false, message: err.message || "Initialization failed" });
+    } finally {
+      setEtimsIniting(false);
+    }
+  }
+
+  async function handleQueryBranches() {
+    if (!etimsTin.trim()) { showToast("Enter a TIN first"); return; }
+    try {
+      const res = await etimsService.getBranches(etimsTin.trim(), "00");
+      setEtimsBranches(res.branches || []);
+      if ((res.branches || []).length === 0) showToast("No branches found");
+    } catch (err) {
+      showToast(err.message || "Branch query failed");
     }
   }
 
@@ -236,6 +321,148 @@ export default function SettingsScreen({ onClose }) {
                 className={inputCls}
               />
             </Field>
+          </SectionCard>
+
+          {/* KRA eTIMS */}
+          <SectionCard title="KRA eTIMS">
+            {/* Status banner */}
+            {etimsInitialized && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200">
+                <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                <span className="text-xs font-bold text-green-700">
+                  Device Active &middot; {etimsEnv === "sandbox" ? "Sandbox" : "Production"}
+                </span>
+              </div>
+            )}
+
+            {/* Environment selector */}
+            <Field label="Environment">
+              <div className="flex gap-2">
+                {["sandbox", "production"].map((env) => (
+                  <button
+                    key={env}
+                    type="button"
+                    onClick={() => setEtimsEnv(env)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize transition ${
+                      etimsEnv === env
+                        ? "bg-primary text-white"
+                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    }`}
+                  >
+                    {env}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {/* TIN */}
+            <Field label="TIN (KRA PIN)">
+              <input
+                type="text"
+                value={etimsTin}
+                onChange={(e) => setEtimsTin(e.target.value.toUpperCase())}
+                placeholder="e.g. P051234567X"
+                className={`${inputCls} font-mono uppercase`}
+                maxLength={11}
+              />
+            </Field>
+
+            {/* Branch ID + Query */}
+            <Field label="Branch ID">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={etimsBhfId}
+                  onChange={(e) => setEtimsBhfId(e.target.value)}
+                  placeholder="00"
+                  maxLength={2}
+                  className={`${inputCls} flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={handleQueryBranches}
+                  className="px-3 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold hover:bg-gray-200 transition shrink-0"
+                >
+                  Query KRA
+                </button>
+              </div>
+            </Field>
+
+            {/* Branch list */}
+            {etimsBranches.length > 0 && (
+              <div className="rounded-xl border border-gray-100 overflow-hidden">
+                {etimsBranches.map((b) => (
+                  <button
+                    key={b.bhfId}
+                    type="button"
+                    onClick={() => setEtimsBhfId(b.bhfId)}
+                    className={`w-full text-left px-3 py-2 text-xs transition hover:bg-gray-50 ${
+                      etimsBhfId === b.bhfId ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-700"
+                    }`}
+                  >
+                    <span className="font-mono font-bold">{b.bhfId}</span>
+                    {b.bhfNm && <span className="ml-2 text-gray-500">{b.bhfNm}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Device Serial */}
+            <Field label="Device Serial Number">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={etimsDvcSrlNo}
+                  onChange={(e) => setEtimsDvcSrlNo(e.target.value)}
+                  placeholder="e.g. VSCUP051234X0"
+                  className={`${inputCls} flex-1 font-mono`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setEtimsDvcSrlNo(autoSerial(etimsTin))}
+                  className="px-3 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold hover:bg-gray-200 transition shrink-0"
+                >
+                  Auto
+                </button>
+              </div>
+            </Field>
+
+            {/* Save config button */}
+            <button
+              type="button"
+              onClick={handleEtimsSave}
+              disabled={etimsSaving}
+              className="w-full py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-blue-600 active:scale-95 transition disabled:opacity-50"
+            >
+              {etimsSaving ? "Saving…" : "Save eTIMS Config"}
+            </button>
+
+            {/* Init device — only shown once config is saved */}
+            {etimsConfigSaved && (
+              <>
+                <div className="border-t border-gray-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={handleEtimsInit}
+                    disabled={etimsIniting}
+                    className="w-full py-2.5 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 active:scale-95 transition disabled:opacity-50"
+                  >
+                    {etimsIniting ? "Initializing…" : "Initialize Device with KRA"}
+                  </button>
+
+                  {etimsInitResult && (
+                    <p className={`mt-2 text-xs font-semibold text-center ${etimsInitResult.success ? "text-green-600" : "text-red-500"}`}>
+                      {etimsInitResult.success ? "Device initialized ✓" : etimsInitResult.message}
+                    </p>
+                  )}
+
+                  <p className="mt-2 text-xs text-gray-400 text-center leading-relaxed">
+                    Requires prior eTIMS approval through KRA&apos;s iTax portal.<br />
+                    For sandbox testing, use any TIN format.
+                  </p>
+                </div>
+              </>
+            )}
           </SectionCard>
 
           {/* Save button — also at bottom for long-scroll convenience */}

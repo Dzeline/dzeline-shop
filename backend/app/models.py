@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, BigInteger
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, BigInteger, Text
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -96,3 +96,18 @@ class EtimsCounter(Base):
 
     id = Column(Integer, primary_key=True, default=1)
     last_invc_no = Column(Integer, default=0, nullable=False)
+
+
+class EtimsConfig(Base):
+    """Single-row table storing eTIMS credentials configured from the UI."""
+    __tablename__ = "etims_config"
+
+    id             = Column(Integer, primary_key=True, default=1)
+    tin            = Column(String(20),  nullable=True)        # KRA PIN
+    bhf_id         = Column(String(5),   default="00")         # Branch ID
+    dvc_srl_no     = Column(String(50),  nullable=True)        # Device serial
+    env            = Column(String(20),  default="sandbox")    # sandbox | production
+    initialized    = Column(Boolean,     default=False)
+    activation_key = Column(String(500), nullable=True)        # from selectInitInfo response
+    initialized_at = Column(BigInteger,  nullable=True)
+    updated_at     = Column(BigInteger,  nullable=True)

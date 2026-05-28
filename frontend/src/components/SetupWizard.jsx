@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { dbHelpers } from "../services/db";
+import { etimsService } from "../services/etims";
 import { showToast } from "../utils/toast";
 
 const SETUP_BG = "linear-gradient(160deg, #0f172a 0%, #1e1b4b 38%, #312e81 68%, #4338ca 100%)";
@@ -160,6 +161,10 @@ export default function SetupWizard({ onComplete }) {
   const [mpesaTill, setMpesaTill] = useState("");
   const [pochiNumber, setPochiNumber] = useState("");
 
+  // Step 1 — eTIMS (under Tax step)
+  const [etimsEnabled, setEtimsEnabled] = useState(false);
+  const [etimsBhfId, setEtimsBhfId] = useState("00");
+
   // Step 3 — Admin PIN
   const [adminName, setAdminName] = useState("Admin");
   const [pin, setPin] = useState("");
@@ -224,6 +229,23 @@ export default function SetupWizard({ onComplete }) {
         setup_complete: "true",
       });
       await dbHelpers.addStaff(adminName.trim() || "Admin", pin, "admin");
+
+      // eTIMS optional setup (non-fatal)
+      if (etimsEnabled && kraRegistered && kraPin.trim()) {
+        try {
+          const serial = "VSCU" + kraPin.trim().replace(/[^A-Z0-9]/g, "").slice(0, 8).padEnd(8, "0");
+          await etimsService.saveConfig({
+            tin: kraPin.trim(),
+            bhf_id: etimsBhfId || "00",
+            dvc_srl_no: serial,
+            env: "sandbox",
+          });
+          await etimsService.initDevice();
+        } catch {
+          // Non-fatal: user can complete eTIMS setup from Settings later
+        }
+      }
+
       showToast("Setup complete!");
       onComplete();
     } catch (err) {
@@ -330,6 +352,15 @@ export default function SetupWizard({ onComplete }) {
                 <label className={TOGGLE_LABEL}>VAT Rate (%)</label>
                 <input type="number" value={vatRate} onChange={(e) => setVatRate(e.target.value)}
                   min={0} max={100} step={0.5} className={INPUT} />
+              </div>
+            )}
+            <Toggle value={etimsEnabled} onChange={setEtimsEnabled}
+              label="Set up eTIMS" sub="Electronic Tax Invoice Management System" />
+            {etimsEnabled && (
+              <div>
+                <label className={TOGGLE_LABEL}>Branch ID <span className="font-normal normal-case text-gray-400">Leave as 00 for single-branch businesses</span></label>
+                <input type="text" value={etimsBhfId} onChange={(e) => setEtimsBhfId(e.target.value)}
+                  placeholder="00" maxLength={2} className={INPUT} />
               </div>
             )}
             <div className="flex gap-2 pt-1">

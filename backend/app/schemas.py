@@ -143,3 +143,34 @@ class EtimsBatchResponse(BaseModel):
     submitted: int
     failed: int
     skipped: int
+
+
+# ── eTIMS config schemas ───────────────────────────────────────────────────────
+
+class EtimsConfigIn(BaseModel):
+    tin: str
+    bhf_id: str = "00"
+    dvc_srl_no: str
+    env: str = "sandbox"   # sandbox | production
+
+
+class EtimsConfigOut(BaseModel):
+    tin: Optional[str]
+    bhf_id: str
+    dvc_srl_no: Optional[str]
+    env: str
+    initialized: bool
+    initialized_at: Optional[int]
+
+    class Config:
+        from_attributes = True
+
+
+class EtimsBranch(BaseModel):
+    bhfId: str
+    bhfNm: Optional[str] = None
+    bhfSttsCd: Optional[str] = None
+
+
+class EtimsBranchesResponse(BaseModel):
+    branches: list[EtimsBranch]
