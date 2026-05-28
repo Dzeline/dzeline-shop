@@ -151,7 +151,7 @@ class EtimsConfigIn(BaseModel):
     tin: str
     bhf_id: str = "00"
     dvc_srl_no: str
-    env: str = "sandbox"   # sandbox | production
+    env: Optional[str] = None   # only set by developer via env vars or direct API call
 
 
 class EtimsConfigOut(BaseModel):

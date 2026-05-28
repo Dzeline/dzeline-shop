@@ -65,7 +65,6 @@ export default function SettingsScreen({ onClose }) {
   const [pochiNumber, setPochiNumber] = useState("");
 
   // eTIMS
-  const [etimsEnv, setEtimsEnv] = useState("sandbox");
   const [etimsTin, setEtimsTin] = useState("");
   const [etimsBhfId, setEtimsBhfId] = useState("00");
   const [etimsDvcSrlNo, setEtimsDvcSrlNo] = useState("");
@@ -105,7 +104,6 @@ export default function SettingsScreen({ onClose }) {
       if (cfg.tin) setEtimsTin(cfg.tin);
       if (cfg.bhf_id) setEtimsBhfId(cfg.bhf_id);
       if (cfg.dvc_srl_no) setEtimsDvcSrlNo(cfg.dvc_srl_no);
-      if (cfg.env) setEtimsEnv(cfg.env);
       setEtimsInitialized(!!cfg.initialized);
       setEtimsConfigSaved(!!cfg.tin);
     }).catch(() => {
@@ -154,7 +152,6 @@ export default function SettingsScreen({ onClose }) {
         tin: etimsTin.trim(),
         bhf_id: etimsBhfId.trim() || "00",
         dvc_srl_no: etimsDvcSrlNo.trim(),
-        env: etimsEnv,
       });
       setEtimsConfigSaved(true);
       setEtimsInitialized(false);
@@ -329,31 +326,9 @@ export default function SettingsScreen({ onClose }) {
             {etimsInitialized && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200">
                 <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                <span className="text-xs font-bold text-green-700">
-                  Device Active &middot; {etimsEnv === "sandbox" ? "Sandbox" : "Production"}
-                </span>
+                <span className="text-xs font-bold text-green-700">Device Active</span>
               </div>
             )}
-
-            {/* Environment selector */}
-            <Field label="Environment">
-              <div className="flex gap-2">
-                {["sandbox", "production"].map((env) => (
-                  <button
-                    key={env}
-                    type="button"
-                    onClick={() => setEtimsEnv(env)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize transition ${
-                      etimsEnv === env
-                        ? "bg-primary text-white"
-                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                    }`}
-                  >
-                    {env}
-                  </button>
-                ))}
-              </div>
-            </Field>
 
             {/* TIN */}
             <Field label="TIN (KRA PIN)">
