@@ -182,6 +182,15 @@ export const dbHelpers = {
     return await db.settings.put({ key, value });
   },
 
+  // Cloud API key (set during Setup Wizard or Settings screen)
+  async getApiKey() {
+    return await this.getSetting("api_key");
+  },
+
+  async saveApiKey(key) {
+    return await db.settings.put({ key: "api_key", value: key });
+  },
+
   // Get today's sales
   async getTodaySales() {
     const startOfDay = new Date();

@@ -17,6 +17,7 @@ import { useStaffStore } from "./store/staffStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { dbHelpers } from "./services/db";
 import { syncService } from "./services/sync";
+import { setApiKey } from "./utils/apiHeaders";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 // Pastel header gradients — index 0 is always Admin
@@ -224,9 +225,13 @@ function App() {
   const shopName = useSettingsStore((s) => s.shopName);
 
   useEffect(() => {
-    dbHelpers.isSetupComplete().then((done) => {
+    dbHelpers.isSetupComplete().then(async (done) => {
       setSetupReady(done);
-      if (done) loadSettings();
+      if (done) {
+        loadSettings();
+        const key = await dbHelpers.getApiKey();
+        if (key) setApiKey(key);
+      }
     });
   }, [loadSettings]);
 

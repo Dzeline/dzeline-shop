@@ -2,19 +2,29 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import Transaction, TransactionItem
+from ..deps import get_tenant
+from ..models import Transaction, TransactionItem, Tenant
 from ..schemas import TransactionIn, TransactionOut
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
 
 @router.post("/transactions", response_model=TransactionOut, status_code=201)
-def sync_transaction(payload: TransactionIn, db: Session = Depends(get_db)):
-    existing = db.query(Transaction).filter(Transaction.local_id == payload.id).first()
+def sync_transaction(
+    payload: TransactionIn,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_tenant),
+):
+    existing = (
+        db.query(Transaction)
+        .filter(Transaction.tenant_id == tenant.id, Transaction.local_id == payload.id)
+        .first()
+    )
     if existing:
         return existing
 
     txn = Transaction(
+        tenant_id=tenant.id,
         local_id=payload.id,
         timestamp=payload.timestamp,
         subtotal=payload.subtotal,
@@ -46,9 +56,15 @@ def sync_transaction(payload: TransactionIn, db: Session = Depends(get_db)):
 
 
 @router.get("/transactions", response_model=list[TransactionOut])
-def list_transactions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def list_transactions(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_tenant),
+):
     return (
         db.query(Transaction)
+        .filter(Transaction.tenant_id == tenant.id)
         .order_by(Transaction.timestamp.desc())
         .offset(skip)
         .limit(limit)
@@ -57,6 +73,9 @@ def list_transactions(skip: int = 0, limit: int = 100, db: Session = Depends(get
 
 
 @router.get("/status")
-def sync_status(db: Session = Depends(get_db)):
-    count = db.query(Transaction).count()
+def sync_status(
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_tenant),
+):
+    count = db.query(Transaction).filter(Transaction.tenant_id == tenant.id).count()
     return {"synced_transactions": count}

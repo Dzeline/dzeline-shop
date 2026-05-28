@@ -13,10 +13,14 @@ export const useSettingsStore = create((set, get) => ({
   mpesaTill: "",
   pochiNumber: "",
   currency: "KES",
+  apiKey: "",
 
   async load() {
     if (get().loaded) return;
-    const s = await dbHelpers.getShopSettings();
+    const [s, apiKey] = await Promise.all([
+      dbHelpers.getShopSettings(),
+      dbHelpers.getApiKey(),
+    ]);
     set({
       loaded: true,
       shopName:      s.shop_name    || "Dzeline Shop",
@@ -29,6 +33,7 @@ export const useSettingsStore = create((set, get) => ({
       mpesaTill:     s.mpesa_till   || "",
       pochiNumber:   s.pochi_number || "",
       currency:      s.currency     || "KES",
+      apiKey:        apiKey         || "",
     });
   },
 

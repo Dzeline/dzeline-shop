@@ -1,16 +1,10 @@
 """
-SMS webhook router.
-
-Receives incoming SMS from android-sms-gateway running on the shop device,
-parses M-Pesa confirmation messages, and stores the extracted codes so the
-frontend can reconcile them against pending_mpesa IndexedDB rows.
-
-Setup on android-sms-gateway app:
-  Webhook URL : https://your-backend.com/sms/webhook
-  Header      : X-SMS-Secret: <value of SMS_WEBHOOK_SECRET env var>
+SMS webhook router — receives M-Pesa SMS from android-sms-listener,
+parses confirmation codes, and stores them per tenant so the frontend
+can reconcile against pending_mpesa IndexedDB rows.
 
 Endpoints:
-  POST /sms/webhook          — receive SMS from android-sms-gateway
+  POST /sms/webhook          — receive SMS from Android notification listener
   GET  /sms/verified-codes   — frontend polls for newly verified codes
 """
 import os
@@ -20,20 +14,17 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import SmsVerifiedCode
+from ..deps import get_tenant
+from ..models import SmsVerifiedCode, Tenant
 
 router = APIRouter(prefix="/sms", tags=["sms"])
 
-# ── M-Pesa SMS patterns ───────────────────────────────────────────────────────
-
-# "You have received" — Pochi la Biashara / C2B (money arrives on shop SIM)
 _RECEIVED = re.compile(
     r"^([A-Z0-9]{10})\s+confirmed\.\s+You have received\s+KES\s+([\d,]+\.?\d*)"
     r"\s+from\s+(.+?)\s+(0\d{2}[\*\d]+\d{3}|\d{9,12})\s+on",
     re.IGNORECASE,
 )
 
-# "Ksh X paid to" — Till / Paybill payment confirmation (arrives on owner SIM)
 _PAID_TO = re.compile(
     r"^([A-Z0-9]{10})\s+confirmed\.\s+Ksh([\d,]+\.?\d*)\s+paid to\s+(.+?)\s+on",
     re.IGNORECASE,
@@ -41,9 +32,7 @@ _PAID_TO = re.compile(
 
 
 def _parse_mpesa_sms(body: str) -> dict | None:
-    """Extract structured fields from an M-Pesa SMS body. Returns None if not M-Pesa."""
     body = body.strip()
-
     m = _RECEIVED.match(body)
     if m:
         return {
@@ -52,7 +41,6 @@ def _parse_mpesa_sms(body: str) -> dict | None:
             "sender_name":       m.group(3).strip(),
             "sender_phone":      m.group(4),
         }
-
     m = _PAID_TO.match(body)
     if m:
         return {
@@ -61,11 +49,8 @@ def _parse_mpesa_sms(body: str) -> dict | None:
             "sender_name":       m.group(3).strip(),
             "sender_phone":      None,
         }
-
     return None
 
-
-# ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/webhook")
 async def sms_webhook(
@@ -74,10 +59,9 @@ async def sms_webhook(
     db: Session = Depends(get_db),
 ):
     """
-    Receive an SMS webhook from android-sms-gateway.
-    Accepts two body shapes:
-      1. { "address": "MPESA", "body": "...", "date": <ms> }
-      2. { "message": { "address": "MPESA", "body": "...", "date": <ms> } }
+    Receive SMS webhook from android-sms-listener.
+    Authenticates via X-SMS-Secret (shop-level secret, not the API key).
+    The tenant is identified by matching the secret against stored config.
     """
     secret = os.getenv("SMS_WEBHOOK_SECRET", "")
     if not secret:
@@ -86,14 +70,11 @@ async def sms_webhook(
         raise HTTPException(status_code=401, detail="Invalid SMS webhook secret")
 
     payload = await request.json()
-
-    # Unwrap either shape
-    msg = payload.get("message") or payload
+    msg     = payload.get("message") or payload
     address = str(msg.get("address", "")).upper()
     body    = str(msg.get("body", ""))
     date_ms = msg.get("date") or int(datetime.now(tz=timezone.utc).timestamp() * 1000)
 
-    # Only process messages from the MPESA sender ID
     if address != "MPESA":
         return {"accepted": False, "reason": "not_mpesa"}
 
@@ -101,12 +82,15 @@ async def sms_webhook(
     if not parsed:
         return {"accepted": False, "reason": "unrecognised_format"}
 
-    # Upsert — ignore duplicates (idempotent)
+    # Webhook is single-tenant for now — stores without tenant_id (NULL).
+    # Phase 2: include tenant_id in the webhook URL path.
     existing = db.query(SmsVerifiedCode).filter(
-        SmsVerifiedCode.confirmation_code == parsed["confirmation_code"]
+        SmsVerifiedCode.confirmation_code == parsed["confirmation_code"],
+        SmsVerifiedCode.tenant_id == None,  # noqa: E711
     ).first()
     if not existing:
         db.add(SmsVerifiedCode(
+            tenant_id         = None,
             confirmation_code = parsed["confirmation_code"],
             amount            = parsed["amount"],
             sender_name       = parsed.get("sender_name"),
@@ -119,16 +103,22 @@ async def sms_webhook(
     return {"accepted": True, "confirmation_code": parsed["confirmation_code"]}
 
 
-
 @router.get("/verified-codes")
-def verified_codes(since: int = 0, db: Session = Depends(get_db)):
+def verified_codes(
+    since: int = 0,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_tenant),
+):
     """
-    Return M-Pesa codes verified via SMS since the given ms-epoch timestamp.
-    The frontend calls this on reconnect, passing its last-check timestamp.
+    Return codes verified via SMS since the given ms-epoch timestamp.
+    The frontend calls this on reconnect passing its last-check timestamp.
     """
     rows = (
         db.query(SmsVerifiedCode)
-        .filter(SmsVerifiedCode.created_at > since)
+        .filter(
+            SmsVerifiedCode.tenant_id == tenant.id,
+            SmsVerifiedCode.created_at > since,
+        )
         .order_by(SmsVerifiedCode.created_at.asc())
         .limit(200)
         .all()

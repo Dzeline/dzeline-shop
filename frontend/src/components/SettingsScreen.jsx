@@ -3,6 +3,7 @@ import { dbHelpers } from "../services/db";
 import { etimsService } from "../services/etims";
 import { useSettingsStore } from "../store/settingsStore";
 import { showToast } from "../utils/toast";
+import { setApiKey } from "../utils/apiHeaders";
 
 function SectionCard({ title, children }) {
   return (
@@ -63,6 +64,7 @@ export default function SettingsScreen({ onClose }) {
   // Payments
   const [mpesaTill, setMpesaTill] = useState("");
   const [pochiNumber, setPochiNumber] = useState("");
+  const [apiKey, setApiKeyInput] = useState("");
 
   // eTIMS
   const [etimsTin, setEtimsTin] = useState("");
@@ -92,6 +94,8 @@ export default function SettingsScreen({ onClose }) {
       setVatRate(s.vat_rate ? String(Math.round(parseFloat(s.vat_rate) * 100)) : "16");
       setMpesaTill(s.mpesa_till || "");
       setPochiNumber(s.pochi_number || "");
+
+      dbHelpers.getApiKey().then((k) => { if (k) setApiKeyInput(k); });
 
       // Pre-fill eTIMS TIN from KRA PIN
       if (registered && pin) setEtimsTin(pin);
@@ -129,6 +133,10 @@ export default function SettingsScreen({ onClose }) {
         pochi_number: pochiNumber.trim(),
         currency: "KES",
       });
+      if (apiKey.trim()) {
+        await dbHelpers.saveApiKey(apiKey.trim());
+        setApiKey(apiKey.trim());
+      }
       await reload();
       setDirty(false);
       showToast("Settings saved");
@@ -317,6 +325,21 @@ export default function SettingsScreen({ onClose }) {
                 placeholder="e.g. 0712345678"
                 className={inputCls}
               />
+            </Field>
+            <Field label="Cloud Sync API Key">
+              <input
+                type="text"
+                value={apiKey}
+                onChange={(e) => { setApiKeyInput(e.target.value.trim()); mark(); }}
+                placeholder="dzl_live_… (provided by Dzeline)"
+                className={`${inputCls} font-mono text-xs`}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck="false"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Required for cloud sync, STK Push and eTIMS. Leave blank for offline-only mode.
+              </p>
             </Field>
           </SectionCard>
 

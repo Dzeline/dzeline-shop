@@ -2,6 +2,36 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+# ── Tenant schemas ─────────────────────────────────────────────────────────────
+
+class TenantCreate(BaseModel):
+    name: str
+    plan: str = "trial"
+
+
+class TenantOut(BaseModel):
+    id: int
+    name: str
+    plan: str
+    active: bool
+    billing_cycle_end: Optional[int] = None
+    created_at: int
+
+    class Config:
+        from_attributes = True
+
+
+class TenantCreated(TenantOut):
+    api_key: str   # raw key — shown once, never stored
+
+
+class TenantUpdate(BaseModel):
+    name: Optional[str] = None
+    plan: Optional[str] = None
+    active: Optional[bool] = None
+    billing_cycle_end: Optional[int] = None
+
+
 class TransactionItemIn(BaseModel):
     product_id: int
     quantity: int

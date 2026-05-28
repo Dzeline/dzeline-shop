@@ -37,7 +37,7 @@ services:
         sync: false
       - key: SMS_WEBHOOK_SECRET
         sync: false
-      - key: API_KEY
+      - key: ADMIN_SECRET
         sync: false
 
 databases:

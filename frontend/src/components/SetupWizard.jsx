@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { dbHelpers } from "../services/db";
 import { etimsService } from "../services/etims";
+import { setApiKey } from "../utils/apiHeaders";
 import { showToast } from "../utils/toast";
 
 const SETUP_BG = "linear-gradient(160deg, #0f172a 0%, #1e1b4b 38%, #312e81 68%, #4338ca 100%)";
@@ -160,6 +161,7 @@ export default function SetupWizard({ onComplete }) {
   // Step 2 — Payments
   const [mpesaTill, setMpesaTill] = useState("");
   const [pochiNumber, setPochiNumber] = useState("");
+  const [apiKey, setApiKeyInput] = useState("");
 
   // Step 1 — eTIMS (under Tax step)
   const [etimsEnabled, setEtimsEnabled] = useState(false);
@@ -228,6 +230,10 @@ export default function SetupWizard({ onComplete }) {
         currency: "KES",
         setup_complete: "true",
       });
+      if (apiKey.trim()) {
+        await dbHelpers.saveApiKey(apiKey.trim());
+        setApiKey(apiKey.trim());
+      }
       await dbHelpers.addStaff(adminName.trim() || "Admin", pin, "admin");
 
       // eTIMS optional setup (non-fatal)
@@ -387,6 +393,25 @@ export default function SetupWizard({ onComplete }) {
               <label className={TOGGLE_LABEL}>Pochi la Biashara</label>
               <input type="tel" value={pochiNumber} onChange={(e) => setPochiNumber(e.target.value)}
                 placeholder="e.g. 0712 345 678" className={INPUT} />
+            </div>
+            <div className="pt-1 border-t border-gray-100">
+              <label className={TOGGLE_LABEL}>
+                Cloud Sync API Key
+                <span className="ml-1 font-normal normal-case text-gray-400">(optional — provided by Dzeline)</span>
+              </label>
+              <input
+                type="text"
+                value={apiKey}
+                onChange={(e) => setApiKeyInput(e.target.value.trim())}
+                placeholder="dzl_live_…"
+                className={`${INPUT} font-mono text-xs`}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck="false"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Enables receipt sync, STK Push and eTIMS. Leave blank for offline-only mode.
+              </p>
             </div>
             <div className="flex gap-2 pt-1">
               <button onClick={() => goBack(1)} className="flex-1 py-3.5 rounded-xl border-2 border-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-50 active:scale-95 transition">
