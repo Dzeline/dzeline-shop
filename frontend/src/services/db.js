@@ -70,6 +70,15 @@ db.version(6).stores({
   products: "++id, barcode, name, price, cost_price, stock, category, reorder_level, *tags",
 });
 
+// Version 7: eTIMS — index etims_status on transactions, etims_item_cd on products
+db.version(7).stores({
+  products:     "++id, barcode, name, price, cost_price, stock, category, etims_item_cd, reorder_level, *tags",
+  transactions: "++id, timestamp, total, payment_method, synced, staff_id, etims_status",
+}).upgrade((tx) => {
+  // Backfill etims_status = "pending" for all existing transactions
+  return tx.table("transactions").toCollection().modify({ etims_status: "pending" });
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -472,6 +481,78 @@ export const dbHelpers = {
       vatCollected: txns.reduce((s, t) => s + (t.vat || 0), 0),
       topProducts: [...productMap.values()].sort((a, b) => b.totalQty - a.totalQty).slice(0, 5),
       staffBreakdown: Object.values(staffTotals).sort((a, b) => b.total - a.total),
+    };
+  },
+
+  // ── eTIMS helpers ─────────────────────────────────────────────────────────
+
+  async getEtimsQueue(limit = 200) {
+    // Returns transactions that haven't been successfully submitted yet
+    return await db.transactions
+      .where("etims_status")
+      .anyOf(["pending", "failed"])
+      .filter((t) => !t.voided)
+      .reverse()
+      .limit(limit)
+      .toArray();
+  },
+
+  async getEtimsSubmitted(limit = 100) {
+    return await db.transactions
+      .where("etims_status").equals("submitted")
+      .reverse()
+      .limit(limit)
+      .toArray();
+  },
+
+  async updateEtimsStatus(txnId, status, etimsData = {}) {
+    return await db.transactions.update(txnId, {
+      etims_status: status,
+      ...etimsData,
+    });
+  },
+
+  async bulkUpdateEtimsStatus(results) {
+    // results: [{ local_id, status, cu_invc_no, rcpt_sign, sdc_id, invc_no, error }]
+    await db.transaction("rw", db.transactions, async () => {
+      for (const r of results) {
+        const updates = { etims_status: r.status };
+        if (r.cu_invc_no)  updates.etims_cu_invc_no  = r.cu_invc_no;
+        if (r.rcpt_sign)   updates.etims_rcpt_sign    = r.rcpt_sign;
+        if (r.sdc_id)      updates.etims_sdc_id       = r.sdc_id;
+        if (r.invc_no)     updates.etims_invc_no      = r.invc_no;
+        if (r.error)       updates.etims_error        = r.error;
+        await db.transactions.update(r.local_id, updates);
+      }
+    });
+  },
+
+  async getTransactionWithItems(txnId) {
+    const txn = await db.transactions.get(txnId);
+    if (!txn) return null;
+    const items = await db.transaction_items
+      .where("transaction_id").equals(txnId)
+      .toArray();
+    // Enrich items with product details for eTIMS payload
+    const productIds = [...new Set(items.map((i) => i.product_id))];
+    const products = await db.products.bulkGet(productIds);
+    const productMap = new Map(products.filter(Boolean).map((p) => [p.id, p]));
+    return {
+      ...txn,
+      items: items.map((item) => {
+        const product = productMap.get(item.product_id) || {};
+        return {
+          product_id:    item.product_id,
+          name:          item.name || product.name || "Unknown",
+          barcode:       product.barcode || null,
+          qty:           item.quantity,
+          price:         item.price,
+          etims_item_cd: product.etims_item_cd || null,
+          item_cls_cd:   product.item_cls_cd || "10000000",
+          pkg_unit_cd:   product.pkg_unit_cd || "NT",
+          qty_unit_cd:   product.qty_unit_cd || "U",
+        };
+      }),
     };
   },
 };

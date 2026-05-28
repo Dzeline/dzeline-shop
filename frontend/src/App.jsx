@@ -10,6 +10,7 @@ import DailySummary from "./components/DailySummary";
 import TransactionHistory from "./components/TransactionHistory";
 import InventoryScreen from "./components/InventoryScreen";
 import SuppliersScreen from "./components/SuppliersScreen";
+import EtimsModal from "./components/EtimsModal";
 import { useOnline } from "./utils/useOnline";
 import { useCartStore } from "./store/cartStore";
 import { useStaffStore } from "./store/staffStore";
@@ -33,7 +34,7 @@ function getHeaderGradient(staff) {
   return HEADER_THEMES[((staff.id - 2) % (HEADER_THEMES.length - 1)) + 1];
 }
 
-function StaffMenu({ staff, onManage, onStockReceive, onInventory, onSuppliers, onDailySummary, onHistory, onSettings, onLogout }) {
+function StaffMenu({ staff, onManage, onStockReceive, onInventory, onSuppliers, onDailySummary, onHistory, onSettings, onEtims, onLogout }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -139,6 +140,19 @@ function StaffMenu({ staff, onManage, onStockReceive, onInventory, onSuppliers, 
             </button>
           )}
 
+          {isAdmin && (
+            <button
+              onClick={() => { onEtims(); setOpen(false); }}
+              className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            >
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              eTIMS / KRA
+            </button>
+          )}
+
           <button
             onClick={() => { onDailySummary(); setOpen(false); }}
             className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
@@ -202,6 +216,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showSuppliers, setShowSuppliers] = useState(false);
+  const [showEtims, setShowEtims] = useState(false);
   const [setupReady, setSetupReady] = useState(null); // null=checking, false=needs setup, true=done
   const isOnline = useOnline();
 
@@ -332,6 +347,7 @@ function App() {
               onDailySummary={() => setShowDailySummary(true)}
               onHistory={() => setShowHistory(true)}
               onSettings={() => setShowSettings(true)}
+              onEtims={() => setShowEtims(true)}
               onLogout={logout}
             />
           </div>
@@ -426,6 +442,10 @@ function App() {
 
       {showSuppliers && (
         <SuppliersScreen onClose={() => setShowSuppliers(false)} />
+      )}
+
+      {showEtims && (
+        <EtimsModal onClose={() => setShowEtims(false)} />
       )}
     </div>
   );

@@ -62,3 +62,37 @@ class Product(Base):
     reorder_level = Column(Integer, default=10)
     active = Column(Boolean, default=True)
     updated_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+
+
+class EtimsInvoice(Base):
+    """Tracks every eTIMS submission attempt and its KRA response."""
+    __tablename__ = "etims_invoices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    local_txn_id = Column(Integer, index=True, nullable=False)  # IndexedDB transaction id
+    invc_no = Column(Integer, nullable=False)                   # sequential eTIMS invoice number
+    rcpt_typ = Column(String(1), default="S")                   # S=Sale R=Refund C=Copy
+
+    status = Column(String(20), default="pending", nullable=False)
+    # pending | submitted | failed | skipped
+
+    # KRA response fields (populated on success)
+    cu_invc_no = Column(Integer, nullable=True)
+    rcpt_sign = Column(String(500), nullable=True)
+    intr_data = Column(String(500), nullable=True)
+    sdc_id = Column(String(50), nullable=True)
+    mrc_no = Column(String(50), nullable=True)
+    vsdc_rcpt_pbct_date = Column(String(20), nullable=True)
+
+    error_msg = Column(String(500), nullable=True)
+    attempts = Column(Integer, default=0)
+    submitted_at = Column(BigInteger, nullable=True)
+    created_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+
+
+class EtimsCounter(Base):
+    """Single-row table that tracks the last used sequential eTIMS invoice number."""
+    __tablename__ = "etims_counter"
+
+    id = Column(Integer, primary_key=True, default=1)
+    last_invc_no = Column(Integer, default=0, nullable=False)
