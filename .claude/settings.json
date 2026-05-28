@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from app.main import app; print\\('ok'\\)\")",
+      "Bash(Get-ChildItem -Depth 2)",
+      "Bash(Select-Object FullName)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\Deline\\\\.claude\\\\skills\\\\android-pwa\")",
+      "Edit(~/.claude/skills/android-pwa/**)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Deline\\.claude\\skills"
+    ]
+  }
+}
