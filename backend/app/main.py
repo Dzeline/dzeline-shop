@@ -1,6 +1,8 @@
 import os
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
 from .database import Base, engine
 from .routers import products, sync, mpesa, etims, sms, admin
@@ -38,3 +40,10 @@ app.include_router(admin.router)
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "dzeline-api", "version": "2.0.0"}
+
+
+@app.get("/admin-ui", response_class=HTMLResponse, include_in_schema=False)
+def admin_ui():
+    """Serve the browser-based admin dashboard."""
+    html = (Path(__file__).parent / "admin_ui.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
