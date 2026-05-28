@@ -1,6 +1,7 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from .database import Base, engine
 from .routers import products, sync, mpesa, etims, sms
@@ -23,6 +24,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── API key guard ─────────────────────────────────────────────────────────────
+# All routes require X-API-Key except:
+#   GET  /health         — uptime probes
+#   POST /mpesa/callback — Safaricom calls this; it is IP-restricted instead
+_API_KEY_EXEMPT = {("/health", "GET"), ("/mpesa/callback", "POST")}
+
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    if (request.url.path, request.method) not in _API_KEY_EXEMPT:
+        api_key = os.getenv("API_KEY", "")
+        if not api_key:
+            return JSONResponse(
+                {"detail": "Server misconfigured: API_KEY env var not set"},
+                status_code=503,
+            )
+        if request.headers.get("X-API-Key") != api_key:
+            return JSONResponse({"detail": "Invalid or missing API key"}, status_code=401)
+    return await call_next(request)
+
 
 app.include_router(products.router)
 app.include_router(sync.router)

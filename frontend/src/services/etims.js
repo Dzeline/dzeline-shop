@@ -4,6 +4,7 @@
  * to our FastAPI backend, which handles the KRA API calls.
  */
 import { dbHelpers } from "./db";
+import { apiHeaders, apiGetHeaders } from "../utils/apiHeaders";
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -12,7 +13,7 @@ export const etimsService = {
    * Check whether the backend has eTIMS credentials configured.
    */
   async getStatus() {
-    const resp = await fetch(`${BACKEND_URL}/etims/status`);
+    const resp = await fetch(`${BACKEND_URL}/etims/status`, { headers: apiGetHeaders() });
     if (!resp.ok) throw new Error(`eTIMS status check failed: ${resp.status}`);
     return resp.json();
   },
@@ -21,7 +22,7 @@ export const etimsService = {
    * Load current eTIMS config from backend DB.
    */
   async loadConfig() {
-    const resp = await fetch(`${BACKEND_URL}/etims/config`);
+    const resp = await fetch(`${BACKEND_URL}/etims/config`, { headers: apiGetHeaders() });
     if (!resp.ok) throw new Error(`eTIMS config load failed: ${resp.status}`);
     return resp.json();
   },
@@ -33,7 +34,7 @@ export const etimsService = {
   async saveConfig(cfg) {
     const resp = await fetch(`${BACKEND_URL}/etims/config`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify(cfg),
     });
     if (!resp.ok) {
@@ -51,7 +52,7 @@ export const etimsService = {
   async getBranches(tin, bhfId = "00") {
     const resp = await fetch(`${BACKEND_URL}/etims/branches`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify({ tin, bhf_id: bhfId }),
     });
     if (!resp.ok) {
@@ -67,7 +68,7 @@ export const etimsService = {
   async initDevice() {
     const resp = await fetch(`${BACKEND_URL}/etims/device/init`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
@@ -102,7 +103,7 @@ export const etimsService = {
 
     const resp = await fetch(`${BACKEND_URL}/etims/submit-batch`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify({ transactions, vat_rate: vatRate, taxpayer_name: taxpayerName }),
     });
 
@@ -138,7 +139,7 @@ export const etimsService = {
 
     const resp = await fetch(`${BACKEND_URL}/etims/items/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify({ items }),
     });
 

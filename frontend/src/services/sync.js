@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { apiHeaders, apiGetHeaders } from "../utils/apiHeaders";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -17,7 +18,7 @@ export const syncService = {
       try {
         const res = await fetch(
           `${API_BASE}/mpesa/stk-query/${encodeURIComponent(p.checkout_request_id)}`,
-          { signal: AbortSignal.timeout(15_000) },
+          { headers: apiGetHeaders(), signal: AbortSignal.timeout(15_000) },
         );
         if (!res.ok) continue;
         const data = await res.json();
@@ -41,7 +42,7 @@ export const syncService = {
     try {
       const res = await fetch(
         `${API_BASE}/sms/verified-codes?since=${since}`,
-        { signal: AbortSignal.timeout(10_000) },
+        { headers: apiGetHeaders(), signal: AbortSignal.timeout(10_000) },
       );
       if (!res.ok) return;
       const { codes } = await res.json();
@@ -73,7 +74,7 @@ export const syncService = {
 
         const res = await fetch(`${API_BASE}/sync/transactions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: apiHeaders(),
           body: JSON.stringify({ ...txn, items }),
           signal: AbortSignal.timeout(10_000),
         });
@@ -93,7 +94,7 @@ export const syncService = {
   async initiateMpesaStk(transactionId, phoneNumber, amount) {
     const res = await fetch(`${API_BASE}/mpesa/stk-push`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify({ transaction_id: transactionId ?? null, phone_number: phoneNumber, amount }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -104,7 +105,7 @@ export const syncService = {
   async getMpesaStkStatus(checkoutRequestId) {
     const res = await fetch(
       `${API_BASE}/mpesa/status/${encodeURIComponent(checkoutRequestId)}`,
-      { signal: AbortSignal.timeout(10_000) },
+      { headers: apiGetHeaders(), signal: AbortSignal.timeout(10_000) },
     );
     if (!res.ok) throw new Error("Status check failed");
     return res.json(); // { checkout_request_id, status, mpesa_code }

@@ -10,6 +10,26 @@ from ..schemas import MpesaStkRequest, MpesaStkResponse, StkStatusResponse
 
 router = APIRouter(prefix="/mpesa", tags=["mpesa"])
 
+# Safaricom's published callback source IPs (production + sandbox).
+# https://developer.safaricom.co.ke/APIs/MpesaExpressSimulate
+_SAFARICOM_IPS = {
+    "196.201.214.200", "196.201.214.206", "196.201.213.114",
+    "196.201.214.207", "196.201.214.208", "196.201.213.44",
+    "196.201.212.127", "196.201.212.138", "196.201.212.129",
+    "196.201.212.136", "196.201.212.74",  "196.201.212.69",
+}
+
+
+def _require_safaricom_ip(request: Request) -> None:
+    """Raise 403 if the request does not originate from a known Safaricom IP."""
+    if os.getenv("MPESA_ENV", "sandbox") == "sandbox":
+        return  # Allow all IPs in sandbox for local dev/testing
+    # Render (and most reverse-proxies) set X-Forwarded-For; trust the first entry.
+    forwarded = request.headers.get("X-Forwarded-For")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host or "")
+    if client_ip not in _SAFARICOM_IPS:
+        raise HTTPException(status_code=403, detail="Forbidden: untrusted callback source")
+
 MPESA_ENV = os.getenv("MPESA_ENV", "sandbox")
 MPESA_BASE = (
     "https://sandbox.safaricom.co.ke"
@@ -103,6 +123,7 @@ def stk_push(payload: MpesaStkRequest, db: Session = Depends(get_db)):
 
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
+    _require_safaricom_ip(request)
     body = await request.json()
     stk_callback = body.get("Body", {}).get("stkCallback", {})
     result_code = stk_callback.get("ResultCode")

@@ -37,6 +37,8 @@ services:
         sync: false
       - key: SMS_WEBHOOK_SECRET
         sync: false
+      - key: API_KEY
+        sync: false
 
 databases:
   - name: dzeline-db

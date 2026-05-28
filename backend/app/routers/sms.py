@@ -80,7 +80,9 @@ async def sms_webhook(
       2. { "message": { "address": "MPESA", "body": "...", "date": <ms> } }
     """
     secret = os.getenv("SMS_WEBHOOK_SECRET", "")
-    if secret and x_sms_secret != secret:
+    if not secret:
+        raise HTTPException(status_code=503, detail="Webhook secret not configured on server")
+    if x_sms_secret != secret:
         raise HTTPException(status_code=401, detail="Invalid SMS webhook secret")
 
     payload = await request.json()
@@ -116,41 +118,6 @@ async def sms_webhook(
 
     return {"accepted": True, "confirmation_code": parsed["confirmation_code"]}
 
-
-@router.post("/demo")
-async def sms_demo(db: Session = Depends(get_db)):
-    """
-    Inject a realistic test M-Pesa SMS into the verified-codes table.
-    Use this to verify the full webhook→reconcile flow without a physical device.
-    Returns the injected confirmation code so the caller can watch for it.
-    """
-    import random, string
-    code = "".join(random.choices(string.ascii_uppercase + string.digits, k=10))
-    body = (
-        f"{code} confirmed. You have received KES 250.00 "
-        f"from TEST DEMO 0712000000 on 28/5/26 at 12:00 PM. "
-        f"New M-Pesa balance is KES 1,000.00. Transaction cost, Ksh 0.00."
-    )
-    parsed = _parse_mpesa_sms(body)
-    existing = db.query(SmsVerifiedCode).filter(
-        SmsVerifiedCode.confirmation_code == parsed["confirmation_code"]
-    ).first()
-    if not existing:
-        db.add(SmsVerifiedCode(
-            confirmation_code = parsed["confirmation_code"],
-            amount            = parsed["amount"],
-            sender_name       = parsed.get("sender_name"),
-            sender_phone      = parsed.get("sender_phone"),
-            received_at       = int(datetime.now(tz=timezone.utc).timestamp() * 1000),
-            raw_sms           = body,
-        ))
-        db.commit()
-    return {
-        "injected": True,
-        "confirmation_code": parsed["confirmation_code"],
-        "amount": parsed["amount"],
-        "hint": "Now call GET /sms/verified-codes to see it appear",
-    }
 
 
 @router.get("/verified-codes")
