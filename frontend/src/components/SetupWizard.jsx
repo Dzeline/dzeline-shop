@@ -190,8 +190,7 @@ export default function SetupWizard({ onComplete }) {
       if (current !== pin) {
         setPinError("PINs don't match — try again");
         setPinConfirm("");
-        setPinStage("enter");
-        setPin("");
+        // Stay on confirm stage so user only re-enters the second PIN
         return;
       }
       handleFinish();
@@ -375,21 +374,23 @@ export default function SetupWizard({ onComplete }) {
             <div>
               <label className={TOGGLE_LABEL}>Admin Name</label>
               <input type="text" value={adminName} onChange={(e) => setAdminName(e.target.value)}
-                placeholder="Admin" className={INPUT} />
+                placeholder="e.g. Jane" className={INPUT} />
             </div>
 
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                 {pinStage === "enter" ? "Create a PIN (4–6 digits)" : "Confirm your PIN"}
               </p>
-              <PinPad pin={pinStage === "enter" ? pin : pinConfirm} onKey={handlePinKey} />
+              <div className={saving ? "pointer-events-none opacity-50" : ""}>
+                <PinPad pin={pinStage === "enter" ? pin : pinConfirm} onKey={handlePinKey} />
+              </div>
             </div>
 
             {pinError && <p className="text-center text-red-500 text-sm font-medium">{pinError}</p>}
-            {saving && <p className="text-center text-sm text-gray-400 font-medium">Saving…</p>}
+            {saving && <p className="text-center text-sm text-gray-400 font-medium">Setting up your shop…</p>}
 
-            <button onClick={() => goBack(2)}
-              className="w-full py-3 rounded-xl border-2 border-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-50 active:scale-95 transition">
+            <button onClick={() => goBack(2)} disabled={saving}
+              className="w-full py-3 rounded-xl border-2 border-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-50 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed">
               ← Back
             </button>
           </div>

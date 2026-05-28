@@ -72,112 +72,29 @@ db.version(6).stores({
 
 // Seed initial data on first run
 db.on("populate", async () => {
-  console.log("🌱 Seeding database with initial data...");
-
-  // Add test products
+  // Seed demo products so new users see a working product list immediately.
+  // No admin is seeded here — the Setup Wizard creates the real admin so there
+  // is never a "default PIN 1234" vulnerability on production installs.
   await db.products.bulkAdd([
-    {
-      barcode: "2001",
-      name: "Unga 2kg",
-      price: 200,
-      stock: 50,
-      category: "Grains",
-      tags: ["flour", "baking"],
-    },
-    {
-      barcode: "2002",
-      name: "Sugar 1kg",
-      price: 150,
-      stock: 30,
-      category: "Sugar",
-      tags: ["sugar", "sweetener"],
-    },
-    {
-      barcode: "2003",
-      name: "Milk 500ml",
-      price: 60,
-      stock: 100,
-      category: "Dairy",
-      tags: ["milk", "dairy", "fresh"],
-    },
-    {
-      barcode: "2004",
-      name: "Cooking Oil 1L",
-      price: 280,
-      stock: 20,
-      category: "Oils",
-      tags: ["oil", "cooking"],
-    },
-    {
-      barcode: "2005",
-      name: "Rice 1kg",
-      price: 180,
-      stock: 40,
-      category: "Grains",
-      tags: ["rice", "grains"],
-    },
-    {
-      barcode: "2006",
-      name: "Bread 400g",
-      price: 50,
-      stock: 25,
-      category: "Bakery",
-      tags: ["bread", "bakery", "fresh"],
-    },
-    {
-      barcode: "2007",
-      name: "Eggs (Tray)",
-      price: 350,
-      stock: 15,
-      category: "Dairy",
-      tags: ["eggs", "protein"],
-    },
-    {
-      barcode: "2008",
-      name: "Tea Leaves 250g",
-      price: 120,
-      stock: 60,
-      category: "Beverages",
-      tags: ["tea", "drinks"],
-    },
-    {
-      barcode: "2009",
-      name: "Salt 500g",
-      price: 40,
-      stock: 100,
-      category: "Spices",
-      tags: ["salt", "seasoning"],
-    },
-    {
-      barcode: "2010",
-      name: "Soap 200g",
-      price: 80,
-      stock: 45,
-      category: "Household",
-      tags: ["soap", "cleaning"],
-    },
+    { barcode: "2001", name: "Unga 2kg",        price: 200, stock: 50,  category: "Grains",    tags: ["flour", "baking"] },
+    { barcode: "2002", name: "Sugar 1kg",        price: 150, stock: 30,  category: "Sugar",     tags: ["sugar", "sweetener"] },
+    { barcode: "2003", name: "Milk 500ml",       price: 60,  stock: 100, category: "Dairy",     tags: ["milk", "dairy", "fresh"] },
+    { barcode: "2004", name: "Cooking Oil 1L",   price: 280, stock: 20,  category: "Oils",      tags: ["oil", "cooking"] },
+    { barcode: "2005", name: "Rice 1kg",         price: 180, stock: 40,  category: "Grains",    tags: ["rice", "grains"] },
+    { barcode: "2006", name: "Bread 400g",       price: 50,  stock: 25,  category: "Bakery",    tags: ["bread", "bakery", "fresh"] },
+    { barcode: "2007", name: "Eggs (Tray)",      price: 350, stock: 15,  category: "Dairy",     tags: ["eggs", "protein"] },
+    { barcode: "2008", name: "Tea Leaves 250g",  price: 120, stock: 60,  category: "Beverages", tags: ["tea", "drinks"] },
+    { barcode: "2009", name: "Salt 500g",        price: 40,  stock: 100, category: "Spices",    tags: ["salt", "seasoning"] },
+    { barcode: "2010", name: "Soap 200g",        price: 80,  stock: 45,  category: "Household", tags: ["soap", "cleaning"] },
   ]);
 
-  // Add default staff (admin) — PIN is hashed even in seed
-  await db.staff.add({
-    name: "Admin",
-    pin: await hashPin("1234"),
-    role: "admin",
-    active: true,
-    created_at: new Date().toISOString(),
-  });
-
-  // Add default settings
+  // Mark setup as explicitly pending so isSetupComplete() never short-circuits
+  // via the staff-count auto-migration path on a fresh install.
   await db.settings.bulkAdd([
-    { key: "shop_name", value: "Dzeline Supermarket" },
-    { key: "kra_pin", value: "P051234567X" }, // Replace with real PIN
-    { key: "mpesa_till", value: "1234567" }, // Replace with real Till
-    { key: "vat_rate", value: "0.16" }, // 16% VAT in Kenya
-    { key: "currency", value: "KES" },
-    { key: "last_sync", value: null },
+    { key: "setup_complete", value: "false" },
+    { key: "vat_rate",       value: "0.16" },
+    { key: "currency",       value: "KES" },
   ]);
-
-  console.log("✅ Database seeded successfully!");
 });
 
 // Helper functions for common operations
@@ -368,7 +285,16 @@ export const dbHelpers = {
 
   async getStaffByPin(pin) {
     const hashed = await hashPin(pin);
-    return await db.staff.filter((s) => s.pin === hashed && s.active).first();
+    let staff = await db.staff.filter((s) => s.pin === hashed && s.active).first();
+    if (staff) return staff;
+    // Backward-compat: v5 migration may have left some PINs unhashed. Try plaintext match
+    // and silently upgrade to hashed on success so the user logs in seamlessly.
+    staff = await db.staff.filter((s) => s.pin === pin && s.active).first();
+    if (staff) {
+      await db.staff.update(staff.id, { pin: hashed });
+      return staff;
+    }
+    return null;
   },
 
   async addStaff(name, pin, role = "cashier") {

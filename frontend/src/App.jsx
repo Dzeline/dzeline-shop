@@ -16,6 +16,7 @@ import { useStaffStore } from "./store/staffStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { dbHelpers } from "./services/db";
 import { syncService } from "./services/sync";
+import { useRegisterSW } from "virtual:pwa-register/react";
 
 // Pastel header gradients — index 0 is always Admin
 const HEADER_THEMES = [
@@ -176,6 +177,22 @@ function StaffMenu({ staff, onManage, onStockReceive, onInventory, onSuppliers, 
   );
 }
 
+function UpdateBanner() {
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+  if (!needRefresh) return null;
+  return (
+    <div className="fixed top-0 inset-x-0 z-[80] flex items-center justify-between gap-3 bg-indigo-600 text-white text-sm font-medium px-4 py-2.5 shadow-lg">
+      <span>App update available</span>
+      <button
+        onClick={() => updateServiceWorker(true)}
+        className="shrink-0 bg-white text-indigo-700 font-bold text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-50 active:scale-95 transition"
+      >
+        Refresh now
+      </button>
+    </div>
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState("products");
   const [showStaffMgmt, setShowStaffMgmt] = useState(false);
@@ -263,6 +280,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-900">
+      <UpdateBanner />
       {/* Header */}
       <header
         className="sticky-header text-white px-4 py-3"

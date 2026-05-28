@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { useStaffStore } from "../store/staffStore";
 import { useSettingsStore } from "../store/settingsStore";
+import PinRecovery from "./PinRecovery";
 
 const PAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✓"];
 
@@ -44,6 +45,7 @@ export default function PinLogin() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [shake, setShake] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
 
   useEffect(() => {
     dbHelpers.getAllStaff().then((list) => {
@@ -248,6 +250,16 @@ export default function PinLogin() {
           </>
         )}
       </div>
+
+      {/* Recovery link */}
+      <button
+        onClick={() => setShowRecovery(true)}
+        className="mt-5 text-white/35 text-xs hover:text-white/60 transition underline underline-offset-2"
+      >
+        Can&apos;t log in?
+      </button>
+
+      {showRecovery && <PinRecovery onClose={() => setShowRecovery(false)} />}
     </div>
   );
 }
