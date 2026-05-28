@@ -15,7 +15,7 @@ export default function PinRecovery({ onClose }) {
   async function handleVerify(e) {
     e.preventDefault();
     if (!shopNameInput.trim()) { setError("Enter your shop name"); return; }
-    const stored = await dbHelpers.getSetting("shopName");
+    const stored = await dbHelpers.getSetting("shop_name");
     if (!stored || stored.trim().toLowerCase() !== shopNameInput.trim().toLowerCase()) {
       setError("Shop name doesn't match — check spelling");
       return;
@@ -67,7 +67,7 @@ export default function PinRecovery({ onClose }) {
   const displayPin = confirmStage ? confirmPin : newPin;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 px-4 pb-4 sm:pb-0">
+    <div className="fixed inset-0 z-70 flex items-end sm:items-center justify-center bg-black/60 px-4 pb-4 sm:pb-0">
       <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-drop-in">
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">

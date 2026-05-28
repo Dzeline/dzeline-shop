@@ -36,7 +36,7 @@ function SupplierModal({ supplier, onSave, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-4">
+    <div className="fixed inset-0 z-60 bg-black/50 flex items-end sm:items-center justify-center p-4">
       <div className="bg-white w-full sm:max-w-md rounded-2xl shadow-2xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-gray-800">{supplier ? "Edit Supplier" : "New Supplier"}</h3>
@@ -190,7 +190,7 @@ function OrderModal({ supplier, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-60 bg-black/50 flex items-end sm:items-center justify-center">
       <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3 shrink-0">
@@ -515,7 +515,7 @@ export default function SuppliersScreen({ onClose }) {
 
       {/* Delete confirm */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-4">
+        <div className="fixed inset-0 z-60 bg-black/50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-white w-full sm:max-w-sm rounded-2xl shadow-2xl p-5 space-y-4">
             <h3 className="font-bold text-gray-800">Remove Supplier?</h3>
             <p className="text-sm text-gray-600">

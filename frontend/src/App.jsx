@@ -181,7 +181,7 @@ function UpdateBanner() {
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
   if (!needRefresh) return null;
   return (
-    <div className="fixed top-0 inset-x-0 z-[80] flex items-center justify-between gap-3 bg-indigo-600 text-white text-sm font-medium px-4 py-2.5 shadow-lg">
+    <div className="fixed top-0 inset-x-0 z-80 flex items-center justify-between gap-3 bg-indigo-600 text-white text-sm font-medium px-4 py-2.5 shadow-lg">
       <span>App update available</span>
       <button
         onClick={() => updateServiceWorker(true)}

@@ -45,7 +45,7 @@ export default function BarcodeScanner({ onScan, onClose }) {
   }, [onScan]);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black flex flex-col">
+    <div className="fixed inset-0 z-60 bg-black flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 bg-black/70 shrink-0">
         <p className="text-white font-semibold text-sm">Scan Barcode</p>
         <button
