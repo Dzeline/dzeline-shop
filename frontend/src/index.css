@@ -152,6 +152,21 @@ body {
   animation: slide-in-left 0.28s cubic-bezier(0.25, 1, 0.5, 1) both;
 }
 
+/* Wizard / form buttons — stronger press feel */
+.btn-press {
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+              background-color 140ms ease,
+              opacity 140ms ease;
+}
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* Safe area padding for bottom nav on iOS */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* Staff card — scales in on mount */
 @keyframes scale-in {
   from { opacity: 0; transform: scale(0.88); }

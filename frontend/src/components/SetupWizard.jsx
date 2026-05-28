@@ -333,7 +333,7 @@ export default function SetupWizard({ onComplete }) {
                 placeholder="e.g. 0712 345 678" className={INPUT} />
             </div>
             <button onClick={nextStep}
-              className="w-full mt-1 py-3.5 rounded-xl bg-primary text-white font-bold text-sm hover:bg-blue-600 active:scale-95 transition">
+              className="w-full mt-1 py-3.5 rounded-xl bg-primary text-white font-bold text-sm hover:bg-blue-600 btn-press">
               Continue →
             </button>
           </div>
@@ -370,10 +370,10 @@ export default function SetupWizard({ onComplete }) {
               </div>
             )}
             <div className="flex gap-2 pt-1">
-              <button onClick={() => goBack(0)} className="flex-1 py-3.5 rounded-xl border-2 border-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-50 active:scale-95 transition">
+              <button onClick={() => goBack(0)} className="flex-1 py-3.5 rounded-xl border-2 border-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-50 btn-press">
                 ← Back
               </button>
-              <button onClick={nextStep} className="flex-1 py-3.5 rounded-xl bg-primary text-white font-bold text-sm hover:bg-blue-600 active:scale-95 transition">
+              <button onClick={nextStep} className="flex-1 py-3.5 rounded-xl bg-primary text-white font-bold text-sm hover:bg-blue-600 btn-press">
                 Continue →
               </button>
             </div>
@@ -414,10 +414,10 @@ export default function SetupWizard({ onComplete }) {
               </p>
             </div>
             <div className="flex gap-2 pt-1">
-              <button onClick={() => goBack(1)} className="flex-1 py-3.5 rounded-xl border-2 border-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-50 active:scale-95 transition">
+              <button onClick={() => goBack(1)} className="flex-1 py-3.5 rounded-xl border-2 border-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-50 btn-press">
                 ← Back
               </button>
-              <button onClick={nextStep} className="flex-1 py-3.5 rounded-xl bg-primary text-white font-bold text-sm hover:bg-blue-600 active:scale-95 transition">
+              <button onClick={nextStep} className="flex-1 py-3.5 rounded-xl bg-primary text-white font-bold text-sm hover:bg-blue-600 btn-press">
                 Continue →
               </button>
             </div>
@@ -446,7 +446,7 @@ export default function SetupWizard({ onComplete }) {
             {saving && <p className="text-center text-sm text-gray-400 font-medium">Setting up your shop…</p>}
 
             <button onClick={() => goBack(2)} disabled={saving}
-              className="w-full py-3 rounded-xl border-2 border-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-50 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed">
+              className="w-full py-3 rounded-xl border-2 border-gray-100 text-gray-500 font-bold text-sm hover:bg-gray-50 btn-press disabled:opacity-40 disabled:cursor-not-allowed">
               ← Back
             </button>
           </div>
