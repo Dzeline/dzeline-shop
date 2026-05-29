@@ -39,13 +39,13 @@ function SidebarItem({ icon, label, onClick, danger = false }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-150 active:scale-[0.97] ${
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium btn-press ${
         danger
-          ? "text-red-500 hover:bg-red-50 active:bg-red-100"
-          : "text-gray-700 hover:bg-gray-100 active:bg-gray-200"
+          ? "text-red-400 hover:bg-red-500/10 active:bg-red-500/20"
+          : "text-gray-300 hover:bg-gray-800 active:bg-gray-700"
       }`}
     >
-      <span className={`shrink-0 ${danger ? "text-red-400" : "text-gray-400"}`}>{icon}</span>
+      <span className={`shrink-0 ${danger ? "text-red-500" : "text-gray-500"}`}>{icon}</span>
       {label}
     </button>
   );
@@ -54,7 +54,7 @@ function SidebarItem({ icon, label, onClick, danger = false }) {
 function SidebarSection({ title, children }) {
   return (
     <div className="px-3 pb-1">
-      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-1">{title}</p>
+      <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest px-1 mb-1">{title}</p>
       {children}
     </div>
   );
@@ -94,26 +94,26 @@ function StaffMenu({ staff, onManage, onStockReceive, onInventory, onSuppliers, 
 
       {/* Overlay */}
       <div
-        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity duration-250 ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-[3px] transition-opacity duration-300 ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
         onClick={() => setOpen(false)}
       />
 
-      {/* Sidebar panel */}
+      {/* Sidebar panel — dark theme, rounded left edge */}
       <div
-        className={`fixed top-0 right-0 bottom-0 z-50 w-72 bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${open ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed top-0 right-0 bottom-0 z-50 w-72 bg-gray-900 border-l border-gray-800 rounded-l-3xl shadow-2xl flex flex-col overflow-hidden transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${open ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-100">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-blue-500 flex items-center justify-center text-white font-bold text-base shrink-0">
+        <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-800">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base shrink-0">
             {staff.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-gray-900 text-sm truncate">{staff.name}</p>
-            <p className="text-xs text-gray-400">{isAdmin ? "Administrator ★" : "Cashier"}</p>
+            <p className="font-bold text-white text-sm truncate">{staff.name}</p>
+            <p className="text-xs text-gray-500">{isAdmin ? "Administrator ★" : "Cashier"}</p>
           </div>
           <button
             onClick={() => setOpen(false)}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition shrink-0"
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 text-gray-500 transition btn-press shrink-0"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -130,9 +130,9 @@ function StaffMenu({ staff, onManage, onStockReceive, onInventory, onSuppliers, 
 
           {isAdmin && (
             <SidebarSection title="Operations">
-              <SidebarItem icon={icons.stock}     label="Stock Receiving" onClick={close(onStockReceive)} />
-              <SidebarItem icon={icons.inventory} label="Inventory"       onClick={close(onInventory)} />
-              <SidebarItem icon={icons.suppliers} label="Suppliers"       onClick={close(onSuppliers)} />
+              <SidebarItem icon={icons.stock}     label="Stock Receiving"  onClick={close(onStockReceive)} />
+              <SidebarItem icon={icons.inventory} label="Inventory"        onClick={close(onInventory)} />
+              <SidebarItem icon={icons.suppliers} label="Suppliers"        onClick={close(onSuppliers)} />
               <SidebarItem icon={icons.staff}     label="Staff Management" onClick={close(onManage)} />
             </SidebarSection>
           )}
@@ -146,7 +146,7 @@ function StaffMenu({ staff, onManage, onStockReceive, onInventory, onSuppliers, 
         </div>
 
         {/* Logout pinned at bottom */}
-        <div className="px-3 py-3 border-t border-gray-100">
+        <div className="px-3 py-3 border-t border-gray-800">
           <SidebarItem icon={icons.logout} label="Sign Out" onClick={close(onLogout)} danger />
         </div>
       </div>

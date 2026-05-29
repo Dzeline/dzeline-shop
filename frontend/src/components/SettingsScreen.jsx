@@ -218,7 +218,7 @@ export default function SettingsScreen({ onClose }) {
         <button
           onClick={handleSave}
           disabled={saving || !dirty}
-          className={`px-4 py-1.5 rounded-xl text-sm font-bold transition active:scale-95 ${
+          className={`px-4 py-1.5 rounded-xl text-sm font-bold btn-press ${
             dirty && !saving
               ? "bg-primary text-white hover:bg-blue-600"
               : "bg-gray-100 text-gray-400 cursor-default"
@@ -430,7 +430,7 @@ export default function SettingsScreen({ onClose }) {
               type="button"
               onClick={handleEtimsSave}
               disabled={etimsSaving}
-              className="w-full py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-blue-600 active:scale-95 transition disabled:opacity-50"
+              className="w-full py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-blue-600 btn-press disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {etimsSaving ? "Saving…" : "Save eTIMS Config"}
             </button>
@@ -443,7 +443,7 @@ export default function SettingsScreen({ onClose }) {
                     type="button"
                     onClick={handleEtimsInit}
                     disabled={etimsIniting}
-                    className="w-full py-2.5 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 active:scale-95 transition disabled:opacity-50"
+                    className="w-full py-2.5 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 btn-press disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {etimsIniting ? "Initializing…" : "Initialize Device with KRA"}
                   </button>
@@ -467,7 +467,7 @@ export default function SettingsScreen({ onClose }) {
           <button
             onClick={handleSave}
             disabled={saving || !dirty}
-            className={`w-full py-3.5 rounded-xl font-bold text-sm transition active:scale-95 ${
+            className={`w-full py-3.5 rounded-xl font-bold text-sm btn-press ${
               dirty && !saving
                 ? "bg-primary text-white hover:bg-blue-600"
                 : "bg-gray-200 text-gray-400 cursor-default"
