@@ -5,7 +5,12 @@
       "Bash(Get-ChildItem -Depth 2)",
       "Bash(Select-Object FullName)",
       "Bash(mkdir -p \"C:\\\\Users\\\\Deline\\\\.claude\\\\skills\\\\android-pwa\")",
-      "Edit(~/.claude/skills/android-pwa/**)"
+      "Edit(~/.claude/skills/android-pwa/**)",
+      "PowerShell(Invoke-RestMethod -Uri \"https://dzeline-api.onrender.com/health\")",
+      "Bash(ls \"C:\\\\Users\\\\Deline\\\\.claude\\\\skills\\\\\")",
+      "Read(//c/Users/Deline/.claude/**)",
+      "PowerShell(Invoke-RestMethod -Uri \"https://dzeline-api.onrender.com/health\" -TimeoutSec 60)",
+      "Bash(curl -s http://localhost:5199)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Deline\\.claude\\skills"
