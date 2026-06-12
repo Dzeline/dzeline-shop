@@ -307,13 +307,18 @@ export const dbHelpers = {
     return await db.staff.toArray();
   },
 
-  async getStaffByPin(pin) {
+  async getStaffByPin(pin, staffId = null) {
     const hashed = await hashPin(pin);
-    let staff = await db.staff.filter((s) => s.pin === hashed && s.active).first();
+    const matchHashed = staffId != null
+      ? (s) => s.pin === hashed && s.active && s.id === staffId
+      : (s) => s.pin === hashed && s.active;
+    let staff = await db.staff.filter(matchHashed).first();
     if (staff) return staff;
-    // Backward-compat: v5 migration may have left some PINs unhashed. Try plaintext match
-    // and silently upgrade to hashed on success so the user logs in seamlessly.
-    staff = await db.staff.filter((s) => s.pin === pin && s.active).first();
+    // Backward-compat: v5 migration may have left some PINs unhashed
+    const matchPlain = staffId != null
+      ? (s) => s.pin === pin && s.active && s.id === staffId
+      : (s) => s.pin === pin && s.active;
+    staff = await db.staff.filter(matchPlain).first();
     if (staff) {
       await db.staff.update(staff.id, { pin: hashed });
       return staff;
@@ -321,14 +326,22 @@ export const dbHelpers = {
     return null;
   },
 
-  async addStaff(name, pin, role = "cashier") {
+  async addStaff(name, pin, role = "cashier", permissions = []) {
     const hashed = await hashPin(pin);
     return await db.staff.add({
       name,
       pin: hashed,
       role,
+      permissions: role === "custom" ? permissions : [],
       active: true,
       created_at: new Date().toISOString(),
+    });
+  },
+
+  async updateStaffRole(staffId, role, permissions = []) {
+    return await db.staff.update(staffId, {
+      role,
+      permissions: role === "custom" ? permissions : [],
     });
   },
 

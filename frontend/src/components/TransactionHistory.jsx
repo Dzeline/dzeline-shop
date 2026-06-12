@@ -20,7 +20,7 @@ const METHOD_STYLES = {
 };
 const METHOD_LABELS = { CASH: "Cash", MPESA: "M-Pesa", POCHI: "Pochi" };
 
-export default function TransactionHistory({ onClose, isAdmin = false }) {
+export default function TransactionHistory({ onClose, canVoid = false }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -65,14 +65,16 @@ export default function TransactionHistory({ onClose, isAdmin = false }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col animate-slide-up">
-      <header className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
-        <button
-          onClick={onClose}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
-        >
-          ‹
-        </button>
+    <div className="flex flex-col h-full bg-gray-900">
+      <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
+          >
+            ‹
+          </button>
+        )}
         <div className="flex-1 min-w-0">
           <h2 className="font-bold text-white">Transaction History</h2>
           <p className="text-xs text-gray-400">
@@ -209,7 +211,7 @@ export default function TransactionHistory({ onClose, isAdmin = false }) {
                     )}
                   </div>
 
-                  {isAdmin && !isVoided && (
+                  {canVoid && !isVoided && (
                     <div className="pt-2 border-t border-gray-200">
                       <button
                         onClick={() => handleVoid(txn)}

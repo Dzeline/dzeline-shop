@@ -70,8 +70,8 @@ export default function PinLogin() {
 
     if (key === "✓") {
       if (pin.length === 0) return;
-      const staff = await dbHelpers.getStaffByPin(pin);
-      if (staff && staff.id === selected.id) {
+      const staff = await dbHelpers.getStaffByPin(pin, selected.id);
+      if (staff) {
         setStaff(staff);
       } else {
         setError("Wrong PIN — try again");
@@ -86,12 +86,12 @@ export default function PinLogin() {
     setPin(next);
 
     if (next.length === 4) {
-      const staff = await dbHelpers.getStaffByPin(next);
-      if (staff && staff.id === selected.id) { setStaff(staff); return; }
+      const staff = await dbHelpers.getStaffByPin(next, selected.id);
+      if (staff) { setStaff(staff); return; }
     }
     if (next.length === 6) {
-      const staff = await dbHelpers.getStaffByPin(next);
-      if (staff && staff.id === selected.id) {
+      const staff = await dbHelpers.getStaffByPin(next, selected.id);
+      if (staff) {
         setStaff(staff);
       } else {
         setError("Wrong PIN — try again");
@@ -167,8 +167,15 @@ export default function PinLogin() {
                         <p className="font-bold text-gray-800 text-sm leading-tight truncate max-w-full">
                           {s.name}
                         </p>
-                        {s.role === "admin" && (
-                          <p className="text-yellow-500 text-xs font-semibold mt-0.5">Admin ★</p>
+                        {s.role && (
+                          <p className={`text-xs font-semibold mt-0.5 ${s.role === "admin" ? "text-yellow-500" : "text-gray-400"}`}>
+                            {s.role === "admin" ? "Admin ★"
+                              : s.role === "sub_admin" ? "Sub-Admin"
+                              : s.role === "stock_keeper" ? "Stock Keeper"
+                              : s.role === "sales_manager" ? "Sales Manager"
+                              : s.role === "custom" ? "Custom"
+                              : "Cashier"}
+                          </p>
                         )}
                       </div>
                     </button>

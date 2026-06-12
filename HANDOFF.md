@@ -4,7 +4,7 @@ Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
 
 ---
 
-## Status: Phase 5 Complete
+## Status: Phase E + A Complete
 
 | Phase | Theme | Status |
 | --- | --- | --- |
@@ -13,6 +13,52 @@ Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
 | 3 | Staff / PIN login | ✅ |
 | 4 | Backend, sync, transaction history | ✅ |
 | 5 | Product editing, Pochi, analytics, scanner | ✅ |
+| E | Navigation overhaul (bottom tab bar + inline panels) | ✅ |
+| A | RBAC — granular role-based permissions | ✅ |
+
+---
+
+## Phase E — Navigation Overhaul (Complete)
+
+Replaced 8 `show*` boolean flags in App.jsx with a persistent bottom tab bar and panel-based rendering. All full-screen modal overlays converted to inline panels.
+
+| Change | Detail |
+| --- | --- |
+| `navStore.js` | New Zustand store — `panel`, `sub`, `navigate()`, `navigateSub()` |
+| Bottom tab bar | 5 tabs: Products, Cart, Stock, Reports, Settings — permission-gated |
+| Sub-tab bars | Stock: Inventory / Receiving / Suppliers; Reports: Summary / History; Settings: Shop / Staff / eTIMS |
+| Screen components | Removed `fixed inset-0 z-50` from 8 screens; changed to `flex flex-col h-full` |
+| Header | Shows current panel/sub title below shop name; gradient changes per staff member |
+
+---
+
+## Phase A — RBAC (Complete)
+
+Replaced binary admin/cashier with 6 granular roles. Permissions gate both navigation tabs and UI actions.
+
+| File | Change |
+| --- | --- |
+| `src/utils/permissions.js` | Defines `FEATURES`, `ROLE_PERMISSIONS`, labels, colors, `ASSIGNABLE_ROLES` |
+| `src/hooks/usePermissions.js` | `usePermissions()` → `{ role, can(feature), permissions }` |
+| `App.jsx` | `usePermissions()` called unconditionally at top; tabs filtered by `can()` |
+| `StaffManagement.jsx` | `RoleChip`, `RoleSelector` components; inline role-change form per staff row |
+| `ProductList.jsx` | Edit/Add buttons gated by `can(FEATURES.EDIT_PRODUCTS)` |
+| `TransactionHistory.jsx` | Void button gated by `canVoid` prop (from `can(FEATURES.VOID_SALES)`) |
+| `PinLogin.jsx` | Shows role label for all roles; PIN lookup now passes `selected.id` so staff with identical PINs don't block each other |
+| `db.js` | `addStaff()` accepts `permissions[]`; `updateStaffRole()`; `getStaffByPin(pin, staffId?)` |
+
+**Roles and default permissions:**
+
+| Role | Permissions |
+| --- | --- |
+| admin | all |
+| sub_admin | pos, stock, reports, etims, edit_products, void_sales |
+| stock_keeper | pos, stock, reports |
+| sales_manager | pos, reports, etims |
+| cashier | pos, reports |
+| custom | manual selection |
+
+**PIN login fix:** `getStaffByPin` now accepts an optional `staffId` argument. When provided, the filter matches both PIN hash AND staff ID, so two staff sharing the same PIN no longer block each other's login.
 
 ---
 
@@ -58,7 +104,7 @@ Shelf prices **include** VAT. At checkout:
 
 ---
 
-## Database Schema (IndexedDB v5 via Dexie)
+## Database Schema (IndexedDB v8 via Dexie)
 
 | Table | Indexed fields | Notable unindexed fields |
 | --- | --- | --- |
@@ -66,7 +112,7 @@ Shelf prices **include** VAT. At checkout:
 | `transactions` | `++id, timestamp, total, payment_method, synced, staff_id` | `subtotal, vat, payment_amount, change_given, voided` |
 | `transaction_items` | `++id, transaction_id, product_id, quantity, price, subtotal` | |
 | `pending_mpesa` | `++id, transaction_id, code, timestamp, verified, amount` | stores codes for both M-Pesa and Pochi |
-| `staff` | `++id, name, pin, role, active, created_at` | `pin` is SHA-256 hex (64 chars) |
+| `staff` | `++id, name, pin, role, active, created_at` | `pin` is SHA-256 hex (64 chars); `permissions[]` for custom role |
 | `settings` | `key, value` | shop_name, kra_pin, mpesa_till, pochi_number, vat_rate, vat_enabled |
 | `stock_receipts` | `++id, timestamp, supplier, supplier_id, staff_id` | `items[]` (JSON), `photo_blob`, `invoice_number` |
 | `suppliers` | `++id, name, created_at` | `phone, email, notes` |
@@ -122,12 +168,14 @@ python run.py          # → http://localhost:8000
 
 ## Remaining Planned Work
 
-| Feature | Notes |
-| --- | --- |
-| M-Pesa STK Push (live) | Backend code exists; needs real Daraja creds + HTTPS callback URL |
-| KRA eTIMS VSCU signing | Requires KRA Virtual Sales Control Unit API access |
-| Bluetooth thermal printer | Web Bluetooth + ESC/POS protocol — not started |
-| Multi-device sync | Backend + frontend sync code done; blocked on backend deployment |
+| Feature | Phase | Notes |
+| --- | --- | --- |
+| Real-time multi-device sync | B | WebSocket hub — backend + client code planned |
+| Financial intelligence / balance sheet | C | Cost vs revenue, profit margin dashboard |
+| AI invoice / receipt scanning | D | Camera → OCR → auto-fill stock receive form |
+| M-Pesa STK Push (live) | — | Backend code exists; needs real Daraja creds + HTTPS callback URL |
+| KRA eTIMS VSCU signing | — | Requires KRA Virtual Sales Control Unit API access |
+| Bluetooth thermal printer | — | Web Bluetooth + ESC/POS protocol — not started |
 
 ---
 

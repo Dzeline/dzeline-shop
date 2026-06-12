@@ -132,17 +132,19 @@ export default function InventoryScreen({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col animate-slide-up">
+    <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
-        <button
-          onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
+      <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
         <h2 className="font-bold text-white text-base flex-1">Inventory</h2>
         {alertCount > 0 && (
           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-900/50 text-red-400 shrink-0">

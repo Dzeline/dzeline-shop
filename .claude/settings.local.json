@@ -11,7 +11,9 @@
       "Bash(npx playwright *)",
       "Bash(curl -s http://localhost:5200)",
       "Bash(npm install *)",
-      "Bash(node /tmp/ui-verify/verify.mjs)"
+      "Bash(node /tmp/ui-verify/verify.mjs)",
+      "Bash(npx tsc *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
     ]
   },
   "hooks": {

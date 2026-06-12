@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { useCartStore } from "../store/cartStore";
-import { useStaffStore } from "../store/staffStore";
 import { useDebounce } from "../utils/useDebounce";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import ProductEditModal from "./ProductEditModal";
 import ProductAddModal from "./ProductAddModal";
 import BarcodeScanner from "./BarcodeScanner";
+import { usePermissions } from "../hooks/usePermissions";
+import { FEATURES } from "../utils/permissions";
 
 const CATEGORY_GRADIENT = {
   Grains:    "from-amber-50 to-orange-100",
@@ -74,8 +75,8 @@ export default function ProductList() {
   const [editMode, setEditMode] = useState(false);
 
   const addItem = useCartStore((state) => state.addItem);
-  const currentStaff = useStaffStore((s) => s.currentStaff);
-  const isAdmin = currentStaff?.role === "admin";
+  const { can } = usePermissions();
+  const canEdit = can(FEATURES.EDIT_PRODUCTS);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -181,7 +182,7 @@ export default function ProductList() {
           </svg>
         </button>
 
-        {isAdmin && (
+        {canEdit && (
           <button
             onClick={() => setEditMode((v) => !v)}
             className={`shrink-0 w-10 h-10 flex items-center justify-center rounded-xl active:scale-95 transition ${
@@ -198,7 +199,7 @@ export default function ProductList() {
           </button>
         )}
 
-        {isAdmin && (
+        {canEdit && (
           <button
             onClick={() => setShowAddModal(true)}
             className="shrink-0 w-10 h-10 flex items-center justify-center bg-primary text-white rounded-xl hover:bg-blue-600 active:scale-95 transition"
@@ -234,7 +235,7 @@ export default function ProductList() {
           {products.map((product) => (
             <div
               key={product.id}
-              onClick={() => editMode && isAdmin && setEditingProduct(product)}
+              onClick={() => editMode && canEdit && setEditingProduct(product)}
               className={`bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col transition-shadow ${
                 editMode ? "ring-2 ring-primary/40 cursor-pointer hover:ring-primary" : "hover:shadow-md"
               }`}
@@ -267,7 +268,7 @@ export default function ProductList() {
                   <StockBadge stock={product.stock} reorderLevel={product.reorder_level} />
                 </div>
 
-                {editMode && isAdmin ? (
+                {editMode && canEdit ? (
                   <button
                     onClick={(e) => { e.stopPropagation(); setEditingProduct(product); }}
                     className="w-full py-2.5 rounded-xl font-bold text-sm bg-primary/10 text-primary hover:bg-primary/20 transition active:scale-95"

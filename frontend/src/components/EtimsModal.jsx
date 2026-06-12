@@ -112,13 +112,15 @@ export default function EtimsModal({ onClose }) {
   const selectedTotal = selectedItems.reduce((s, t) => s + (t.total || 0), 0);
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col animate-slide-up">
+    <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
       <div className="bg-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
-        <button
-          onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white"
-        >‹</button>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white"
+          >‹</button>
+        )}
         <div className="flex-1">
           <p className="font-bold text-white text-sm">eTIMS Submission</p>
           <p className="text-white/50 text-xs">KRA Electronic Tax Invoice</p>

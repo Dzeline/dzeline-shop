@@ -68,15 +68,17 @@ export default function DailySummary({ onClose }) {
     : range === "week" ? "This Week" : "This Month";
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col animate-slide-up">
+    <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
-      <header className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
-        <button
-          onClick={onClose}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
-        >
-          ‹
-        </button>
+      <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center gap-3 shrink-0">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 shrink-0"
+          >
+            ‹
+          </button>
+        )}
         <div className="flex-1 min-w-0">
           <h2 className="font-bold text-white">Summary</h2>
           <p className="text-xs text-gray-400 truncate">{rangeLabel}</p>

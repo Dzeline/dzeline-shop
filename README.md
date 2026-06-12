@@ -3,35 +3,35 @@
 Supermarket point-of-sale system built for Kenya's small businesses
 
 [![License: Private](https://img.shields.io/badge/License-Private-red.svg)](LICENSE)
-[![Phase: 2 Complete](https://img.shields.io/badge/Phase-2%20Complete-success)](HANDOFF.md)
+[![Phase: A Complete](https://img.shields.io/badge/Phase-A%20Complete-success)](HANDOFF.md)
 
 ## 🎯 Project Vision
 
 A mobile-first, offline-capable digital shop platform that works reliably in areas with unstable internet connectivity. Built specifically for small-to-medium supermarkets in Kenya.
 
-## ✨ Features (Phase 2 Complete)
+## ✨ Features
 
 - ✅ **100% Offline Operation** - Works without internet
-- ✅ **Product Catalog** - Browse & search with live debounced search
+- ✅ **Product Catalog** - Browse, search, barcode scan
 - ✅ **Shopping Cart** - Add, remove, adjust quantities
-- ✅ **VAT Calculation** - Automatic 16% Kenya VAT
-- ✅ **Cash Payments** - Full cash checkout with change calculation
-- ✅ **Receipt Generation** - KRA-style receipts with VAT breakdown
-- ✅ **Stock Decrement** - Inventory updated atomically on each sale
-- ✅ **Transaction History** - All sales persisted to IndexedDB
-- ✅ **Mobile-First UI** - Optimized for phones/tablets
-- ✅ **IndexedDB Storage** - Local-first data persistence
-- ✅ **Progressive Web App** - Installable on any device
+- ✅ **VAT Calculation** - Inclusive 16% Kenya VAT with KRA receipt
+- ✅ **Payments** - Cash, M-Pesa STK Push, Pochi la Biashara
+- ✅ **Transaction History** - Last 50 sales, expandable, void support
+- ✅ **Bottom Tab Navigation** - Products, Cart, Stock, Reports, Settings panels
+- ✅ **Role-Based Access Control** - 6 roles: Admin, Sub-Admin, Stock Keeper, Sales Manager, Cashier, Custom
+- ✅ **Staff PIN Login** - Per-staff PIN with SHA-256 hashing
+- ✅ **Stock Management** - Receiving, suppliers, reorder alerts, inventory by category
+- ✅ **Daily Summary & Analytics** - Today / This Week / This Month with cashier breakdown
+- ✅ **Product Images** - Camera capture → base64 in IndexedDB
+- ✅ **eTIMS / KRA** - Settings panel for KRA PIN and filing
+- ✅ **Progressive Web App** - Installable, offline-first, auto-update banner
 
-## 🚧 Coming Soon (Phase 3-4)
+## 🚧 Planned
 
-- 🔜 **M-Pesa Integration** - STK Push + offline fallback queue
-- 🔜 **Bluetooth Printing** - Thermal printer support
-- 🔜 **Cloud Sync** - Backup to server when online (sync_queue ready)
-- 🔜 **Multi-Device** - Sync across multiple registers
-- 🔜 **Analytics Dashboard** - Sales reports & insights
-- 🔜 **Staff Management** - Multi-cashier with shift reports
-- 🔜 **Barcode Scanner** - Camera + USB scanner support
+- 🔜 **Multi-device sync** - WebSocket real-time sync (Phase B)
+- 🔜 **Financial dashboard** - Cost vs revenue, profit margins (Phase C)
+- 🔜 **AI invoice scanning** - Camera → OCR → auto-fill stock receive (Phase D)
+- 🔜 **Bluetooth thermal printer** - Web Bluetooth + ESC/POS
 
 ## 🛠️ Tech Stack
 
@@ -120,12 +120,18 @@ ifconfig  # Mac/Linux
 
 ## 📊 Development Status
 
-| Phase                          | Status      | Completion |
-| ------------------------------ | ----------- | ---------- |
-| **Phase 1: Core Shop**         | ✅ Complete | 100%       |
-| **Phase 2: Payments**          | ✅ Complete | 100%       |
-| **Phase 3: Sync & Backend**    | 📋 Planned  | 0%         |
-| **Phase 4: Advanced Features** | 📋 Planned  | 0%         |
+| Phase                                 | Status      |
+| ------------------------------------- | ----------- |
+| **Phase 1: Core Shop**                | ✅ Complete |
+| **Phase 2: Payments**                 | ✅ Complete |
+| **Phase 3: Staff / PIN**              | ✅ Complete |
+| **Phase 4: Backend & Sync**           | ✅ Complete |
+| **Phase 5: Advanced Features**        | ✅ Complete |
+| **Phase E: Navigation Overhaul**      | ✅ Complete |
+| **Phase A: RBAC**                     | ✅ Complete |
+| **Phase B: Multi-device Sync**        | 📋 Planned  |
+| **Phase C: Financial Intelligence**   | 📋 Planned  |
+| **Phase D: AI Invoice Scanning**      | 📋 Planned  |
 
 See [HANDOFF.md](HANDOFF.md) for detailed development roadmap.
 
