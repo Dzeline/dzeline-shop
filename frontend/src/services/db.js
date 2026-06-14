@@ -512,6 +512,76 @@ export const dbHelpers = {
     };
   },
 
+  // ── Financial analytics (Phase C) ────────────────────────────────────────
+
+  async getFinancialSummary(startMs) {
+    const start = startMs ?? (() => {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    })();
+
+    const txns = (await db.transactions.where("timestamp").above(start).toArray())
+      .filter((t) => !t.voided);
+
+    const empty = {
+      revenue: 0, cogs: 0, grossProfit: 0, grossMargin: 0,
+      netRevenue: 0, vatCollected: 0, avgTransaction: 0,
+      transactionCount: 0, stockValue: 0, topProducts: [],
+    };
+
+    const allProducts = await db.products.toArray();
+    const stockValue = allProducts.reduce((s, p) => s + (p.stock * (p.cost_price ?? 0)), 0);
+
+    if (txns.length === 0) return { ...empty, stockValue };
+
+    const allItems = await db.transaction_items
+      .where("transaction_id").anyOf(txns.map((t) => t.id))
+      .toArray();
+
+    const productIds = [...new Set(allItems.map((i) => i.product_id))];
+    const products = await db.products.bulkGet(productIds);
+    const productMap = new Map(products.filter(Boolean).map((p) => [p.id, p]));
+
+    let cogs = 0;
+    const productMetrics = new Map();
+    for (const item of allItems) {
+      const product = productMap.get(item.product_id);
+      const costPrice = product?.cost_price ?? 0;
+      const itemCogs = item.quantity * costPrice;
+      cogs += itemCogs;
+
+      const m = productMetrics.get(item.product_id) ?? {
+        id: item.product_id, name: product?.name ?? "Unknown",
+        revenue: 0, cogs: 0, profit: 0, qty: 0,
+      };
+      m.revenue += item.subtotal;
+      m.cogs += itemCogs;
+      m.profit += item.subtotal - itemCogs;
+      m.qty += item.quantity;
+      productMetrics.set(item.product_id, m);
+    }
+
+    const revenue = txns.reduce((s, t) => s + (t.total || 0), 0);
+    const netRevenue = txns.reduce((s, t) => s + (t.subtotal || 0), 0);
+    const vatCollected = txns.reduce((s, t) => s + (t.vat || 0), 0);
+    const grossProfit = revenue - cogs;
+    const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+
+    const topProducts = [...productMetrics.values()]
+      .sort((a, b) => b.profit - a.profit)
+      .slice(0, 5)
+      .map((p) => ({ ...p, margin: p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0 }));
+
+    return {
+      revenue, cogs, grossProfit, grossMargin,
+      netRevenue, vatCollected,
+      avgTransaction: revenue / txns.length,
+      transactionCount: txns.length,
+      stockValue, topProducts,
+    };
+  },
+
   // ── eTIMS helpers ─────────────────────────────────────────────────────────
 
   async getEtimsQueue(limit = 200) {

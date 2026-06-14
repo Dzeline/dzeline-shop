@@ -11,6 +11,7 @@ import TransactionHistory from "./components/TransactionHistory";
 import InventoryScreen from "./components/InventoryScreen";
 import SuppliersScreen from "./components/SuppliersScreen";
 import EtimsModal from "./components/EtimsModal";
+import FinanceDashboard from "./components/FinanceDashboard";
 import { useOnline } from "./utils/useOnline";
 import { useCartStore } from "./store/cartStore";
 import { useStaffStore } from "./store/staffStore";
@@ -41,7 +42,7 @@ const PANEL_TITLES = {
   products: "Products",
   cart: "Cart",
   stock: { inventory: "Inventory", receiving: "Stock Receiving", suppliers: "Suppliers" },
-  reports: { summary: "Daily Summary", history: "Transactions" },
+  reports: { summary: "Daily Summary", history: "Transactions", finance: "Finance / P&L" },
   settings: { shop: "Shop Settings", staff: "Staff", etims: "eTIMS / KRA" },
 };
 
@@ -97,14 +98,15 @@ function ReportsPanel({ sub, navigateSub }) {
   return (
     <div className="flex flex-col h-full">
       <SubTabBar
-        options={["summary", "history"]}
-        labels={["Summary", "History"]}
+        options={["summary", "history", "finance"]}
+        labels={["Summary", "History", "Finance"]}
         active={sub}
         onChange={navigateSub}
       />
       <div className="flex-1 min-h-0">
         {sub === "summary" && <DailySummary />}
         {sub === "history" && <TransactionHistory canVoid={can(FEATURES.VOID_SALES)} />}
+        {sub === "finance" && <FinanceDashboard />}
       </div>
     </div>
   );

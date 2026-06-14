@@ -16,7 +16,7 @@ Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
 | E | Navigation overhaul (bottom tab bar + inline panels) | ✅ |
 | A | RBAC — granular role-based permissions | ✅ |
 | B | Real-time multi-device sync (WebSocket) | 📋 Planned |
-| C | Financial intelligence / balance sheet | 📋 Planned |
+| C | Financial intelligence / balance sheet | ✅ |
 | D | AI invoice / receipt scanning | 📋 Planned |
 
 ---
@@ -425,9 +425,9 @@ Render auto-deploys from `backend/` on push.
 
 | Severity | File | Issue |
 | --- | --- | --- |
-| 🔴 Crash | `StockReceiving.jsx:410` | Done button calls `onClose()` unconditionally but App.jsx passes no `onClose` → TypeError |
-| 🟡 UX | `PinLogin.jsx:88` | 4-digit PIN mismatch gives zero feedback (no shake/error) — only 6-digit path shows error |
-| 🟡 State | `navStore.js` | Logout doesn't reset panel — next user inherits previous panel, may see blank screen |
+| ~~🔴 Crash~~ | `StockReceiving.jsx:410` | ✅ Fixed — `onClose={() => navigateSub("inventory")}` passed from StockPanel |
+| 🟡 UX | `PinLogin.jsx:88` | 4-digit PIN mismatch gives zero feedback — by design (allows 6-digit continuation) |
+| ~~🟡 State~~ | `navStore.js` | ✅ Fixed — logout() now resets panel to "products" |
 | 🟡 Security | `staffStore.js` | Persisted session carries stale role until explicit logout; role demotions not immediate |
 | 🔵 Design | `App.jsx:447` | Permission guards duplicated between tab array and render block — must be kept in sync manually |
 
@@ -435,16 +435,14 @@ Render auto-deploys from `backend/` on push.
 
 ## Production TODOs
 
-- [ ] Fix `StockReceiving.jsx:410` Done button `onClose` guard (code review finding)
-- [ ] Fix `PinLogin.jsx:88` — add error/shake on 4-digit PIN failure
-- [ ] Reset navStore on logout: call `navigate('products')` in staffStore.logout()
-- [ ] Change admin PIN from `1234` (in `db.js` seed)
+- [x] Fix `StockReceiving.jsx:410` Done button crash
+- [x] Reset navStore on logout
+- [x] Fix `DB_VERSION` in `constants.js`
+- [x] Add structured logging to backend
+- [x] Add rate limiting to `/mpesa/stk-push` and `/sync/transactions`
 - [ ] Replace `pochiNumber: "0700000000"` in `constants.js`
 - [ ] Replace `kraPin: "P051234567X"` in `constants.js`
-- [ ] Fix `DB_VERSION = 3` in `constants.js` (actual version is 8, unused but misleading)
 - [ ] Add real 512×512 PNG app icon in `frontend/public/`
-- [ ] Add structured logging to backend (`import logging`)
-- [ ] Add rate limiting to `/mpesa/stk-push` and `/sync/transactions`
 - [ ] Add error tracking (Sentry or similar) on both frontend and backend
 - [ ] Wire Daraja per-tenant credentials from Settings UI → backend tenant record
 
@@ -455,7 +453,7 @@ Render auto-deploys from `backend/` on push.
 | Feature | Phase | Notes |
 | --- | --- | --- |
 | Real-time multi-device sync | B | WebSocket hub — backend + client code planned |
-| Financial intelligence / balance sheet | C | Cost vs revenue, profit margin dashboard |
+| Financial intelligence / balance sheet | C | ✅ Live — Finance tab in Reports: P&L, margin, COGS, stock valuation, top products by profit |
 | AI invoice / receipt scanning | D | Camera → OCR → auto-fill stock receive form |
 | M-Pesa STK Push (live) | — | Backend code exists; needs real Daraja creds + HTTPS callback URL |
 | KRA eTIMS VSCU signing | — | Requires KRA VSCU API access |
