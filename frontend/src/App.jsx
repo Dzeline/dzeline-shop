@@ -85,7 +85,7 @@ function StockPanel({ sub, navigateSub, currentStaffId }) {
       />
       <div className="flex-1 min-h-0">
         {sub === "inventory" && <InventoryScreen />}
-        {sub === "receiving" && <StockReceiving currentStaffId={currentStaffId} />}
+        {sub === "receiving" && <StockReceiving currentStaffId={currentStaffId} onClose={() => navigateSub("inventory")} />}
         {sub === "suppliers" && <SuppliersScreen />}
       </div>
     </div>

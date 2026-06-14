@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -6,8 +7,11 @@ from sqlalchemy.orm import Session
 import httpx
 from ..database import get_db
 from ..deps import get_tenant
+from ..limiter import limiter
 from ..models import StkRequest, Tenant
 from ..schemas import MpesaStkRequest, MpesaStkResponse, StkStatusResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mpesa", tags=["mpesa"])
 
@@ -63,7 +67,9 @@ def _get_access_token(tenant: Tenant) -> str:
 
 
 @router.post("/stk-push", response_model=MpesaStkResponse)
+@limiter.limit("10/minute")
 def stk_push(
+    request: Request,
     payload: MpesaStkRequest,
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_tenant),
@@ -122,6 +128,7 @@ def stk_push(
             amount=payload.amount,
         ))
         db.commit()
+        logger.info("stk_push initiated tenant=%s amount=%s checkout=%s", tenant.id, payload.amount, checkout_request_id)
 
     return MpesaStkResponse(
         checkout_request_id=checkout_request_id,
@@ -151,11 +158,13 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
             row.status     = "confirmed"
             row.mpesa_code = mpesa_code
             db.commit()
+        logger.info("mpesa_callback confirmed checkout=%s code=%s", checkout_id, mpesa_code)
         return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
     if row:
         row.status = "failed"
         db.commit()
+    logger.warning("mpesa_callback failed checkout=%s result_code=%s", checkout_id, result_code)
     return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
 

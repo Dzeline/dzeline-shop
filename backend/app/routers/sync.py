@@ -1,16 +1,21 @@
+import logging
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import get_tenant
+from ..limiter import limiter
 from ..models import Transaction, TransactionItem, Tenant
 from ..schemas import TransactionIn, TransactionOut
 
 router = APIRouter(prefix="/sync", tags=["sync"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/transactions", response_model=TransactionOut, status_code=201)
+@limiter.limit("120/minute")
 def sync_transaction(
+    request: Request,
     payload: TransactionIn,
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_tenant),
@@ -21,6 +26,7 @@ def sync_transaction(
         .first()
     )
     if existing:
+        logger.info("sync_transaction duplicate tenant=%s local_id=%s", tenant.id, payload.id)
         return existing
 
     txn = Transaction(
@@ -52,6 +58,7 @@ def sync_transaction(
 
     db.commit()
     db.refresh(txn)
+    logger.info("sync_transaction saved tenant=%s local_id=%s total=%s", tenant.id, payload.id, payload.total)
     return txn
 
 

@@ -15,4 +15,4 @@ export const SHOP_INFO = {
 };
 
 export const DB_NAME = "DzelineShop";
-export const DB_VERSION = 3;
+export const DB_VERSION = 8;

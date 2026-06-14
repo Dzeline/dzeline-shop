@@ -1,21 +1,47 @@
+import json
+import logging
 import os
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 from .database import Base, engine
+from .limiter import limiter
 from .routers import products, sync, mpesa, etims, sms, admin
 
 load_dotenv()
 
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps({
+            "time": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        })
+
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(_JsonFormatter())
+logging.basicConfig(handlers=[_handler], level=logging.INFO, force=True)
+
+logger = logging.getLogger(__name__)
+
 Base.metadata.create_all(bind=engine)
+logger.info("Database tables verified")
 
 app = FastAPI(
     title="Dzeline Shop API",
     description="Backend for Dzeline POS — sync, M-Pesa STK Push, product management",
     version="2.0.0",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,https://dzeline.online")
 app.add_middleware(
