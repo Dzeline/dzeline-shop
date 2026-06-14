@@ -13,7 +13,17 @@
       "Bash(npm install *)",
       "Bash(node /tmp/ui-verify/verify.mjs)",
       "Bash(npx tsc *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "Bash(node verify_rbac2.mjs)",
+      "Bash(node verify_rbac_full.mjs)",
+      "Bash(ls *.md)",
+      "Bash(ls frontend/*.md)",
+      "Bash(ls HANDOFF*)",
+      "Bash(ls frontend/HANDOFF*)",
+      "Bash(ls CLAUDE*)",
+      "Bash(git diff *)",
+      "Read(//tmp/**)",
+      "Read(//c/tmp/**)"
     ]
   },
   "hooks": {
