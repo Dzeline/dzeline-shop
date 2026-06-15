@@ -409,7 +409,7 @@ function App() {
   ];
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900 overflow-hidden">
+    <div className="h-dvh flex flex-col bg-gray-900 overflow-hidden">
       <UpdateBanner />
 
       {/* Header */}

@@ -40,7 +40,7 @@ function ProductPlaceholder({ category }) {
   const gradient = CATEGORY_GRADIENT[category] ?? CATEGORY_GRADIENT.Other;
   const textColor = CATEGORY_TEXT[category] ?? "text-gray-300";
   return (
-    <div className={`w-full h-24 bg-linear-to-br ${gradient} flex items-center justify-center select-none`}>
+    <div className={`w-full h-20 bg-linear-to-br ${gradient} flex items-center justify-center select-none`}>
       <span className={`text-4xl font-black ${textColor} opacity-60`}>
         {category?.charAt(0) ?? "?"}
       </span>
@@ -128,16 +128,16 @@ export default function ProductList() {
 
   if (loading) {
     return (
-      <div className="bg-gray-900 min-h-screen px-3 pt-3">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+      <div className="bg-gray-900 px-2.5 pt-3">
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-2xl shadow-sm overflow-hidden animate-pulse">
-              <div className="h-24 bg-gray-200" />
-              <div className="p-3 space-y-2">
+            <div key={i} className="bg-white rounded-3xl shadow-sm overflow-hidden animate-pulse">
+              <div className="h-20 bg-gray-200" />
+              <div className="p-2.5 space-y-2">
                 <div className="h-3 bg-gray-200 rounded w-1/2" />
                 <div className="h-4 bg-gray-200 rounded w-4/5" />
-                <div className="h-4 bg-gray-200 rounded w-3/5" />
-                <div className="h-9 bg-gray-200 rounded-xl mt-2" />
+                <div className="h-3.5 bg-gray-200 rounded w-3/5" />
+                <div className="h-8 bg-gray-200 rounded-2xl mt-1.5" />
               </div>
             </div>
           ))}
@@ -147,7 +147,7 @@ export default function ProductList() {
   }
 
   return (
-    <div className="bg-gray-900 min-h-screen px-3 pt-3 pb-4">
+    <div className="bg-gray-900 px-2.5 pt-3 pb-3">
       {/* Search + Scan + Edit Mode + Add */}
       <div className="flex gap-2 mb-3">
         <div className="relative flex-1">
@@ -231,12 +231,12 @@ export default function ProductList() {
           <p className="text-sm mt-1 text-gray-600">Try a different search term</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-4">
           {products.map((product) => (
             <div
               key={product.id}
               onClick={() => editMode && canEdit && setEditingProduct(product)}
-              className={`bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col transition-shadow ${
+              className={`bg-white rounded-3xl shadow-sm overflow-hidden flex flex-col transition-shadow ${
                 editMode ? "ring-2 ring-primary/40 cursor-pointer hover:ring-primary" : "hover:shadow-md"
               }`}
             >
@@ -245,24 +245,24 @@ export default function ProductList() {
                 <img
                   src={product.image_blob}
                   alt={product.name}
-                  className="w-full h-24 object-cover"
+                  className="w-full h-20 object-cover"
                 />
               ) : (
                 <ProductPlaceholder category={product.category} />
               )}
 
               {/* Content */}
-              <div className="p-3 flex flex-col flex-1">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1 truncate">
+              <div className="p-2.5 flex flex-col flex-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5 truncate">
                   {product.category}
                 </p>
-                <h3 className="font-bold text-sm text-gray-800 leading-snug mb-2 line-clamp-2 flex-1">
+                <h3 className="font-bold text-sm text-gray-800 leading-snug mb-1.5 line-clamp-2 flex-1">
                   {product.name}
                 </h3>
 
                 {/* Price + stock on one row */}
-                <div className="flex items-center justify-between mb-3 gap-1">
-                  <p className="text-lg font-extrabold text-primary leading-none">
+                <div className="flex items-center justify-between mb-2 gap-1">
+                  <p className="text-base font-extrabold text-primary leading-none">
                     {formatPrice(product.price)}
                   </p>
                   <StockBadge stock={product.stock} reorderLevel={product.reorder_level} />
@@ -271,7 +271,7 @@ export default function ProductList() {
                 {editMode && canEdit ? (
                   <button
                     onClick={(e) => { e.stopPropagation(); setEditingProduct(product); }}
-                    className="w-full py-2.5 rounded-xl font-bold text-sm bg-primary/10 text-primary hover:bg-primary/20 transition active:scale-95"
+                    className="w-full py-2 rounded-2xl font-bold text-sm bg-primary/10 text-primary hover:bg-primary/20 transition active:scale-95"
                   >
                     Edit Product
                   </button>
@@ -279,7 +279,7 @@ export default function ProductList() {
                   <button
                     onClick={() => handleAddToCart(product)}
                     disabled={product.stock === 0}
-                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition active:scale-95 ${
+                    className={`w-full py-2 rounded-2xl font-bold text-sm transition active:scale-95 ${
                       product.stock > 0
                         ? "bg-primary text-white hover:bg-blue-600"
                         : "bg-gray-100 text-gray-400 cursor-not-allowed"
