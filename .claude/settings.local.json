@@ -23,7 +23,10 @@
       "Bash(ls CLAUDE*)",
       "Bash(git diff *)",
       "Read(//tmp/**)",
-      "Read(//c/tmp/**)"
+      "Read(//c/tmp/**)",
+      "PowerShell(Get-Command vercel -ErrorAction SilentlyContinue)",
+      "PowerShell(vercel --version 2>&1)",
+      "PowerShell(cd \"c:\\\\Users\\\\Deline\\\\Documents\\\\github repos\\\\Dzeline\\\\dzeline-shop\\\\frontend\"; $env:VERCEL_TOKEN = \"\"; npx --yes vercel@latest --version 2>&1 | Select-Object -First 5)"
     ]
   },
   "hooks": {
