@@ -10,57 +10,45 @@ import BarcodeScanner from "./BarcodeScanner";
 import { usePermissions } from "../hooks/usePermissions";
 import { FEATURES } from "../utils/permissions";
 
-const CATEGORY_GRADIENT = {
-  Grains:    "from-amber-50 to-orange-100",
-  Sugar:     "from-rose-50 to-pink-100",
-  Dairy:     "from-sky-50 to-blue-100",
-  Oils:      "from-orange-50 to-yellow-100",
-  Bakery:    "from-yellow-50 to-amber-100",
-  Beverages: "from-teal-50 to-cyan-100",
-  Spices:    "from-red-50 to-orange-100",
-  Household: "from-slate-100 to-gray-200",
-  Produce:   "from-green-50 to-emerald-100",
-  Other:     "from-gray-100 to-slate-200",
+const CATEGORY_ACCENT = {
+  Grains:    "#f59e0b",
+  Sugar:     "#fb7185",
+  Dairy:     "#38bdf8",
+  Oils:      "#fb923c",
+  Bakery:    "#eab308",
+  Beverages: "#2dd4bf",
+  Spices:    "#f87171",
+  Household: "#94a3b8",
+  Produce:   "#4ade80",
+  Other:     "#9ca3af",
 };
 
-const CATEGORY_TEXT = {
-  Grains:    "text-amber-400",
-  Sugar:     "text-rose-400",
-  Dairy:     "text-sky-400",
-  Oils:      "text-orange-400",
-  Bakery:    "text-yellow-500",
-  Beverages: "text-teal-400",
-  Spices:    "text-red-400",
-  Household: "text-slate-400",
-  Produce:   "text-green-500",
-  Other:     "text-gray-400",
-};
-
-function ProductPlaceholder({ category }) {
-  const gradient = CATEGORY_GRADIENT[category] ?? CATEGORY_GRADIENT.Other;
-  const textColor = CATEGORY_TEXT[category] ?? "text-gray-300";
-  return (
-    <div className={`w-full h-20 bg-linear-to-br ${gradient} flex items-center justify-center select-none`}>
-      <span className={`text-4xl font-black ${textColor} opacity-60`}>
-        {category?.charAt(0) ?? "?"}
-      </span>
-    </div>
-  );
+function accent(category) {
+  return CATEGORY_ACCENT[category] ?? CATEGORY_ACCENT.Other;
 }
 
-function StockBadge({ stock, reorderLevel }) {
-  if (stock === 0) return null;
-  if (stock <= (reorderLevel ?? 10)) {
-    return (
-      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 shrink-0">
-        Low: {stock}
-      </span>
-    );
-  }
+function StockBar({ stock, reorderLevel }) {
+  const [width, setWidth] = useState(0);
+  const pct = Math.min(100, Math.max(0, stock));
+  const low = stock <= (reorderLevel ?? 10);
+  const color = stock === 0 ? "#ef4444" : low ? "#f97316" : "#22c55e";
+
+  useEffect(() => {
+    const id = setTimeout(() => setWidth(pct), 60);
+    return () => clearTimeout(id);
+  }, [pct]);
+
   return (
-    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 shrink-0">
-      {stock}
-    </span>
+    <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+      <div
+        className="h-full rounded-full"
+        style={{
+          width: `${width}%`,
+          background: color,
+          transition: "width 0.65s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      />
+    </div>
   );
 }
 
@@ -71,13 +59,11 @@ export default function ProductList() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-
   const [editMode, setEditMode] = useState(false);
 
   const addItem = useCartStore((state) => state.addItem);
   const { can } = usePermissions();
   const canEdit = can(FEATURES.EDIT_PRODUCTS);
-
   const debouncedSearch = useDebounce(search, 300);
 
   const loadProducts = useCallback(async () => {
@@ -102,11 +88,8 @@ export default function ProductList() {
   useEffect(() => { loadProducts(); }, [loadProducts]);
 
   useEffect(() => {
-    if (debouncedSearch.trim() === "") {
-      loadProducts();
-    } else {
-      searchProducts(debouncedSearch);
-    }
+    if (debouncedSearch.trim() === "") loadProducts();
+    else searchProducts(debouncedSearch);
   }, [debouncedSearch, loadProducts, searchProducts]);
 
   function handleAddToCart(product) {
@@ -129,15 +112,17 @@ export default function ProductList() {
   if (loading) {
     return (
       <div className="bg-gray-900 px-2.5 pt-3">
-        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-3xl shadow-sm overflow-hidden animate-pulse">
-              <div className="h-20 bg-gray-200" />
-              <div className="p-2.5 space-y-2">
-                <div className="h-3 bg-gray-200 rounded w-1/2" />
-                <div className="h-4 bg-gray-200 rounded w-4/5" />
-                <div className="h-3.5 bg-gray-200 rounded w-3/5" />
-                <div className="h-8 bg-gray-200 rounded-2xl mt-1.5" />
+        <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-3xl overflow-hidden animate-pulse">
+              <div className="h-1.5 bg-gray-200" />
+              <div className="p-2.5 space-y-2 pt-3">
+                <div className="h-2 bg-gray-100 rounded w-2/3" />
+                <div className="h-3 bg-gray-100 rounded w-full" />
+                <div className="h-3 bg-gray-100 rounded w-4/5" />
+                <div className="h-1 bg-gray-100 rounded-full mt-2" />
+                <div className="h-3.5 bg-gray-100 rounded w-1/2 mt-1" />
+                <div className="h-7 bg-gray-100 rounded-2xl mt-2" />
               </div>
             </div>
           ))}
@@ -219,7 +204,7 @@ export default function ProductList() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
-          <p className="text-primary text-xs font-semibold flex-1">Edit mode — tap a product card to edit it</p>
+          <p className="text-primary text-xs font-semibold flex-1">Tap a product to edit it</p>
           <button onClick={() => setEditMode(false)} className="text-primary/60 hover:text-primary text-xs font-bold">Done</button>
         </div>
       )}
@@ -231,66 +216,89 @@ export default function ProductList() {
           <p className="text-sm mt-1 text-gray-600">Try a different search term</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-4">
-          {products.map((product) => (
-            <div
-              key={product.id}
-              onClick={() => editMode && canEdit && setEditingProduct(product)}
-              className={`bg-white rounded-3xl shadow-sm overflow-hidden flex flex-col transition-shadow ${
-                editMode ? "ring-2 ring-primary/40 cursor-pointer hover:ring-primary" : "hover:shadow-md"
-              }`}
-            >
-              {/* Image or gradient placeholder */}
-              {product.image_blob ? (
-                <img
-                  src={product.image_blob}
-                  alt={product.name}
-                  className="w-full h-20 object-cover"
-                />
-              ) : (
-                <ProductPlaceholder category={product.category} />
-              )}
+        <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
+          {products.map((product, idx) => {
+            const col = accent(product.category);
+            const outOfStock = product.stock === 0;
 
-              {/* Content */}
-              <div className="p-2.5 flex flex-col flex-1">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5 truncate">
-                  {product.category}
-                </p>
-                <h3 className="font-bold text-sm text-gray-800 leading-snug mb-1.5 line-clamp-2 flex-1">
-                  {product.name}
-                </h3>
+            return (
+              <div
+                key={product.id}
+                onClick={() => editMode && canEdit && setEditingProduct(product)}
+                className={`animate-scale-in bg-white rounded-3xl shadow-sm overflow-hidden flex flex-col transition-shadow ${
+                  editMode ? "ring-2 ring-primary/40 cursor-pointer hover:ring-primary" : "hover:shadow-md"
+                }`}
+                style={{ animationDelay: `${Math.min(idx, 8) * 0.04}s` }}
+              >
+                {/* Category accent strip */}
+                <div className="h-1.5 shrink-0" style={{ background: col }} />
 
-                {/* Price + stock on one row */}
-                <div className="flex items-center justify-between mb-2 gap-1">
-                  <p className="text-base font-extrabold text-primary leading-none">
-                    {formatPrice(product.price)}
-                  </p>
-                  <StockBadge stock={product.stock} reorderLevel={product.reorder_level} />
-                </div>
-
-                {editMode && canEdit ? (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingProduct(product); }}
-                    className="w-full py-2 rounded-2xl font-bold text-sm bg-primary/10 text-primary hover:bg-primary/20 transition active:scale-95"
-                  >
-                    Edit Product
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleAddToCart(product)}
-                    disabled={product.stock === 0}
-                    className={`w-full py-2 rounded-2xl font-bold text-sm transition active:scale-95 ${
-                      product.stock > 0
-                        ? "bg-primary text-white hover:bg-blue-600"
-                        : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                    }`}
-                  >
-                    {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
-                  </button>
+                {/* Product image (only if set) */}
+                {product.image_blob && (
+                  <img
+                    src={product.image_blob}
+                    alt={product.name}
+                    className="w-full h-16 object-cover"
+                  />
                 )}
+
+                {/* Content */}
+                <div className="p-2.5 flex flex-col flex-1 gap-1">
+                  {/* Category label */}
+                  <p
+                    className="text-[9px] font-bold uppercase tracking-widest leading-none truncate"
+                    style={{ color: col }}
+                  >
+                    {product.category ?? "Other"}
+                  </p>
+
+                  {/* Product name */}
+                  <h3 className="font-bold text-xs text-gray-800 leading-snug line-clamp-2 flex-1">
+                    {product.name}
+                  </h3>
+
+                  {/* Stock bar */}
+                  <StockBar stock={product.stock} reorderLevel={product.reorder_level} />
+
+                  {/* Price + stock count */}
+                  <div className="flex items-end justify-between gap-1 mt-0.5">
+                    <p className={`text-sm font-extrabold leading-none ${outOfStock ? "text-gray-300" : "text-primary"}`}>
+                      {formatPrice(product.price)}
+                    </p>
+                    {!outOfStock && (
+                      <span className={`text-[9px] font-semibold leading-none pb-px ${
+                        product.stock <= (product.reorder_level ?? 10) ? "text-orange-400" : "text-gray-400"
+                      }`}>
+                        {product.stock}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Action button */}
+                  {editMode && canEdit ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingProduct(product); }}
+                      className="w-full py-1.5 rounded-2xl font-bold text-xs bg-primary/10 text-primary hover:bg-primary/20 transition active:scale-95 mt-0.5"
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleAddToCart(product)}
+                      disabled={outOfStock}
+                      className={`w-full py-1.5 rounded-2xl font-bold text-xs transition active:scale-95 mt-0.5 ${
+                        outOfStock
+                          ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                          : "bg-primary text-white hover:bg-blue-600"
+                      }`}
+                    >
+                      {outOfStock ? "Sold Out" : "Add"}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
