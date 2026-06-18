@@ -385,58 +385,35 @@ Generate secrets: `python -c "import secrets; print(secrets.token_hex(32))"`
 
 The PWA is packaged as a real Android APK using Google's [bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap) tool. The APK wraps `dzeline.online` in a Chrome TWA shell — no code duplication. Distribute the signed APK directly (WhatsApp, email, download link) without Play Store.
 
-**One-time setup (do this once before the first build):**
+**Prerequisites (install once):**
+
+- [Java JDK 17+](https://adoptium.net) — provides `keytool` for signing
+- Node.js 18+ — already required for the frontend
+
+Everything else (bubblewrap, icons, keystore, assetlinks.json) is handled automatically by the wizard.
+
+**Run the wizard:**
 
 ```bash
-# 1. Install bubblewrap globally
-npm install -g @bubblewrap/cli
-
-# 2. Install Java JDK 17+ and Android SDK command-line tools if not present
-#    bubblewrap will prompt to auto-install the Android SDK on first run
-
-# 3. Generate PNG icons from the SVG source
-cd frontend && npm run generate-icons && cd ..
-
-# 4. Generate a signing keystore (keep android.keystore safe — never commit it)
-keytool -genkey -v \
-  -keystore android.keystore \
-  -alias dzeline \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000
-# Fill in the prompts: name, org, city, country, password
-
-# 5. Get the SHA256 certificate fingerprint
-keytool -list -v -keystore android.keystore -alias dzeline
-# Copy the SHA-256 value from the output, e.g.:
-#   AB:CD:12:34:...
-
-# 6. Paste the fingerprint into:  frontend/public/.well-known/assetlinks.json
-#    Replace "REPLACE_WITH_YOUR_SHA256_FINGERPRINT" with the value above
-#    (keep colons, e.g. "AB:CD:12:34:EF:...")
-
-# 7. Deploy the frontend so assetlinks.json is live at:
-#    https://dzeline.online/.well-known/assetlinks.json
+# From repo root
+npm run build-apk
 ```
 
-**Build the APK (every release):**
+The wizard walks through five steps:
 
-```bash
-# From repo root (where twa-manifest.json lives)
-
-# First build only — initialises the Android project
-bubblewrap init --manifest https://dzeline.online/manifest.webmanifest
-
-# All subsequent builds
-bubblewrap build
-# → outputs app-release-signed.apk in the repo root
-```
+| Step | What it does | Manual work required |
+| --- | --- | --- |
+| 1 | Checks Java and bubblewrap (auto-installs bubblewrap if missing) | Install Java if prompted |
+| 2 | Generates PNG icons from `favicon.svg` | None |
+| 3 | Creates signing keystore, extracts SHA-256, patches `assetlinks.json` | Choose a password |
+| 4 | Waits for you to push the frontend to Vercel, then verifies the live link | `git push` |
+| 5 | Runs `bubblewrap build`, shows APK path and distribution instructions | None |
 
 **Distribute the APK:**
 
 - Host `app-release-signed.apk` on GitHub Releases or any static URL
 - Share the download link — users tap it on Android, allow "Install unknown apps", done
-- To update: bump `appVersionCode` (integer) and `appVersionName` in `twa-manifest.json`, rebuild, re-share the new APK
+- To update: bump `appVersionCode` (integer) and `appVersionName` in `twa-manifest.json`, re-run `npm run build-apk`
 
 **How the TWA verification works:**
 
