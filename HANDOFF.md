@@ -4,7 +4,7 @@ Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
 
 ---
 
-## Status: Phase E + A Complete — MVP Ready
+## Status: Phases C + D Complete — MVP + AI Scanning Ready
 
 | Phase | Theme | Status |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
 | A | RBAC — granular role-based permissions | ✅ |
 | B | Real-time multi-device sync (WebSocket) | 📋 Planned |
 | C | Financial intelligence / balance sheet | ✅ |
-| D | AI invoice / receipt scanning | 📋 Planned |
+| D | AI invoice / receipt scanning | ✅ |
 
 ---
 
@@ -92,6 +92,7 @@ VITE_API_URL=https://dzeline-api.onrender.com
 | `etims.js` | `/etims/device/init` | POST | Initialize VSCU device |
 | `etims.js` | `/etims/items/register` | POST | Register product catalogue with KRA |
 | `etims.js` | `/etims/submit-batch` | POST | Submit invoices to KRA |
+| `StockReceiving.jsx` | `/scan/invoice` | POST | AI invoice scan (Claude Haiku vision) |
 
 ### Frontend State → Components
 
@@ -231,6 +232,14 @@ All require `X-Admin-Secret` header.
 | POST | `/admin/tenants/{id}/rotate-key` | Rotate API key (returns new raw key once) |
 | POST | `/admin/tenants/{id}/claim-legacy-data` | Migrate single-tenant data to tenant_id |
 
+### AI Invoice Scanning
+
+Requires `ANTHROPIC_API_KEY` set in backend env. Rate limited: 6 requests/minute per tenant.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | `/scan/invoice` | Analyze base64 invoice photo → `{ supplier, invoice_number, items[] }` |
+
 ### Health
 
 ```http
@@ -360,6 +369,7 @@ vat        = grandTotal − subtotal   ← extracted VAT shown on receipt
 | `ETIMS_TIN` | real KRA TIN | ✅ (eTIMS) |
 | `ETIMS_BHF_ID` | `00` | ✅ (eTIMS) |
 | `ETIMS_DEVICE_SERIAL` | VSCU serial number | ✅ (eTIMS) |
+| `ANTHROPIC_API_KEY` | from console.anthropic.com | ✅ (AI scan) |
 
 Generate secrets: `python -c "import secrets; print(secrets.token_hex(32))"`
 
@@ -454,12 +464,12 @@ Render auto-deploys from `backend/` on push.
 | --- | --- | --- |
 | Real-time multi-device sync | B | WebSocket hub — backend + client code planned |
 | Financial intelligence / balance sheet | C | ✅ Live — Finance tab in Reports: P&L, margin, COGS, stock valuation, top products by profit |
-| AI invoice / receipt scanning | D | Camera → OCR → auto-fill stock receive form |
+| AI invoice / receipt scanning | D | ✅ Live — "Scan Invoice" button in Stock Receiving; Claude Haiku vision auto-fills supplier, invoice no., line items |
 | M-Pesa STK Push (live) | — | Backend code exists; needs real Daraja creds + HTTPS callback URL |
 | KRA eTIMS VSCU signing | — | Requires KRA VSCU API access |
 | Bluetooth thermal printer | — | Web Bluetooth + ESC/POS protocol — not started |
-| Rate limiting | — | Add FastAPI middleware (e.g., slowapi) |
-| Observability | — | Structured logs + error tracking (Sentry) |
+| Rate limiting | — | ✅ Done — slowapi on /mpesa/stk-push, /sync/transactions, /scan/invoice |
+| Observability | — | ✅ Done — structured JSON logging on backend; Sentry not yet added |
 | E2E test suite | — | Playwright installed, no test files yet |
 
 ---
