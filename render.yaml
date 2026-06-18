@@ -3,9 +3,9 @@ services:
     name: dzeline-api
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: apt-get install -y -qq libgomp1 libglib2.0-0 && pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    plan: free
+    plan: standard
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -39,6 +39,8 @@ services:
         sync: false
       - key: ADMIN_SECRET
         sync: false
+      - key: PADDLE_HOME
+        value: /opt/paddle_models
 
 databases:
   - name: dzeline-db

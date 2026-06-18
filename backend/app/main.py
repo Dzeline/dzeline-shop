@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,10 +35,29 @@ logger = logging.getLogger(__name__)
 Base.metadata.create_all(bind=engine)
 logger.info("Database tables verified")
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Pre-warm PaddleOCR in a thread so models are downloaded/cached before
+    # the first real scan request hits.  Failure is non-fatal — the route
+    # will initialise lazily on its first call instead.
+    import asyncio
+    import concurrent.futures
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        try:
+            await loop.run_in_executor(pool, scan._get_ocr)
+            logger.info("PaddleOCR pre-warm complete")
+        except Exception as e:
+            logger.warning("PaddleOCR pre-warm skipped: %s", e)
+    yield
+
+
 app = FastAPI(
     title="Dzeline Shop API",
     description="Backend for Dzeline POS — sync, M-Pesa STK Push, product management",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
