@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg"],
+      includeAssets: ["favicon.svg", "icons/*.png"],
       manifest: {
         name: "Dzeline Shop",
         short_name: "Dzeline",
@@ -20,12 +20,18 @@ export default defineConfig({
         orientation: "portrait",
         start_url: "/",
         icons: [
+          // SVG fallback for browsers that support it
           {
             src: "/favicon.svg",
             sizes: "any",
             type: "image/svg+xml",
-            purpose: "any maskable",
+            purpose: "any",
           },
+          // PNG icons required by TWA / Android launcher
+          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-256.png", sizes: "256x256", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
       workbox: {

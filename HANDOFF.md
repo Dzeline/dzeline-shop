@@ -381,6 +381,82 @@ Generate secrets: `python -c "import secrets; print(secrets.token_hex(32))"`
 
 ---
 
+## Android APK (TWA — Trusted Web Activity)
+
+The PWA is packaged as a real Android APK using Google's [bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap) tool. The APK wraps `dzeline.online` in a Chrome TWA shell — no code duplication. Distribute the signed APK directly (WhatsApp, email, download link) without Play Store.
+
+**One-time setup (do this once before the first build):**
+
+```bash
+# 1. Install bubblewrap globally
+npm install -g @bubblewrap/cli
+
+# 2. Install Java JDK 17+ and Android SDK command-line tools if not present
+#    bubblewrap will prompt to auto-install the Android SDK on first run
+
+# 3. Generate PNG icons from the SVG source
+cd frontend && npm run generate-icons && cd ..
+
+# 4. Generate a signing keystore (keep android.keystore safe — never commit it)
+keytool -genkey -v \
+  -keystore android.keystore \
+  -alias dzeline \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000
+# Fill in the prompts: name, org, city, country, password
+
+# 5. Get the SHA256 certificate fingerprint
+keytool -list -v -keystore android.keystore -alias dzeline
+# Copy the SHA-256 value from the output, e.g.:
+#   AB:CD:12:34:...
+
+# 6. Paste the fingerprint into:  frontend/public/.well-known/assetlinks.json
+#    Replace "REPLACE_WITH_YOUR_SHA256_FINGERPRINT" with the value above
+#    (keep colons, e.g. "AB:CD:12:34:EF:...")
+
+# 7. Deploy the frontend so assetlinks.json is live at:
+#    https://dzeline.online/.well-known/assetlinks.json
+```
+
+**Build the APK (every release):**
+
+```bash
+# From repo root (where twa-manifest.json lives)
+
+# First build only — initialises the Android project
+bubblewrap init --manifest https://dzeline.online/manifest.webmanifest
+
+# All subsequent builds
+bubblewrap build
+# → outputs app-release-signed.apk in the repo root
+```
+
+**Distribute the APK:**
+
+- Host `app-release-signed.apk` on GitHub Releases or any static URL
+- Share the download link — users tap it on Android, allow "Install unknown apps", done
+- To update: bump `appVersionCode` (integer) and `appVersionName` in `twa-manifest.json`, rebuild, re-share the new APK
+
+**How the TWA verification works:**
+
+```text
+Android opens https://dzeline.online
+    ↓
+Chrome fetches /.well-known/assetlinks.json
+    ↓
+Checks SHA256 fingerprint matches the installed APK's signing cert
+    ↓ match
+Runs in full-screen TWA mode (no browser chrome, looks fully native)
+    ↓ no match
+Falls back to Custom Tab (browser chrome visible — still works, just looks less native)
+```
+
+**iOS:**
+Apple requires a $99/year Developer Account + Mac with Xcode. PWABuilder (pwabduilder.microsoft.com) can generate an Xcode project from the PWA, but signing and distribution still require the Apple account. The PWA installs natively on iOS via "Add to Home Screen" from Safari — that's the practical iOS path for now.
+
+---
+
 ## Development Setup
 
 ```bash

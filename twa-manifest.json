@@ -1,0 +1,41 @@
+{
+  "packageId": "online.dzeline.shop",
+  "host": "dzeline.online",
+  "name": "Dzeline Shop",
+  "launcherName": "Dzeline",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#2563eb",
+  "backgroundColor": "#1e1b4b",
+  "startUrl": "/",
+  "iconUrl": "https://dzeline.online/icons/icon-512.png",
+  "maskableIconUrl": "https://dzeline.online/icons/icon-512-maskable.png",
+  "monochromeIconUrl": "https://dzeline.online/icons/icon-192.png",
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://dzeline.online/manifest.webmanifest",
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://dzeline.online/",
+  "minSdkVersion": 19,
+  "signingKey": {
+    "path": "android.keystore",
+    "alias": "dzeline"
+  },
+  "enableNotifications": false,
+  "features": {
+    "locationDelegation": { "enabled": false },
+    "playBilling": { "enabled": false }
+  },
+  "alphaDependencies": { "enabled": false },
+  "enableSiteSettingsShortcut": true,
+  "isTrustedWebActivity": true,
+  "serviceAccountJsonFile": "",
+  "fallbackType": "customtabs",
+  "serviceWorker": {},
+  "enableWebAuthn": false,
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}
