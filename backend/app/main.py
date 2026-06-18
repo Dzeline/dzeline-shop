@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -41,15 +42,11 @@ async def lifespan(_app: FastAPI):
     # Pre-warm PaddleOCR in a thread so models are downloaded/cached before
     # the first real scan request hits.  Failure is non-fatal — the route
     # will initialise lazily on its first call instead.
-    import asyncio
-    import concurrent.futures
-    loop = asyncio.get_event_loop()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        try:
-            await loop.run_in_executor(pool, scan._get_ocr)
-            logger.info("PaddleOCR pre-warm complete")
-        except Exception as e:
-            logger.warning("PaddleOCR pre-warm skipped: %s", e)
+    try:
+        await asyncio.to_thread(scan._get_ocr)
+        logger.info("PaddleOCR pre-warm complete")
+    except Exception as e:
+        logger.warning("PaddleOCR pre-warm skipped: %s", e)
     yield
 
 

@@ -53,8 +53,8 @@ def _get_ocr():
 
 # ── Image helpers ─────────────────────────────────────────────────────────────
 
-_MAX_SIDE = 3000   # px — downsample very large photos before OCR
-_MAX_B64  = 7_000_000  # raw base64 bytes (~5.25 MB decoded image)
+_MAX_SIDE    = 3000        # px — downsample very large photos before OCR
+_MAX_DECODED = 7_000_000   # 7 MB of actual decoded image bytes
 
 
 def _decode_image(image_base64: str) -> np.ndarray:
@@ -63,10 +63,9 @@ def _decode_image(image_base64: str) -> np.ndarray:
     if data.startswith("data:"):
         data = data.split(",", 1)[1]
 
-    if len(data) > _MAX_B64:
-        raise HTTPException(status_code=413, detail="Image too large — use a compressed photo")
-
     img_bytes = base64.b64decode(data)
+    if len(img_bytes) > _MAX_DECODED:
+        raise HTTPException(status_code=413, detail="Image too large — use a compressed photo (max 7 MB)")
     pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
     # Downsample if either dimension is very large (speeds up OCR ~4×)
@@ -213,7 +212,7 @@ def _parse_invoice(ocr_result) -> dict:
             unit_cost = nums[0]
         else:
             # Small whole number first → likely qty; second → unit cost
-            if nums[0] < 500 and nums[0] == int(nums[0]) and nums[1] >= nums[0]:
+            if nums[0] <= 500 and nums[0] == int(nums[0]) and nums[1] >= nums[0]:
                 qty = nums[0]
                 unit_cost = nums[1]
             else:

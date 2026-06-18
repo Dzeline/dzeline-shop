@@ -80,7 +80,7 @@ function ScanOverlay({ results, onApply, onDismiss }) {
               </div>
               <div className="text-right shrink-0">
                 <p className="text-xs font-bold text-gray-700">×{item.qty}</p>
-                {item.unit_cost && (
+                {item.unit_cost != null && (
                   <p className="text-xs text-gray-400">{formatPrice(item.unit_cost)}</p>
                 )}
               </div>

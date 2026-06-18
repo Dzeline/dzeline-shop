@@ -98,8 +98,8 @@ function run(cmd, cwd = ROOT) {
   return execSync(cmd, { cwd, stdio: "pipe", encoding: "utf8" }).trim();
 }
 
-function runArgs(bin, args, cwd = ROOT) {
-  return spawnSync(bin, args, { cwd, stdio: "pipe", encoding: "utf8", shell: process.platform === "win32" });
+function runArgs(bin, args, cwd = ROOT, opts = {}) {
+  return spawnSync(bin, args, { cwd, stdio: "pipe", encoding: "utf8", shell: process.platform === "win32", ...opts });
 }
 
 function runInteractive(bin, args) {
@@ -119,6 +119,14 @@ function fetchText(url) {
       r.on("data", (c) => (d += c));
       r.on("end", () => res(d));
     }).on("error", rej);
+  });
+}
+
+function fetchHead(url) {
+  return new Promise((res, rej) => {
+    const req = https.request(url, { method: "HEAD" }, (r) => res(r.statusCode));
+    req.on("error", rej);
+    req.end();
   });
 }
 
@@ -259,14 +267,16 @@ async function setupKeystore() {
     const owner = await ask("Your name or organisation  (e.g. Dzeline Ltd)");
 
     const s = new Spin().start("Generating signing keystore...");
+    // Password passed via env var so it never appears in process args (/proc/pid/cmdline)
     const r = runArgs("keytool", [
       "-genkey", "-v",
       "-keystore", ksPath,
       "-alias",   "dzeline",
       "-keyalg",  "RSA", "-keysize", "2048", "-validity", "10000",
-      "-storepass", pass, "-keypass", pass,
+      "-storepass:env", "DZELINE_KS_PASS",
+      "-keypass:env",   "DZELINE_KS_PASS",
       "-dname",   `CN=${owner}, OU=App, O=${owner}, L=Nairobi, ST=Nairobi, C=KE`,
-    ]);
+    ], ROOT, { env: { ...process.env, DZELINE_KS_PASS: pass } });
 
     if (r.status !== 0) {
       s.fail("keytool failed");
@@ -287,8 +297,8 @@ async function setupKeystore() {
     "-list", "-v",
     "-keystore", ksPath,
     "-alias",    "dzeline",
-    "-storepass", pass,
-  ]);
+    "-storepass:env", "DZELINE_KS_PASS",
+  ], ROOT, { env: { ...process.env, DZELINE_KS_PASS: pass } });
 
   if (out.status !== 0) {
     s2.fail("Could not read keystore");
@@ -341,6 +351,29 @@ async function verifyAssetLinks() {
       bail("The old version is cached. Wait a minute and re-run, or check your Vercel deploy.");
     }
     s.ok("assetlinks.json is live and contains the real fingerprint ✓");
+
+    // Verify icon is reachable — bubblewrap init fetches it from the manifest URL.
+    // A missing icon causes a silent failure with no useful error message.
+    const iconUrl = "https://dzeline.online/icons/icon-512.png";
+    const si = new Spin().start(`Checking icon is reachable…`);
+    try {
+      const status = await fetchHead(iconUrl);
+      if (status >= 200 && status < 400) {
+        si.ok("App icon reachable ✓");
+      } else {
+        si.fail(`Icon returned HTTP ${status}`);
+        bail(
+          `${iconUrl} is not accessible (HTTP ${status}).\n` +
+          "  Run  cd frontend && npm run generate-icons  then push the frontend, and re-run the wizard."
+        );
+      }
+    } catch (iconErr) {
+      si.fail("Could not reach app icon");
+      bail(
+        `${iconUrl} is unreachable: ${iconErr.message}\n` +
+        "  Run  cd frontend && npm run generate-icons  then push the frontend, and re-run the wizard."
+      );
+    }
   } catch (e) {
     s.fail(`Could not reach ${url}`);
     console.log(caution(`Network error: ${e.message}`));
