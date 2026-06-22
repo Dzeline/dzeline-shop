@@ -41,6 +41,8 @@ services:
         sync: false
       - key: PADDLE_HOME
         value: /opt/paddle_models
+      - key: PYTHON_VERSION
+        value: "3.11"
 
 databases:
   - name: dzeline-db
