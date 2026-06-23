@@ -2,6 +2,19 @@ import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { formatPrice } from "../utils/formatters";
 
+const CATEGORY_COLOR = {
+  Grains:    "#f59e0b",
+  Sugar:     "#fb7185",
+  Dairy:     "#38bdf8",
+  Oils:      "#fb923c",
+  Bakery:    "#eab308",
+  Beverages: "#2dd4bf",
+  Spices:    "#f87171",
+  Household: "#94a3b8",
+  Produce:   "#4ade80",
+  Other:     "#9ca3af",
+};
+
 const CATEGORY_BG_GRADIENT = {
   Grains:    "from-amber-400 to-gray-900",
   Sugar:     "from-rose-400 to-gray-900",
@@ -46,8 +59,21 @@ function ProductRow({ p }) {
     ? Math.round(((p.price - p.cost_price) / p.price) * 100)
     : null;
 
+  const col = CATEGORY_COLOR[p.category] ?? CATEGORY_COLOR.Other;
+
   return (
-    <div className={`flex items-start gap-3 px-4 py-3.5 border-l-[6px] ${stockBorderClass(p.stock, p.reorder_level)}`}>
+    <div className={`flex items-center gap-3 px-4 py-3 border-l-[6px] ${stockBorderClass(p.stock, p.reorder_level)}`}>
+      {/* Thumbnail */}
+      {p.image_blob ? (
+        <img src={p.image_blob} alt={p.name} className="w-10 h-10 rounded-xl object-cover shrink-0" />
+      ) : (
+        <div
+          className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center text-white text-sm font-extrabold"
+          style={{ background: col }}
+        >
+          {(p.name ?? "?").charAt(0).toUpperCase()}
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-gray-800 text-sm leading-snug">{p.name}</p>
         {p.barcode && (

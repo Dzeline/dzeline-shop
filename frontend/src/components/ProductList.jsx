@@ -230,40 +230,37 @@ export default function ProductList() {
                 }`}
                 style={{ animationDelay: `${Math.min(idx, 8) * 0.04}s` }}
               >
-                {/* Category accent strip */}
-                <div className="h-1.5 shrink-0" style={{ background: col }} />
+                {/* Full-width image / category colour block */}
+                {product.image_blob ? (
+                  <img
+                    src={product.image_blob}
+                    alt={product.name}
+                    className="w-full h-24 object-cover shrink-0"
+                  />
+                ) : (
+                  <div
+                    className="w-full h-24 shrink-0 flex items-center justify-center"
+                    style={{ background: col }}
+                  >
+                    <span className="text-white text-4xl font-extrabold opacity-80">
+                      {(product.name ?? "?").charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
 
                 {/* Content */}
-                <div className="p-2.5 flex flex-col flex-1 gap-1">
-                  {/* Thumbnail + category + name row */}
-                  <div className="flex items-start gap-1.5">
-                    {/* Small square thumbnail / initial placeholder */}
-                    {product.image_blob ? (
-                      <img
-                        src={product.image_blob}
-                        alt={product.name}
-                        className="w-8 h-8 rounded-lg object-cover shrink-0"
-                      />
-                    ) : (
-                      <div
-                        className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-white text-xs font-extrabold"
-                        style={{ background: col }}
-                      >
-                        {(product.name ?? "?").charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className="text-[9px] font-bold uppercase tracking-widest leading-none truncate"
-                        style={{ color: col }}
-                      >
-                        {product.category ?? "Other"}
-                      </p>
-                      <h3 className="font-bold text-xs text-gray-800 leading-snug line-clamp-2 flex-1 mt-0.5">
-                        {product.name}
-                      </h3>
-                    </div>
-                  </div>
+                <div className="px-2.5 pb-2.5 pt-2 flex flex-col flex-1 gap-1">
+                  {/* Category label */}
+                  <p
+                    className="text-[9px] font-bold uppercase tracking-widest leading-none truncate"
+                    style={{ color: col }}
+                  >
+                    {product.category ?? "Other"}
+                  </p>
+                  {/* Name */}
+                  <h3 className="font-bold text-xs text-gray-800 leading-snug line-clamp-2">
+                    {product.name}
+                  </h3>
 
                   {/* Stock bar */}
                   <StockBar stock={product.stock} reorderLevel={product.reorder_level} />
