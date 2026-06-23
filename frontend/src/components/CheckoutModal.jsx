@@ -155,13 +155,12 @@ function MpesaManualEntry({ grandTotal, onComplete }) {
 }
 
 function MpesaTab({ grandTotal, onComplete }) {
-  // phase: idle | requesting | waiting | sms_wait | manual | failed
+  // phase: idle | requesting | waiting | manual | failed
   const [phase, setPhase] = useState("idle");
   const [phone, setPhone] = useState("");
   const [checkoutId, setCheckoutId] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(120);
-  const [smsStartedAt, setSmsStartedAt] = useState(null);
 
   const mpesaTill = useSettingsStore((s) => s.mpesaTill);
   const isOnline = useOnline();
@@ -214,42 +213,6 @@ function MpesaTab({ grandTotal, onComplete }) {
     };
   }, [phase, checkoutId, grandTotal, onComplete]);
 
-  // SMS auto-detect: poll /sms/verified-codes and match by amount
-  // Works with android-sms-gateway running on the shop's SIM phone —
-  // no need to ask the customer to show their message.
-  useEffect(() => {
-    if (phase !== "sms_wait" || !smsStartedAt) return;
-    let alive = true;
-    let timer;
-
-    async function poll() {
-      if (!alive) return;
-      try {
-        // Look back up to 60 s to catch codes that arrived just before
-        // the staff tapped "Wait for SMS" (customer paid very quickly)
-        const codes = await syncService.fetchSmsCodes(smsStartedAt - 60_000);
-        if (!alive) return;
-        const match = codes.find(
-          (c) =>
-            Math.abs(c.amount - grandTotal) < 1.0 &&
-            c.received_at >= smsStartedAt - 60_000,
-        );
-        if (match) {
-          onComplete({
-            method: "MPESA",
-            amount: grandTotal,
-            change: 0,
-            mpesaCode: match.confirmation_code,
-          });
-          return;
-        }
-      } catch { /* offline — keep waiting */ }
-      timer = setTimeout(poll, 3000);
-    }
-
-    timer = setTimeout(poll, 3000);
-    return () => { alive = false; clearTimeout(timer); };
-  }, [phase, smsStartedAt, grandTotal, onComplete]);
 
   async function handleRequest() {
     setErrorMsg("");
@@ -270,12 +233,6 @@ function MpesaTab({ grandTotal, onComplete }) {
     setCheckoutId(null);
     setSecondsLeft(120);
     setErrorMsg("");
-    setSmsStartedAt(null);
-  }
-
-  function enterSmsWait() {
-    setSmsStartedAt(Date.now());
-    setPhase("sms_wait");
   }
 
   const validPhone = phone.replace(/\D/g, "").length >= 9;
@@ -311,51 +268,6 @@ function MpesaTab({ grandTotal, onComplete }) {
           Cancel
         </button>
         <button onClick={() => setPhase("manual")} className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition text-center">
-          Enter code manually instead →
-        </button>
-      </div>
-    );
-  }
-
-  if (phase === "sms_wait") {
-    return (
-      <div className="space-y-4">
-        <div className="flex flex-col items-center py-6 gap-3">
-          {/* Chat/message icon */}
-          <div className="w-16 h-16 bg-green-50 border-2 border-green-200 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3-3-3z" />
-            </svg>
-          </div>
-          <p className="font-bold text-gray-800">Waiting for M-Pesa</p>
-          <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-4 text-center w-full">
-            <p className="text-xs text-gray-500 mb-1">Tell customer to pay</p>
-            <p className="text-2xl font-extrabold text-green-700">{formatPrice(grandTotal)}</p>
-            {mpesaTill && (
-              <p className="text-sm text-gray-500 mt-1.5">
-                to Till <span className="font-bold text-gray-700">{mpesaTill}</span>
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin shrink-0" />
-            <span>Listening for payment SMS…</span>
-          </div>
-          <p className="text-xs text-gray-400 text-center px-4">
-            Auto-confirms when the shop's M-Pesa SIM receives the payment message
-          </p>
-        </div>
-        <button
-          onClick={reset}
-          className="w-full py-3 rounded-xl text-sm font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 transition"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => setPhase("manual")}
-          className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition text-center"
-        >
           Enter code manually instead →
         </button>
       </div>
@@ -409,37 +321,13 @@ function MpesaTab({ grandTotal, onComplete }) {
           </button>
           <div className="flex items-center gap-3">
             <div className="flex-1 border-t border-gray-200" />
-            <span className="text-xs text-gray-400">or</span>
-            <div className="flex-1 border-t border-gray-200" />
-          </div>
-          <button
-            onClick={enterSmsWait}
-            className="w-full py-3.5 rounded-xl font-bold text-sm border-2 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 active:scale-95 transition"
-          >
-            Wait for M-Pesa SMS
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="flex-1 border-t border-gray-200" />
             <span className="text-xs text-gray-400">or enter code manually</span>
             <div className="flex-1 border-t border-gray-200" />
           </div>
         </>
       ) : (
-        <div className="space-y-3">
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700 font-medium">
-            Device is offline — STK push unavailable
-          </div>
-          <button
-            onClick={enterSmsWait}
-            className="w-full py-3.5 rounded-xl font-bold text-sm border-2 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 active:scale-95 transition"
-          >
-            Wait for M-Pesa SMS
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="flex-1 border-t border-gray-200" />
-            <span className="text-xs text-gray-400">or enter code manually</span>
-            <div className="flex-1 border-t border-gray-200" />
-          </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700 font-medium">
+          Device is offline — enter confirmation code below
         </div>
       )}
 

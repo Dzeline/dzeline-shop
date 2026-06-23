@@ -31,33 +31,6 @@ export const syncService = {
     }
   },
 
-  /**
-   * Pull recently SMS-verified M-Pesa codes from the backend (posted there
-   * by android-sms-gateway) and mark matching pending_mpesa rows as verified.
-   */
-  async reconcileSmsVerifications() {
-    if (!API_BASE) return;
-    const lastCheck = await db.settings.get("sms_verify_last_check");
-    const since = lastCheck?.value ?? "0";
-    try {
-      const res = await fetch(
-        `${API_BASE}/sms/verified-codes?since=${since}`,
-        { headers: apiGetHeaders(), signal: AbortSignal.timeout(10_000) },
-      );
-      if (!res.ok) return;
-      const { codes } = await res.json();
-      for (const item of codes) {
-        const row = await db.pending_mpesa
-          .filter((p) => !p.verified && p.code === item.confirmation_code)
-          .first();
-        if (row) {
-          await db.pending_mpesa.update(row.id, { verified: true });
-        }
-      }
-      await db.settings.put({ key: "sms_verify_last_check", value: String(Date.now()) });
-    } catch { /* backend offline — skip */ }
-  },
-
   async pushUnsynced() {
     if (!API_BASE) return { pushed: 0 };
 
@@ -111,22 +84,4 @@ export const syncService = {
     return res.json(); // { checkout_request_id, status, mpesa_code }
   },
 
-  /**
-   * Fetch recently received M-Pesa SMS codes from the backend.
-   * Used by the CheckoutModal sms_wait phase to auto-detect payment
-   * without asking the customer to show their phone.
-   * Returns [] on network error so the caller can keep polling.
-   */
-  async fetchSmsCodes(since = 0) {
-    if (!API_BASE) return [];
-    try {
-      const res = await fetch(
-        `${API_BASE}/sms/verified-codes?since=${since}`,
-        { headers: apiGetHeaders(), signal: AbortSignal.timeout(10_000) },
-      );
-      if (!res.ok) return [];
-      const { codes } = await res.json();
-      return codes ?? [];
-    } catch { return []; }
-  },
 };
