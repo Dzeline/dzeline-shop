@@ -35,10 +35,16 @@ function Toggle({ checked, onChange, label, description }) {
       <button
         type="button"
         onClick={() => onChange(!checked)}
-        className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${checked ? "bg-primary" : "bg-gray-300"}`}
+        className={`relative w-12 h-6 rounded-full transition-all duration-200 shrink-0 ml-4 outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ring-1 ${
+          checked
+            ? "bg-primary ring-primary/60 shadow-[0_0_0_0px_transparent]"
+            : "bg-gray-200 ring-gray-300"
+        }`}
       >
         <span
-          className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`}
+          className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200 ${
+            checked ? "translate-x-6 shadow-md" : "translate-x-0.5 shadow"
+          }`}
         />
       </button>
     </div>

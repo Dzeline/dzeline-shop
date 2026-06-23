@@ -134,6 +134,8 @@ function ScanOverlay({ results, onApply, onDismiss }) {
 export default function StockReceiving({ currentStaffId, onClose }) {
   const isOnline = useOnline();
   const fileInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
+  const [showScanMenu, setShowScanMenu] = useState(false);
 
   const [products, setProducts] = useState([]);
   const [savedSuppliers, setSavedSuppliers] = useState([]);
@@ -215,14 +217,12 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     }
   }
 
-  // Triggered from header "Scan Invoice" button — opens camera first
+  // Triggered from header "Scan Invoice" button
   function handleScanButtonClick() {
     if (photoBlob) {
-      // Photo already captured, just analyze it
       handleAnalyze(photoBlob);
     } else {
-      // Open camera; analysis fires after capture (see handleScanCapture)
-      fileInputRef.current?.click();
+      setShowScanMenu(true);
     }
   }
 
@@ -347,7 +347,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
 
   return (
     <>
-      {/* Hidden file input for scan-first flow */}
+      {/* Hidden file inputs — camera-first and gallery-first for scan flow */}
       <input
         ref={fileInputRef}
         type="file"
@@ -356,6 +356,59 @@ export default function StockReceiving({ currentStaffId, onClose }) {
         className="hidden"
         onChange={handleScanCapture}
       />
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleScanCapture}
+      />
+
+      {/* Scan source chooser */}
+      {showScanMenu && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowScanMenu(false)} />
+          <div className="relative w-full max-w-sm bg-white rounded-t-3xl p-5 pb-8 space-y-3 shadow-2xl">
+            <p className="text-sm font-bold text-gray-700 text-center mb-4">Add Invoice Photo</p>
+            <label
+              className="flex items-center gap-4 p-4 bg-violet-50 border-2 border-violet-200 rounded-2xl cursor-pointer hover:bg-violet-100 transition active:scale-[0.98]"
+              onClick={() => setShowScanMenu(false)}
+            >
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleScanCapture} />
+              <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-bold text-sm text-violet-700">Take Photo</p>
+                <p className="text-xs text-violet-500">Open camera & scan invoice</p>
+              </div>
+            </label>
+            <label
+              className="flex items-center gap-4 p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl cursor-pointer hover:bg-gray-100 transition active:scale-[0.98]"
+              onClick={() => setShowScanMenu(false)}
+            >
+              <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={handleScanCapture} />
+              <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-bold text-sm text-gray-700">Choose from Gallery</p>
+                <p className="text-xs text-gray-500">Select a saved invoice photo</p>
+              </div>
+            </label>
+            <button onClick={() => setShowScanMenu(false)} className="w-full py-3 text-sm font-semibold text-gray-400 hover:text-gray-600 transition">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Scan results overlay */}
       {scanResults && (
@@ -524,22 +577,27 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                       )}
                     </div>
                   ) : (
-                    <label className="block w-full py-4 border-2 border-dashed border-gray-200 rounded-xl text-center cursor-pointer hover:border-primary hover:bg-blue-50 transition">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden"
-                        onChange={handlePhotoCapture}
-                      />
-                      <svg className="w-6 h-6 text-gray-300 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                          d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <span className="text-sm text-gray-400">Tap to capture invoice photo</span>
-                      {isOnline && <p className="text-xs text-violet-400 mt-0.5">AI will auto-fill items when online</p>}
-                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Camera — opens device camera directly */}
+                      <label className="flex flex-col items-center justify-center gap-2 py-4 bg-violet-50 border-2 border-violet-200 rounded-xl cursor-pointer hover:bg-violet-100 hover:border-violet-400 transition active:scale-[0.97]">
+                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+                        <svg className="w-6 h-6 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="text-xs font-semibold text-violet-600">Take Photo</span>
+                      </label>
+                      {/* Gallery — opens file picker */}
+                      <label className="flex flex-col items-center justify-center gap-2 py-4 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition active:scale-[0.97]">
+                        <input type="file" accept="image/*" className="hidden" onChange={handlePhotoCapture} />
+                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-xs font-semibold text-gray-500">From Gallery</span>
+                      </label>
+                    </div>
                   )}
                 </div>
               </div>

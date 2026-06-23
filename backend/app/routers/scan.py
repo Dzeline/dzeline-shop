@@ -16,7 +16,7 @@ from threading import Lock
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 from pydantic import BaseModel
 
 from ..deps import get_tenant
@@ -73,6 +73,11 @@ def _decode_image(image_base64: str) -> np.ndarray:
     if max(w, h) > _MAX_SIDE:
         scale = _MAX_SIDE / max(w, h)
         pil_img = pil_img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+    # Enhance for thermal receipts: boost contrast and sharpness so faded
+    # dot-matrix / thermal print is more legible to PaddleOCR.
+    pil_img = ImageEnhance.Contrast(pil_img).enhance(1.8)
+    pil_img = ImageEnhance.Sharpness(pil_img).enhance(2.0)
 
     return np.array(pil_img)
 
@@ -142,10 +147,11 @@ def _parse_invoice(ocr_result) -> dict:
 
     blocks.sort(key=lambda b: b["y"])
 
-    # 2. Cluster into rows (~20px vertical tolerance)
+    # 2. Cluster into rows (~28px vertical tolerance — wider for thermal receipts
+    #    where line-height is compressed and OCR boxes can overlap slightly)
     rows = [[blocks[0]]]
     for b in blocks[1:]:
-        if abs(b["y"] - rows[-1][-1]["y"]) < 20:
+        if abs(b["y"] - rows[-1][-1]["y"]) < 28:
             rows[-1].append(b)
         else:
             rows.append([b])

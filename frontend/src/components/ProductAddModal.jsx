@@ -4,7 +4,7 @@ import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import BarcodeScanner from "./BarcodeScanner";
 
-const CATEGORIES = [
+export const CATEGORIES = [
   "Grains", "Sugar", "Dairy", "Oils", "Bakery",
   "Beverages", "Spices", "Household", "Produce", "Other",
 ];
@@ -15,6 +15,7 @@ const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focu
 export default function ProductAddModal({ onSave, onClose }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Grains");
+  const [customCategory, setCustomCategory] = useState("");
   const [price, setPrice] = useState("");
   const [costPrice, setCostPrice] = useState("");
   const [stock, setStock] = useState("");
@@ -40,9 +41,13 @@ export default function ProductAddModal({ onSave, onClose }) {
     if (!parsedPrice || parsedPrice <= 0) { showToast("Enter a valid price"); return; }
     setSaving(true);
     try {
+      const finalCategory = category === "__custom__"
+        ? (customCategory.trim() || "Other")
+        : category;
+
       const newProduct = {
         name: name.trim(),
-        category,
+        category: finalCategory,
         price: parsedPrice,
         cost_price: parseFloat(costPrice) || null,
         stock: Math.max(0, parseInt(stock) || 0),
@@ -145,7 +150,18 @@ export default function ProductAddModal({ onSave, onClose }) {
               className={`${INPUT} bg-white`}
             >
               {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              <option value="__custom__">Custom category…</option>
             </select>
+            {category === "__custom__" && (
+              <input
+                type="text"
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                placeholder="Enter category name (e.g. Frozen Foods)"
+                className={`${INPUT} mt-2`}
+                autoFocus
+              />
+            )}
           </div>
 
           {/* Selling Price + Cost Price */}

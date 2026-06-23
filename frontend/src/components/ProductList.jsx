@@ -233,29 +233,37 @@ export default function ProductList() {
                 {/* Category accent strip */}
                 <div className="h-1.5 shrink-0" style={{ background: col }} />
 
-                {/* Product image (only if set) */}
-                {product.image_blob && (
-                  <img
-                    src={product.image_blob}
-                    alt={product.name}
-                    className="w-full h-16 object-cover"
-                  />
-                )}
-
                 {/* Content */}
                 <div className="p-2.5 flex flex-col flex-1 gap-1">
-                  {/* Category label */}
-                  <p
-                    className="text-[9px] font-bold uppercase tracking-widest leading-none truncate"
-                    style={{ color: col }}
-                  >
-                    {product.category ?? "Other"}
-                  </p>
-
-                  {/* Product name */}
-                  <h3 className="font-bold text-xs text-gray-800 leading-snug line-clamp-2 flex-1">
-                    {product.name}
-                  </h3>
+                  {/* Thumbnail + category + name row */}
+                  <div className="flex items-start gap-1.5">
+                    {/* Small square thumbnail / initial placeholder */}
+                    {product.image_blob ? (
+                      <img
+                        src={product.image_blob}
+                        alt={product.name}
+                        className="w-8 h-8 rounded-lg object-cover shrink-0"
+                      />
+                    ) : (
+                      <div
+                        className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-white text-xs font-extrabold"
+                        style={{ background: col }}
+                      >
+                        {(product.name ?? "?").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-[9px] font-bold uppercase tracking-widest leading-none truncate"
+                        style={{ color: col }}
+                      >
+                        {product.category ?? "Other"}
+                      </p>
+                      <h3 className="font-bold text-xs text-gray-800 leading-snug line-clamp-2 flex-1 mt-0.5">
+                        {product.name}
+                      </h3>
+                    </div>
+                  </div>
 
                   {/* Stock bar */}
                   <StockBar stock={product.stock} reorderLevel={product.reorder_level} />
