@@ -110,4 +110,23 @@ export const syncService = {
     if (!res.ok) throw new Error("Status check failed");
     return res.json(); // { checkout_request_id, status, mpesa_code }
   },
+
+  /**
+   * Fetch recently received M-Pesa SMS codes from the backend.
+   * Used by the CheckoutModal sms_wait phase to auto-detect payment
+   * without asking the customer to show their phone.
+   * Returns [] on network error so the caller can keep polling.
+   */
+  async fetchSmsCodes(since = 0) {
+    if (!API_BASE) return [];
+    try {
+      const res = await fetch(
+        `${API_BASE}/sms/verified-codes?since=${since}`,
+        { headers: apiGetHeaders(), signal: AbortSignal.timeout(10_000) },
+      );
+      if (!res.ok) return [];
+      const { codes } = await res.json();
+      return codes ?? [];
+    } catch { return []; }
+  },
 };
