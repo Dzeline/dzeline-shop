@@ -19,7 +19,7 @@ import { useSettingsStore } from "./store/settingsStore";
 import { useNavStore } from "./store/navStore";
 import { usePermissions } from "./hooks/usePermissions";
 import { FEATURES, ROLE_LABELS } from "./utils/permissions";
-import { dbHelpers } from "./services/db";
+import { db, dbHelpers } from "./services/db";
 import { syncService } from "./services/sync";
 import { setApiKey } from "./utils/apiHeaders";
 import { useRegisterSW } from "virtual:pwa-register/react";
@@ -147,20 +147,47 @@ function SettingsPanel({ sub, navigateSub, currentStaffId }) {
 
 function StaffPill({ staff, onLogout }) {
   const [open, setOpen] = useState(false);
+  const [notifs, setNotifs] = useState(null);
   const isAdmin = staff.role === "admin";
   const roleLabel = ROLE_LABELS[staff.role] ?? "Staff";
+
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      try {
+        const all = await dbHelpers.getAllProducts();
+        const outOfStock = all.filter((p) => p.stock <= 0);
+        const lowStock = all.filter((p) => p.stock > 0 && p.stock <= (p.reorder_level ?? 10));
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const todayReceipts = await db.stock_receipts
+          .where("timestamp").above(startOfDay.getTime())
+          .reverse().limit(5).toArray();
+        setNotifs({ outOfStock, lowStock, todayReceipts });
+      } catch {
+        setNotifs({ outOfStock: [], lowStock: [], todayReceipts: [] });
+      }
+    })();
+  }, [open]);
+
+  const totalAlerts = notifs ? notifs.outOfStock.length + notifs.lowStock.length : 0;
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full pl-2 pr-3 py-1.5 transition-all duration-150 active:scale-95"
+        className="relative flex items-center gap-2 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full pl-2 pr-3 py-1.5 transition-all duration-150 active:scale-95"
       >
         <div className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center text-xs font-bold">
           {staff.name.charAt(0).toUpperCase()}
         </div>
         <span className="text-xs font-semibold max-w-20 truncate">{staff.name}</span>
         {isAdmin && <span className="text-yellow-300 text-xs">★</span>}
+        {totalAlerts > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-4 h-4 flex items-center justify-center px-1 leading-none">
+            {totalAlerts > 9 ? "9+" : totalAlerts}
+          </span>
+        )}
       </button>
 
       <div
@@ -171,7 +198,8 @@ function StaffPill({ staff, onLogout }) {
       <div
         className={`fixed top-0 right-0 bottom-0 z-50 w-64 bg-gray-900 border-l border-gray-800 rounded-l-3xl shadow-2xl flex flex-col overflow-hidden transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${open ? "translate-x-0" : "translate-x-full"}`}
       >
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-800">
+        {/* Drawer header */}
+        <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-800 shrink-0">
           <div className="w-10 h-10 rounded-2xl bg-linear-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base shrink-0">
             {staff.name.charAt(0).toUpperCase()}
           </div>
@@ -189,9 +217,79 @@ function StaffPill({ staff, onLogout }) {
           </button>
         </div>
 
-        <div className="flex-1" />
+        {/* Notifications */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-4 pt-4 pb-2">
+            <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Notifications</p>
+          </div>
 
-        <div className="px-3 py-4 border-t border-gray-800">
+          {notifs === null ? (
+            <p className="text-xs text-gray-600 text-center py-10">Loading…</p>
+          ) : notifs.outOfStock.length === 0 && notifs.lowStock.length === 0 && notifs.todayReceipts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+              <div className="w-10 h-10 rounded-2xl bg-gray-800 flex items-center justify-center mb-3">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="text-xs font-semibold text-gray-500">All clear</p>
+              <p className="text-[11px] text-gray-700 mt-0.5">No stock alerts today</p>
+            </div>
+          ) : (
+            <div className="px-3 space-y-2 pb-3">
+              {notifs.outOfStock.length > 0 && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-3">
+                  <p className="text-xs font-bold text-red-400 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                    {notifs.outOfStock.length} out of stock
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {notifs.outOfStock.slice(0, 4).map((p) => (
+                      <p key={p.id} className="text-[11px] text-red-300/70 truncate pl-3">• {p.name}</p>
+                    ))}
+                    {notifs.outOfStock.length > 4 && (
+                      <p className="text-[11px] text-red-400/50 pl-3">+{notifs.outOfStock.length - 4} more</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {notifs.lowStock.length > 0 && (
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3">
+                  <p className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                    {notifs.lowStock.length} running low
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {notifs.lowStock.slice(0, 4).map((p) => (
+                      <p key={p.id} className="text-[11px] text-amber-300/70 truncate pl-3">• {p.name} — {p.stock} left</p>
+                    ))}
+                    {notifs.lowStock.length > 4 && (
+                      <p className="text-[11px] text-amber-400/50 pl-3">+{notifs.lowStock.length - 4} more</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {notifs.todayReceipts.length > 0 && (
+                <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-3">
+                  <p className="text-xs font-bold text-green-400 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                    Received today
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {notifs.todayReceipts.map((r) => (
+                      <p key={r.id} className="text-[11px] text-green-300/70 truncate pl-3">• {r.supplier || "Unknown supplier"}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Sign out */}
+        <div className="px-3 py-4 border-t border-gray-800 shrink-0">
           <button
             onClick={() => { setOpen(false); onLogout(); }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-red-400 hover:bg-red-500/10 active:bg-red-500/20 btn-press"
@@ -231,6 +329,49 @@ function NavTab({ label, icon, active, badge, onClick }) {
   );
 }
 
+function useInstallPrompt() {
+  const [prompt, setPrompt] = useState(null);
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    navigator.standalone === true;
+
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  return { prompt, isStandalone };
+}
+
+function InstallBanner({ onInstall, onDismiss }) {
+  return (
+    <div className="shrink-0 bg-indigo-600 text-white px-4 py-2.5 flex items-center gap-3">
+      <svg className="w-5 h-5 text-indigo-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M12 18.5l-6-6m6 6l6-6m-6 6V3" />
+      </svg>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold leading-tight">Install Dzeline as an app</p>
+        <p className="text-xs text-indigo-200 mt-0.5">Works offline · loads faster · feels native</p>
+      </div>
+      <button
+        onClick={onInstall}
+        className="shrink-0 bg-white text-indigo-700 font-bold text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-50 active:scale-95 transition"
+      >
+        Install
+      </button>
+      <button
+        onClick={onDismiss}
+        className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 text-indigo-300 hover:text-white transition text-lg leading-none"
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 function UpdateBanner() {
   const {
     needRefresh: [needRefresh],
@@ -253,6 +394,10 @@ function UpdateBanner() {
 function App() {
   const [setupReady, setSetupReady] = useState(null);
   const isOnline = useOnline();
+  const { prompt: installPrompt, isStandalone } = useInstallPrompt();
+  const [installDismissed, setInstallDismissed] = useState(
+    () => localStorage.getItem("dzeline_install_dismissed") === "1"
+  );
   const loadSettings = useSettingsStore((s) => s.load);
   const shopName = useSettingsStore((s) => s.shopName);
   const itemCount = useCartStore((state) => state.getItemCount());
@@ -340,6 +485,21 @@ function App() {
   }
 
   const panelTitle = getPanelTitle(panel, sub);
+
+  function handleInstall() {
+    installPrompt.prompt();
+    installPrompt.userChoice.then(() => {
+      localStorage.setItem("dzeline_install_dismissed", "1");
+      setInstallDismissed(true);
+    });
+  }
+
+  function handleDismissInstall() {
+    localStorage.setItem("dzeline_install_dismissed", "1");
+    setInstallDismissed(true);
+  }
+
+  const showInstallBanner = installPrompt && !isStandalone && !installDismissed;
 
   const tabs = [
     {
@@ -433,6 +593,10 @@ function App() {
           </div>
         </div>
       </header>
+
+      {showInstallBanner && (
+        <InstallBanner onInstall={handleInstall} onDismiss={handleDismissInstall} />
+      )}
 
       {/* Main Content */}
       <main className="flex-1 min-h-0 overflow-hidden">

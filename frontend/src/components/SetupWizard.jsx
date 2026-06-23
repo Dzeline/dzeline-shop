@@ -162,6 +162,7 @@ export default function SetupWizard({ onComplete }) {
   const [mpesaTill, setMpesaTill] = useState("");
   const [pochiNumber, setPochiNumber] = useState("");
   const [apiKey, setApiKeyInput] = useState("");
+  const [apiKeyStatus, setApiKeyStatus] = useState(null); // null | "checking" | "valid" | "invalid"
 
   // Step 1 — eTIMS (under Tax step)
   const [etimsEnabled, setEtimsEnabled] = useState(false);
@@ -208,9 +209,44 @@ export default function SetupWizard({ onComplete }) {
     setter(current + key);
   }
 
+  async function handleVerifyKey() {
+    const key = apiKey.trim();
+    if (!key) { showToast("Enter an API key first"); return; }
+    const base = import.meta.env.VITE_API_URL ?? "";
+    if (!base) { showToast("API URL not configured — key will be verified on first sync"); return; }
+    setApiKeyStatus("checking");
+    try {
+      const res = await fetch(`${base}/products/`, {
+        headers: { "X-API-Key": key },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (res.ok) {
+        setApiKeyStatus("valid");
+      } else if (res.status === 401) {
+        setApiKeyStatus("invalid");
+        showToast("API key not recognised — check with Dzeline support");
+      } else if (res.status === 402) {
+        setApiKeyStatus("invalid");
+        showToast("Subscription has lapsed — please renew");
+      } else {
+        setApiKeyStatus(null);
+        showToast("Server error — key saved, will verify on next sync");
+      }
+    } catch {
+      setApiKeyStatus(null);
+      showToast("Offline — key saved, will verify when connected");
+    }
+  }
+
   function nextStep() {
     if (step === 0 && !shopName.trim()) { showToast("Shop name is required"); return; }
-    if (step === 1 && kraRegistered && !kraPin.trim()) { showToast("Enter your KRA PIN or uncheck KRA registered"); return; }
+    if (step === 1 && kraRegistered) {
+      if (!kraPin.trim()) { showToast("Enter your KRA PIN or uncheck KRA registered"); return; }
+      if (!/^[A-Z]\d{9}[A-Z]$/i.test(kraPin.trim())) {
+        showToast("KRA PIN should be 11 characters: letter + 9 digits + letter (e.g. P051234567X)");
+        return;
+      }
+    }
     goNext();
   }
 
@@ -399,18 +435,38 @@ export default function SetupWizard({ onComplete }) {
                 Cloud Sync API Key
                 <span className="ml-1 font-normal normal-case text-gray-400">(optional — provided by Dzeline)</span>
               </label>
-              <input
-                type="text"
-                value={apiKey}
-                onChange={(e) => setApiKeyInput(e.target.value.trim())}
-                placeholder="dzl_live_…"
-                className={`${INPUT} font-mono text-xs`}
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck="false"
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                Enables receipt sync, STK Push and eTIMS. Leave blank for offline-only mode.
+              <div className="flex gap-2 items-stretch">
+                <input
+                  type="text"
+                  value={apiKey}
+                  onChange={(e) => { setApiKeyInput(e.target.value.trim()); setApiKeyStatus(null); }}
+                  placeholder="dzl_live_…"
+                  className={`${INPUT} font-mono text-xs flex-1`}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck="false"
+                />
+                <button
+                  type="button"
+                  onClick={handleVerifyKey}
+                  disabled={!apiKey.trim() || apiKeyStatus === "checking"}
+                  className={`shrink-0 px-3 rounded-xl text-xs font-bold border-2 transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                    apiKeyStatus === "valid"
+                      ? "bg-green-50 border-green-200 text-green-700"
+                      : apiKeyStatus === "invalid"
+                      ? "bg-red-50 border-red-200 text-red-600"
+                      : "bg-gray-50 border-gray-100 text-gray-600 hover:border-primary hover:text-primary"
+                  }`}
+                >
+                  {apiKeyStatus === "checking" ? "…" : apiKeyStatus === "valid" ? "✓" : apiKeyStatus === "invalid" ? "✗" : "Verify"}
+                </button>
+              </div>
+              <p className={`text-xs mt-1 ${apiKeyStatus === "valid" ? "text-green-600" : apiKeyStatus === "invalid" ? "text-red-500" : "text-gray-400"}`}>
+                {apiKeyStatus === "valid"
+                  ? "Key verified — cloud sync, STK Push and eTIMS are enabled."
+                  : apiKeyStatus === "invalid"
+                  ? "Key not recognised. Double-check or contact Dzeline support."
+                  : "Enables receipt sync, STK Push and eTIMS. Leave blank for offline-only mode."}
               </p>
             </div>
             <div className="flex gap-2 pt-1">
