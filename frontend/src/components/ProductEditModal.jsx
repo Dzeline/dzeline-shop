@@ -3,11 +3,7 @@ import { dbHelpers } from "../services/db";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import BarcodeScanner from "./BarcodeScanner";
-
-const CATEGORIES = [
-  "Grains", "Sugar", "Dairy", "Oils", "Bakery",
-  "Beverages", "Spices", "Household", "Produce", "Other",
-];
+import { CATEGORIES } from "./ProductAddModal";
 
 const LABEL = "text-sm font-semibold text-gray-700 mb-1.5 block";
 const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary";

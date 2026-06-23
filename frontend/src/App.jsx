@@ -331,9 +331,9 @@ function NavTab({ label, icon, active, badge, onClick }) {
 
 function useInstallPrompt() {
   const [prompt, setPrompt] = useState(null);
-  const isStandalone =
-    window.matchMedia("(display-mode: standalone)").matches ||
-    navigator.standalone === true;
+  const [isStandalone] = useState(
+    () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
+  );
 
   useEffect(() => {
     const handler = (e) => { e.preventDefault(); setPrompt(e); };
@@ -341,7 +341,7 @@ function useInstallPrompt() {
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  return { prompt, isStandalone };
+  return { prompt, setPrompt, isStandalone };
 }
 
 function InstallBanner({ onInstall, onDismiss }) {
@@ -394,7 +394,7 @@ function UpdateBanner() {
 function App() {
   const [setupReady, setSetupReady] = useState(null);
   const isOnline = useOnline();
-  const { prompt: installPrompt, isStandalone } = useInstallPrompt();
+  const { prompt: installPrompt, setPrompt, isStandalone } = useInstallPrompt();
   const [installDismissed, setInstallDismissed] = useState(
     () => localStorage.getItem("dzeline_install_dismissed") === "1"
   );
@@ -421,7 +421,6 @@ function App() {
     if (isOnline) {
       syncService.pushUnsynced().catch(() => {});
       syncService.resumePendingStkChecks().catch(() => {});
-      syncService.reconcileSmsVerifications().catch(() => {});
     }
   }, [isOnline]);
 
@@ -487,10 +486,17 @@ function App() {
   const panelTitle = getPanelTitle(panel, sub);
 
   function handleInstall() {
-    installPrompt.prompt();
-    installPrompt.userChoice.then(() => {
-      localStorage.setItem("dzeline_install_dismissed", "1");
-      setInstallDismissed(true);
+    const p = installPrompt;
+    setPrompt(null); // clear banner immediately — prevent it showing behind native dialog
+    p.prompt();
+    p.userChoice.then((choice) => {
+      if (choice.outcome === "accepted") {
+        localStorage.setItem("dzeline_install_dismissed", "1");
+        setInstallDismissed(true);
+      } else {
+        // User cancelled — restore the prompt so they can try again
+        setPrompt(p);
+      }
     });
   }
 

@@ -182,7 +182,10 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     setPhotoPreview(URL.createObjectURL(file));
     setScanError(null);
     const reader = new FileReader();
-    reader.onload = (ev) => setPhotoBlob(ev.target.result);
+    reader.onload = (ev) => {
+      setPhotoBlob(ev.target.result);
+      if (isOnline) handleAnalyze(ev.target.result);
+    };
     reader.readAsDataURL(file);
   }
 
@@ -227,6 +230,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
   }
 
   function handleScanCapture(e) {
+    setShowScanMenu(false);
     const file = e.target.files?.[0];
     if (!file) return;
     setPhotoPreview(URL.createObjectURL(file));
@@ -372,7 +376,6 @@ export default function StockReceiving({ currentStaffId, onClose }) {
             <p className="text-sm font-bold text-gray-700 text-center mb-4">Add Invoice Photo</p>
             <label
               className="flex items-center gap-4 p-4 bg-violet-50 border-2 border-violet-200 rounded-2xl cursor-pointer hover:bg-violet-100 transition active:scale-[0.98]"
-              onClick={() => setShowScanMenu(false)}
             >
               <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleScanCapture} />
               <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
@@ -389,7 +392,6 @@ export default function StockReceiving({ currentStaffId, onClose }) {
             </label>
             <label
               className="flex items-center gap-4 p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl cursor-pointer hover:bg-gray-100 transition active:scale-[0.98]"
-              onClick={() => setShowScanMenu(false)}
             >
               <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={handleScanCapture} />
               <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">

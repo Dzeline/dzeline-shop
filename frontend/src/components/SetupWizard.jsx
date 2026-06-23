@@ -212,7 +212,7 @@ export default function SetupWizard({ onComplete }) {
   async function handleVerifyKey() {
     const key = apiKey.trim();
     if (!key) { showToast("Enter an API key first"); return; }
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
     if (!base) { showToast("API URL not configured — key will be verified on first sync"); return; }
     setApiKeyStatus("checking");
     try {
