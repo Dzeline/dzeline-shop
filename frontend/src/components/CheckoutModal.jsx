@@ -161,9 +161,16 @@ function MpesaTab({ grandTotal, onComplete }) {
   const [checkoutId, setCheckoutId] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(120);
+  const [isSandbox, setIsSandbox] = useState(false);
 
   const mpesaTill = useSettingsStore((s) => s.mpesaTill);
   const isOnline = useOnline();
+
+  useEffect(() => {
+    syncService.getMpesaMode().then((data) => {
+      if (data?.sandbox) setIsSandbox(true);
+    });
+  }, []);
 
   // STK push: poll Daraja status every 3 s until confirmed/failed/expired
   useEffect(() => {
@@ -263,6 +270,11 @@ function MpesaTab({ grandTotal, onComplete }) {
             <p className="text-2xl font-extrabold text-green-700">{formatPrice(grandTotal)}</p>
           </div>
           <p className="text-xs text-gray-400 text-center">Customer will see an M-Pesa prompt on their phone</p>
+          {isSandbox && (
+            <div className="w-full bg-red-50 border border-red-300 rounded-xl px-3 py-2 text-center">
+              <p className="text-xs font-bold text-red-600">⚠️ SANDBOX — Tell customer: do NOT enter real PIN</p>
+            </div>
+          )}
         </div>
         <button onClick={reset} className="w-full py-3 rounded-xl text-sm font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 transition">
           Cancel
@@ -288,6 +300,16 @@ function MpesaTab({ grandTotal, onComplete }) {
   // idle or failed
   return (
     <div className="space-y-4">
+      {isSandbox && (
+        <div className="bg-red-50 border-2 border-red-400 rounded-xl p-3 flex gap-2.5 items-start">
+          <span className="text-red-500 text-lg leading-none shrink-0">⚠️</span>
+          <div>
+            <p className="text-sm font-bold text-red-700">SANDBOX MODE — Test Environment</p>
+            <p className="text-xs text-red-600 mt-0.5">Real M-Pesa PINs will deduct real money. Use Safaricom test number <span className="font-mono font-bold">0708374149</span> only.</p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-green-50 border border-green-200 rounded-xl p-4">
         <p className="text-sm font-semibold text-green-800 mb-1">Customer pays to Till:</p>
         <p className="text-2xl font-extrabold text-green-700">{mpesaTill || "—"}</p>

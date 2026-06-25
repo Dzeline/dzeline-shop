@@ -4,7 +4,7 @@ import { etimsService } from "../services/etims";
 import { setApiKey } from "../utils/apiHeaders";
 import { showToast } from "../utils/toast";
 
-const SETUP_BG = "linear-gradient(160deg, #0f172a 0%, #1e1b4b 38%, #312e81 68%, #4338ca 100%)";
+const SETUP_BG = "linear-gradient(160deg, #111827 0%, #1a2235 60%, #1e2a45 100%)";
 
 const STEPS = [
   {
@@ -131,16 +131,6 @@ function PinPad({ pin, onKey }) {
   );
 }
 
-// Inline bolt used in logo
-function BoltIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 48 46" fill="none">
-      <path fill="white"
-        d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z"
-      />
-    </svg>
-  );
-}
 
 export default function SetupWizard({ onComplete }) {
   const [step, setStep] = useState(0);
@@ -325,15 +315,11 @@ export default function SetupWizard({ onComplete }) {
     <div className="min-h-screen flex flex-col items-center justify-start pt-10 sm:pt-16 px-5 pb-10" style={{ background: SETUP_BG }}>
       {/* Logo */}
       <div className="text-center mb-6 animate-fade-logo">
-        <div
-          className="w-14 h-14 rounded-2xl mx-auto mb-2.5 flex items-center justify-center"
-          style={{
-            background: "linear-gradient(135deg, rgba(99,102,241,0.5), rgba(37,99,235,0.5))",
-            boxShadow: "0 8px 32px rgba(99,102,241,0.35), inset 0 1px 0 rgba(255,255,255,0.15)",
-          }}
-        >
-          <BoltIcon />
-        </div>
+        <img
+          src="/Dzeline.svg"
+          alt="Dzeline"
+          className="w-20 h-20 rounded-2xl mx-auto mb-2.5 object-cover shadow-xl"
+        />
         <h1 className="text-xl font-extrabold text-white tracking-tight">Let&apos;s get started</h1>
         <p className="text-white/45 text-sm mt-0.5">Set up your shop in 4 quick steps</p>
       </div>

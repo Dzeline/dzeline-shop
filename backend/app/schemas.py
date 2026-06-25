@@ -96,6 +96,7 @@ class MpesaStkResponse(BaseModel):
     response_code: str
     response_description: str
     customer_message: str
+    sandbox: bool = False
 
 
 class StkStatusResponse(BaseModel):

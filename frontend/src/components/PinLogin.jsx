@@ -6,7 +6,7 @@ import PinRecovery from "./PinRecovery";
 
 const PAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✓"];
 
-const LOGIN_BG = "linear-gradient(160deg, #0f172a 0%, #1e1b4b 38%, #312e81 68%, #4338ca 100%)";
+const LOGIN_BG = "linear-gradient(160deg, #111827 0%, #1a2235 60%, #1e2a45 100%)";
 
 // Colour palette for staff avatars — index 0 reserved for admin
 const AVATAR_COLORS = [
@@ -23,17 +23,6 @@ function avatarColor(staff) {
   return AVATAR_COLORS[((staff.id - 2) % (AVATAR_COLORS.length - 1)) + 1];
 }
 
-// Inline bolt SVG used as logo mark
-function BoltIcon({ size = 28 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 48 46" fill="none">
-      <path
-        fill="white"
-        d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z"
-      />
-    </svg>
-  );
-}
 
 export default function PinLogin() {
   const setStaff = useStaffStore((s) => s.setStaff);
@@ -110,15 +99,11 @@ export default function PinLogin() {
     >
       {/* Logo */}
       <div className="text-center mb-7 animate-fade-logo">
-        <div
-          className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center"
-          style={{
-            background: "linear-gradient(135deg, rgba(99,102,241,0.5) 0%, rgba(37,99,235,0.5) 100%)",
-            boxShadow: "0 8px 32px rgba(99,102,241,0.35), inset 0 1px 0 rgba(255,255,255,0.15)",
-          }}
-        >
-          <BoltIcon size={30} />
-        </div>
+        <img
+          src="/Dzeline.svg"
+          alt="Dzeline"
+          className="w-24 h-24 rounded-2xl mx-auto mb-3 object-cover shadow-xl"
+        />
         <h1 className="text-2xl font-extrabold text-white tracking-tight leading-tight">
           {shopName || "Dzeline Shop"}
         </h1>

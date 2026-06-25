@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mpesa", tags=["mpesa"])
 
+_IS_SANDBOX = MPESA_ENV == "sandbox"
+
 MPESA_ENV = os.getenv("MPESA_ENV", "sandbox")
 MPESA_BASE = (
     "https://sandbox.safaricom.co.ke"
@@ -64,6 +66,12 @@ def _get_access_token(tenant: Tenant) -> str:
         raise HTTPException(status_code=502, detail=f"Daraja auth failed: {e.response.status_code}")
     except httpx.RequestError as e:
         raise HTTPException(status_code=503, detail=f"Daraja unreachable: {e}")
+
+
+@router.get("/mode")
+def mpesa_mode():
+    """Returns whether the backend is running in Daraja sandbox mode."""
+    return {"sandbox": _IS_SANDBOX}
 
 
 @router.post("/stk-push", response_model=MpesaStkResponse)
@@ -135,6 +143,7 @@ def stk_push(
         response_code=data.get("ResponseCode", ""),
         response_description=data.get("ResponseDescription", ""),
         customer_message=data.get("CustomerMessage", ""),
+        sandbox=_IS_SANDBOX,
     )
 
 

@@ -427,35 +427,21 @@ function App() {
   if (setupReady === null) {
     return (
       <div
-        className="min-h-screen flex flex-col items-center justify-center gap-3"
-        style={{
-          background:
-            "linear-gradient(160deg, #0f172a 0%, #1e1b4b 38%, #312e81 68%, #4338ca 100%)",
-        }}
+        className="min-h-screen flex flex-col items-center justify-center"
+        style={{ background: "#111827" }}
       >
-        <div className="animate-fade-logo flex flex-col items-center gap-3">
-          <div
-            className="w-20 h-20 rounded-3xl flex items-center justify-center"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(99,102,241,0.45), rgba(37,99,235,0.45))",
-              boxShadow:
-                "0 12px 48px rgba(99,102,241,0.4), inset 0 1px 0 rgba(255,255,255,0.15)",
-            }}
-          >
-            <svg width="38" height="38" viewBox="0 0 48 46" fill="none">
-              <path
-                fill="white"
-                d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z"
-              />
-            </svg>
-          </div>
-          <div className="text-center">
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">Dzeline</h1>
-            <p className="text-white/45 text-sm mt-0.5">Point of Sale</p>
-          </div>
-        </div>
-        <div className="flex gap-1.5 mt-2">
+        <video
+          autoPlay
+          muted
+          playsInline
+          loop
+          className="w-64 h-64 object-contain"
+        >
+          <source src="/Dzeline.mp4" type="video/mp4" />
+          {/* fallback for browsers that can't play the video */}
+          <img src="/Dzeline.svg" alt="Dzeline" className="w-64 h-64 object-contain" />
+        </video>
+        <div className="flex gap-1.5 -mt-4">
           {[0, 1, 2].map((i) => (
             <div
               key={i}

@@ -84,4 +84,18 @@ export const syncService = {
     return res.json(); // { checkout_request_id, status, mpesa_code }
   },
 
+  async getMpesaMode() {
+    if (!API_BASE) return null;
+    try {
+      const res = await fetch(`${API_BASE}/mpesa/mode`, {
+        headers: apiGetHeaders(),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) return null;
+      return res.json(); // { sandbox: bool }
+    } catch {
+      return null;
+    }
+  },
+
 };
