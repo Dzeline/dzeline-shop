@@ -13,16 +13,15 @@ from ..schemas import MpesaStkRequest, MpesaStkResponse, StkStatusResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/mpesa", tags=["mpesa"])
-
-_IS_SANDBOX = MPESA_ENV == "sandbox"
-
 MPESA_ENV = os.getenv("MPESA_ENV", "sandbox")
 MPESA_BASE = (
     "https://sandbox.safaricom.co.ke"
     if MPESA_ENV == "sandbox"
     else "https://api.safaricom.co.ke"
 )
+_IS_SANDBOX = MPESA_ENV == "sandbox"
+
+router = APIRouter(prefix="/mpesa", tags=["mpesa"])
 
 # Safaricom's published callback source IPs (production + sandbox).
 _SAFARICOM_IPS = {
