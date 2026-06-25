@@ -44,7 +44,6 @@ def _get_ocr():
                 _ocr_instance = PaddleOCR(
                     use_angle_cls=True,
                     lang="en",
-                    show_log=False,
                     enable_mkldnn=False,   # MKL-DNN off → more stable on cloud
                 )
                 logger.info("PaddleOCR ready")
