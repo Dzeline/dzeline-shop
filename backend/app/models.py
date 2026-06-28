@@ -135,6 +135,41 @@ class SmsVerifiedCode(Base):
     raw_sms           = Column(Text, nullable=True)
 
 
+class StockReceipt(Base):
+    """Cloud mirror of a stock delivery (draft → activated by manager)."""
+    __tablename__ = "stock_receipts"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    tenant_id      = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    local_id       = Column(Integer, nullable=True)
+    status         = Column(String(20), default="draft", nullable=False)
+    supplier       = Column(String(200), nullable=True)
+    supplier_id    = Column(Integer, nullable=True)
+    invoice_number = Column(String(100), nullable=True)
+    staff_id       = Column(Integer, nullable=True)
+    created_at     = Column(BigInteger, nullable=True)
+    activated_at   = Column(BigInteger, nullable=True)
+
+    items = relationship("StockReceiptItem", back_populates="receipt", cascade="all, delete-orphan")
+
+
+class StockReceiptItem(Base):
+    __tablename__ = "stock_receipt_items"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    receipt_id    = Column(Integer, ForeignKey("stock_receipts.id"), index=True)
+    product_id    = Column(Integer, nullable=True)
+    product_name  = Column(String(200), nullable=True)
+    qty_added     = Column(Integer, nullable=False, default=0)
+    qty_before    = Column(Integer, nullable=True)
+    unit_cost     = Column(Float, nullable=True)
+    selling_price = Column(Float, nullable=True)
+    expiry_date   = Column(String(20), nullable=True)
+    condition     = Column(String(20), default="good", nullable=True)
+
+    receipt = relationship("StockReceipt", back_populates="items")
+
+
 class EtimsConfig(Base):
     """Per-tenant eTIMS credentials. One row per tenant."""
     __tablename__ = "etims_config"

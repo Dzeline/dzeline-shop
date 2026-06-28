@@ -84,6 +84,17 @@ db.version(8).stores({
   pending_mpesa: "++id, transaction_id, code, checkout_request_id, timestamp, verified, amount",
 });
 
+// Version 9: staged stock receiving — receipts now sit as "draft" until manager activates them.
+//   stock_receipts gains status + synced indices.
+//   stock_receipt_items is a new normalised table replacing the embedded items array.
+//   Existing receipts backfilled as "activated" (stock was already incremented for them).
+db.version(9).stores({
+  stock_receipts:      "++id, timestamp, supplier, supplier_id, staff_id, status, synced",
+  stock_receipt_items: "++id, receipt_id, product_id",
+}).upgrade((tx) =>
+  tx.table("stock_receipts").toCollection().modify({ status: "activated", synced: true })
+);
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -364,32 +375,116 @@ export const dbHelpers = {
 
   // ── Stock receiving ───────────────────────────────────────────────────────
 
+  /**
+   * Save a new delivery as a DRAFT — does NOT increment stock yet.
+   * Items land in stock_receipt_items; stock only moves on activateStockReceipt().
+   */
   async addStockReceipt({ supplier, supplier_id, invoice_number, photo_blob, items, staff_id }) {
-    return await db.transaction("rw", [db.stock_receipts, db.products], async () => {
-      const itemsWithBefore = await Promise.all(
-        items.map(async ({ product_id, qty_added, unit_cost }) => {
-          const product = await db.products.get(product_id);
+    return await db.transaction("rw", [db.stock_receipts, db.stock_receipt_items, db.products], async () => {
+      const receiptId = await db.stock_receipts.add({
+        timestamp:      Date.now(),
+        supplier:       supplier,
+        supplier_id:    supplier_id ?? null,
+        invoice_number: invoice_number || null,
+        photo_blob:     photo_blob || null,
+        staff_id,
+        status:  "draft",
+        synced:  false,
+      });
+
+      await Promise.all(
+        items.map(async ({ product_id, qty_added, unit_cost, expiry_date, condition }) => {
+          const product    = await db.products.get(product_id);
           const qty_before = product ? product.stock : 0;
-          const productUpdate = { stock: qty_before + qty_added };
-          if (unit_cost != null && unit_cost > 0) productUpdate.cost_price = unit_cost;
-          if (product) await db.products.update(product_id, productUpdate);
-          return { product_id, product_name: product?.name ?? "Unknown", qty_before, qty_added, unit_cost: unit_cost ?? null };
+          return db.stock_receipt_items.add({
+            receipt_id:    receiptId,
+            product_id,
+            product_name:  product?.name ?? "Unknown",
+            qty_added:     qty_added,
+            qty_before,
+            unit_cost:     unit_cost ?? null,
+            selling_price: null,       // filled in by manager before activation
+            expiry_date:   expiry_date || null,
+            condition:     condition || "good",
+          });
         })
       );
-      return await db.stock_receipts.add({
-        timestamp: Date.now(),
-        supplier,
-        supplier_id: supplier_id ?? null,
-        invoice_number: invoice_number || null,
-        photo_blob: photo_blob || null,
-        items: itemsWithBefore,
-        staff_id,
+
+      return receiptId;
+    });
+  },
+
+  /**
+   * Manager activates a draft receipt: increments stock, updates prices, marks done.
+   * @param {number} receiptId
+   * @param {Object} pricingMap  { [product_id]: sellingPrice } — may be empty
+   */
+  async activateStockReceipt(receiptId, pricingMap = {}) {
+    return await db.transaction("rw", [db.stock_receipts, db.stock_receipt_items, db.products], async () => {
+      const items = await db.stock_receipt_items.where("receipt_id").equals(receiptId).toArray();
+
+      await Promise.all(
+        items.map(async (item) => {
+          const product = await db.products.get(item.product_id);
+          if (!product) return;
+
+          const update = { stock: (product.stock ?? 0) + item.qty_added };
+          if (item.unit_cost  > 0) update.cost_price = item.unit_cost;
+
+          const sellingPrice = pricingMap[item.product_id];
+          if (sellingPrice > 0) update.price = sellingPrice;
+
+          await db.products.update(item.product_id, update);
+
+          // Persist selling_price on the item for receipt history
+          if (sellingPrice > 0) {
+            await db.stock_receipt_items.update(item.id, { selling_price: sellingPrice });
+          }
+        })
+      );
+
+      await db.stock_receipts.update(receiptId, {
+        status:       "activated",
+        activated_at: Date.now(),
+        synced:       false,   // needs re-sync to cloud with final prices
       });
     });
   },
 
+  /** Returns all draft receipts with their items — for manager review. */
+  async getPendingReceipts() {
+    const receipts = await db.stock_receipts
+      .where("status").equals("draft")
+      .reverse()
+      .toArray();
+    return Promise.all(
+      receipts.map(async (r) => ({
+        ...r,
+        items: await db.stock_receipt_items.where("receipt_id").equals(r.id).toArray(),
+      }))
+    );
+  },
+
   async getStockReceiptHistory(limit = 20) {
     return await db.stock_receipts.orderBy("timestamp").reverse().limit(limit).toArray();
+  },
+
+  /** Returns unsynced receipts (status=activated, synced=false) with their items. */
+  async getUnsyncedReceipts() {
+    const receipts = await db.stock_receipts
+      .where("synced").equals(false)
+      .filter((r) => r.status === "activated")
+      .toArray();
+    return Promise.all(
+      receipts.map(async (r) => ({
+        ...r,
+        items: await db.stock_receipt_items.where("receipt_id").equals(r.id).toArray(),
+      }))
+    );
+  },
+
+  async markReceiptSynced(receiptId) {
+    return db.stock_receipts.update(receiptId, { synced: true });
   },
 
   // ── Shop settings ────────────────────────────────────────────────────────

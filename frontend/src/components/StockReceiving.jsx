@@ -258,11 +258,13 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     const newLines = matched
       .filter((item) => !lineItems.find((li) => li.product_id === item.product.id))
       .map((item) => ({
-        product_id: item.product.id,
-        product_name: item.product.name,
-        qty_added: Math.max(1, Math.round(item.qty)),
-        unit_cost: item.unit_cost ? String(item.unit_cost) : "",
+        product_id:    item.product.id,
+        product_name:  item.product.name,
+        qty_added:     Math.max(1, Math.round(item.qty)),
+        unit_cost:     item.unit_cost ? String(item.unit_cost) : "",
         current_stock: item.product.stock,
+        expiry_date:   "",
+        condition:     "good",
       }));
     if (newLines.length > 0) setLineItems((prev) => [...prev, ...newLines]);
     setScanResults(null);
@@ -279,11 +281,13 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     setLineItems((prev) => [
       ...prev,
       {
-        product_id: product.id,
-        product_name: product.name,
-        qty_added: 1,
-        unit_cost: "",
+        product_id:    product.id,
+        product_name:  product.name,
+        qty_added:     1,
+        unit_cost:     "",
         current_stock: product.stock,
+        expiry_date:   "",
+        condition:     "good",
       },
     ]);
     setSearch("");
@@ -299,6 +303,18 @@ export default function StockReceiving({ currentStaffId, onClose }) {
   function handleCostChange(product_id, value) {
     setLineItems((prev) =>
       prev.map((li) => li.product_id === product_id ? { ...li, unit_cost: value } : li)
+    );
+  }
+
+  function handleExpiryChange(product_id, value) {
+    setLineItems((prev) =>
+      prev.map((li) => li.product_id === product_id ? { ...li, expiry_date: value } : li)
+    );
+  }
+
+  function handleConditionChange(product_id, value) {
+    setLineItems((prev) =>
+      prev.map((li) => li.product_id === product_id ? { ...li, condition: value } : li)
     );
   }
 
@@ -319,19 +335,21 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     setSubmitting(true);
     try {
       await dbHelpers.addStockReceipt({
-        supplier: supplier.trim(),
-        supplier_id: selectedSupplierId,
+        supplier:       supplier.trim(),
+        supplier_id:    selectedSupplierId,
         invoice_number: invoiceNumber.trim() || null,
-        photo_blob: photoBlob,
-        items: lineItems.map(({ product_id, qty_added, unit_cost }) => ({
+        photo_blob:     photoBlob,
+        items: lineItems.map(({ product_id, qty_added, unit_cost, expiry_date, condition }) => ({
           product_id,
           qty_added,
-          unit_cost: parseFloat(unit_cost) || null,
+          unit_cost:   parseFloat(unit_cost) || null,
+          expiry_date: expiry_date || null,
+          condition:   condition || "good",
         })),
         staff_id: currentStaffId,
       });
       setSubmitted(true);
-      showToast("Stock received successfully");
+      showToast("Submitted for pricing review");
     } catch (err) {
       console.error(err);
       showToast("Failed to save — please try again");
@@ -723,6 +741,47 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                             </span>
                           </p>
                         )}
+
+                        {/* Expiry date + condition */}
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-100">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Expiry date</label>
+                            <input
+                              type="date"
+                              value={li.expiry_date || ""}
+                              onChange={(e) => handleExpiryChange(li.product_id, e.target.value)}
+                              className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Condition</label>
+                            <div className="flex gap-1">
+                              {[
+                                { id: "good",         label: "✓",  title: "Good" },
+                                { id: "short_expiry", label: "⏳", title: "Short expiry" },
+                                { id: "damaged",      label: "⚠️", title: "Damaged" },
+                              ].map(({ id, label, title }) => (
+                                <button
+                                  key={id}
+                                  type="button"
+                                  title={title}
+                                  onClick={() => handleConditionChange(li.product_id, id)}
+                                  className={`flex-1 py-1.5 rounded-lg text-sm font-semibold border transition ${
+                                    li.condition === id
+                                      ? id === "good"
+                                        ? "bg-green-100 border-green-400 text-green-700"
+                                        : id === "short_expiry"
+                                        ? "bg-amber-100 border-amber-400 text-amber-700"
+                                        : "bg-red-100 border-red-400 text-red-700"
+                                      : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     ))}
 
@@ -755,18 +814,19 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                     : "bg-primary text-white hover:bg-blue-600 active:scale-95"
                 }`}
               >
-                {submitting ? "Saving..." : "Confirm Stock Receipt"}
+                {submitting ? "Saving…" : "Submit for Pricing Review"}
               </button>
             </>
           ) : (
             <div className="flex flex-col items-center justify-center flex-1 gap-4 py-16">
-              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-3xl text-green-600">
+              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-3xl text-blue-600">
                 ✓
               </div>
-              <h3 className="font-bold text-xl text-gray-800">Stock Updated!</h3>
+              <h3 className="font-bold text-xl text-gray-800">Submitted!</h3>
               <p className="text-gray-400 text-sm text-center px-6">
                 {lineItems.length} product{lineItems.length !== 1 ? "s" : ""} from{" "}
-                <span className="font-semibold text-gray-600">{supplier}</span> added to inventory.
+                <span className="font-semibold text-gray-600">{supplier}</span> are pending manager pricing.
+                Stock will be added once a manager reviews and activates.
               </p>
               <button
                 onClick={onClose}

@@ -6,6 +6,7 @@ import SetupWizard from "./components/SetupWizard";
 import SettingsScreen from "./components/SettingsScreen";
 import StaffManagement from "./components/StaffManagement";
 import StockReceiving from "./components/StockReceiving";
+import ManagerReceiving from "./components/ManagerReceiving";
 import DailySummary from "./components/DailySummary";
 import TransactionHistory from "./components/TransactionHistory";
 import InventoryScreen from "./components/InventoryScreen";
@@ -76,17 +77,37 @@ function SubTabBar({ options, labels, active, onChange }) {
 }
 
 function StockPanel({ sub, navigateSub, currentStaffId }) {
+  const { can } = usePermissions();
+  const [pendingCount, setPendingCount] = useState(0);
+  const canManage = can(FEATURES.EDIT_PRODUCTS);
+
   return (
     <div className="flex flex-col h-full">
       <SubTabBar
         options={["inventory", "receiving", "suppliers"]}
-        labels={["Inventory", "Receiving", "Suppliers"]}
+        labels={[
+          "Inventory",
+          pendingCount > 0 ? `Receiving (${pendingCount})` : "Receiving",
+          "Suppliers",
+        ]}
         active={sub}
         onChange={navigateSub}
       />
       <div className="flex-1 min-h-0">
         {sub === "inventory" && <InventoryScreen />}
-        {sub === "receiving" && <StockReceiving currentStaffId={currentStaffId} onClose={() => navigateSub("inventory")} />}
+        {sub === "receiving" && (
+          <div className="flex flex-col h-full overflow-y-auto bg-gray-900">
+            {canManage && (
+              <ManagerReceiving onCountChange={setPendingCount} />
+            )}
+            <div className="flex-1">
+              <StockReceiving
+                currentStaffId={currentStaffId}
+                onClose={() => navigateSub("inventory")}
+              />
+            </div>
+          </div>
+        )}
         {sub === "suppliers" && <SuppliersScreen />}
       </div>
     </div>
@@ -420,6 +441,7 @@ function App() {
   useEffect(() => {
     if (isOnline) {
       syncService.pushUnsynced().catch(() => {});
+      syncService.pushUnsyncedReceipts().catch(() => {});
       syncService.resumePendingStkChecks().catch(() => {});
     }
   }, [isOnline]);

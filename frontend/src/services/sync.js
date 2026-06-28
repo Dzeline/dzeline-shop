@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, dbHelpers } from "./db";
 import { apiHeaders, apiGetHeaders } from "../utils/apiHeaders";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
@@ -82,6 +82,41 @@ export const syncService = {
     );
     if (!res.ok) throw new Error("Status check failed");
     return res.json(); // { checkout_request_id, status, mpesa_code }
+  },
+
+  async pushUnsyncedReceipts() {
+    if (!API_BASE) return { pushed: 0 };
+    const receipts = await dbHelpers.getUnsyncedReceipts();
+    if (receipts.length === 0) return { pushed: 0 };
+
+    let pushed = 0;
+    for (const receipt of receipts) {
+      try {
+        const res = await fetch(`${API_BASE}/stock-receipts`, {
+          method: "POST",
+          headers: apiHeaders(),
+          body: JSON.stringify({
+            local_id:       receipt.id,
+            status:         receipt.status,
+            supplier:       receipt.supplier,
+            supplier_id:    receipt.supplier_id,
+            invoice_number: receipt.invoice_number,
+            staff_id:       receipt.staff_id,
+            created_at:     receipt.timestamp,
+            activated_at:   receipt.activated_at ?? null,
+            items:          receipt.items,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (res.ok) {
+          await dbHelpers.markReceiptSynced(receipt.id);
+          pushed++;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return { pushed };
   },
 
   async getMpesaMode() {
