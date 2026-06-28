@@ -586,6 +586,15 @@ function App() {
         </div>
       </header>
 
+      {!isOnline && (
+        <div className="shrink-0 bg-amber-500 text-amber-950 px-4 py-1.5 flex items-center gap-2 text-xs font-semibold">
+          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 12h.01M8.464 8.464a5 5 0 000 7.072M15.536 8.464a5 5 0 010 7.072" />
+          </svg>
+          Offline — sales save locally and sync automatically when reconnected
+        </div>
+      )}
+
       {showInstallBanner && (
         <InstallBanner onInstall={handleInstall} onDismiss={handleDismissInstall} />
       )}

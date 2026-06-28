@@ -57,7 +57,7 @@ export const syncService = {
           pushed++;
         }
       } catch {
-        break;
+        continue;
       }
     }
 

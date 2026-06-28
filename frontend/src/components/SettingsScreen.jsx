@@ -4,6 +4,7 @@ import { etimsService } from "../services/etims";
 import { useSettingsStore } from "../store/settingsStore";
 import { showToast } from "../utils/toast";
 import { setApiKey } from "../utils/apiHeaders";
+import { thermalPrinter } from "../services/thermalPrinter";
 
 function SectionCard({ title, children }) {
   return (
@@ -86,6 +87,11 @@ export default function SettingsScreen({ onClose }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+
+  // Printer
+  const [printerName, setPrinterName] = useState(() => thermalPrinter.savedDeviceName);
+  const [printerConnecting, setPrinterConnecting] = useState(false);
+  const [printerErr, setPrinterErr] = useState("");
 
   useEffect(() => {
     dbHelpers.getShopSettings().then((s) => {
@@ -349,6 +355,82 @@ export default function SettingsScreen({ onClose }) {
                 Required for cloud sync, STK Push and eTIMS. Leave blank for offline-only mode.
               </p>
             </Field>
+          </SectionCard>
+
+          {/* Printer */}
+          <SectionCard title="Receipt Printer">
+            {printerErr && (
+              <p className="text-xs text-red-500 font-medium">{printerErr}</p>
+            )}
+            {printerName ? (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                    <p className="text-sm font-bold text-gray-800 truncate">{printerName}</p>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5 pl-4">
+                    {thermalPrinter.isConnected ? "Connected" : "Paired — tap Print on any receipt to reconnect"}
+                  </p>
+                </div>
+                <button
+                  onClick={async () => {
+                    await thermalPrinter.disconnect();
+                    setPrinterName(null);
+                    setPrinterErr("");
+                  }}
+                  className="shrink-0 px-3 py-1.5 text-xs font-bold text-red-500 border border-red-200 rounded-xl hover:bg-red-50 transition"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {thermalPrinter.isBluetoothAvailable ? (
+                  <>
+                    <p className="text-xs text-gray-500">
+                      Pair a Bluetooth ESC/POS thermal printer (58mm or 80mm roll).
+                    </p>
+                    <button
+                      onClick={async () => {
+                        setPrinterErr("");
+                        setPrinterConnecting(true);
+                        try {
+                          const name = await thermalPrinter.connect();
+                          setPrinterName(name);
+                          showToast(`${name} connected`);
+                        } catch (e) {
+                          setPrinterErr(e.message ?? "Could not connect printer");
+                        } finally {
+                          setPrinterConnecting(false);
+                        }
+                      }}
+                      disabled={printerConnecting}
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-primary text-white hover:bg-blue-600 active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                      {printerConnecting ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Searching…
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                          </svg>
+                          Connect Bluetooth Printer
+                        </>
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <p className="text-xs text-amber-600 bg-amber-50 rounded-xl p-3 font-medium">
+                    Web Bluetooth isn't available in this browser. Use Chrome on Android, or use the
+                    <strong> Print</strong> button on any receipt to print via USB.
+                  </p>
+                )}
+              </div>
+            )}
           </SectionCard>
 
           {/* KRA eTIMS */}
