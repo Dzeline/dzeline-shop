@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { formatPrice } from "../utils/formatters";
+import { usePermissions } from "../hooks/usePermissions";
+import { FEATURES } from "../utils/permissions";
+import CsvImport from "./CsvImport";
 
 const CATEGORY_COLOR = {
   Grains:    "#f59e0b",
@@ -105,11 +108,13 @@ function ProductRow({ p }) {
 }
 
 export default function InventoryScreen({ onClose }) {
+  const { can } = usePermissions();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [expandedCats, setExpandedCats] = useState({});
   const [viewMode, setViewMode] = useState("category");
+  const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -176,6 +181,19 @@ export default function InventoryScreen({ onClose }) {
           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-900/50 text-red-400 shrink-0">
             {alertCount} alert{alertCount !== 1 ? "s" : ""}
           </span>
+        )}
+        {can(FEATURES.EDIT_PRODUCTS) && (
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold shrink-0"
+            title="Import CSV"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Import
+          </button>
         )}
         <button
           onClick={load}
@@ -372,6 +390,13 @@ export default function InventoryScreen({ onClose }) {
             )}
           </div>
         </div>
+      )}
+
+      {showImport && (
+        <CsvImport
+          onClose={() => setShowImport(false)}
+          onImported={() => { setShowImport(false); load(); }}
+        />
       )}
     </div>
   );
