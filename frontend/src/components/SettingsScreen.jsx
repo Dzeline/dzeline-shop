@@ -69,6 +69,7 @@ export default function SettingsScreen({ onClose }) {
   const [vatRate, setVatRate] = useState("16");
 
   // Payments
+  const [mpesaType, setMpesaType] = useState("till");   // "till" | "paybill" | "none"
   const [mpesaTill, setMpesaTill] = useState("");
   const [pochiNumber, setPochiNumber] = useState("");
   const [apiKey, setApiKeyInput] = useState("");
@@ -104,6 +105,7 @@ export default function SettingsScreen({ onClose }) {
       setKraPin(pin);
       setVatEnabled(s.vat_enabled !== "false");
       setVatRate(s.vat_rate ? String(Math.round(parseFloat(s.vat_rate) * 100)) : "16");
+      setMpesaType(s.mpesa_till_type || (s.mpesa_till ? "till" : "none"));
       setMpesaTill(s.mpesa_till || "");
       setPochiNumber(s.pochi_number || "");
 
@@ -141,7 +143,8 @@ export default function SettingsScreen({ onClose }) {
         kra_pin: kraRegistered ? kraPin.trim() : "NOT_REGISTERED",
         vat_enabled: String(vatEnabled),
         vat_rate: String(parseFloat(vatRate) / 100 || 0.16),
-        mpesa_till: mpesaTill.trim(),
+        mpesa_till: mpesaType !== "none" ? mpesaTill.trim() : "",
+        mpesa_till_type: mpesaType,
         pochi_number: pochiNumber.trim(),
         currency: "KES",
       });
@@ -158,10 +161,6 @@ export default function SettingsScreen({ onClose }) {
     } finally {
       setSaving(false);
     }
-  }
-
-  function autoSerial(tin) {
-    return "VSCU" + tin.replace(/[^A-Z0-9]/g, "").slice(0, 8).padEnd(8, "0");
   }
 
   async function handleEtimsSave() {
@@ -322,15 +321,42 @@ export default function SettingsScreen({ onClose }) {
 
           {/* Payments */}
           <SectionCard title="Payments">
-            <Field label="M-Pesa Till / Paybill Number">
-              <input
-                type="tel"
-                value={mpesaTill}
-                onChange={(e) => { setMpesaTill(e.target.value); mark(); }}
-                placeholder="e.g. 5012345"
-                className={inputCls}
-              />
+            <Field label="M-Pesa Payment Type">
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                {[
+                  { value: "till",    label: "Till",    sub: "Buy Goods" },
+                  { value: "paybill", label: "Paybill", sub: "Pay Bill" },
+                  { value: "none",    label: "None",    sub: "Not using" },
+                ].map((t) => (
+                  <button key={t.value} type="button"
+                    onClick={() => { setMpesaType(t.value); mark(); }}
+                    className={`py-2 px-2 rounded-xl border-2 text-center transition ${
+                      mpesaType === t.value
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-gray-100 bg-gray-50 text-gray-600"
+                    }`}>
+                    <p className="text-xs font-bold">{t.label}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{t.sub}</p>
+                  </button>
+                ))}
+              </div>
             </Field>
+            {mpesaType !== "none" && (
+              <Field label={mpesaType === "till" ? "Till Number (Buy Goods)" : "Paybill Number"}>
+                <input
+                  type="tel"
+                  value={mpesaTill}
+                  onChange={(e) => { setMpesaTill(e.target.value); mark(); }}
+                  placeholder={mpesaType === "till" ? "e.g. 5012345" : "e.g. 400200"}
+                  className={inputCls}
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  {mpesaType === "till"
+                    ? "Lipa na M-Pesa till number — printed on your M-Pesa agent certificate"
+                    : "Pay Bill business number — customers enter your account number separately"}
+                </p>
+              </Field>
+            )}
             <Field label="Pochi la Biashara Number">
               <input
                 type="tel"
@@ -339,6 +365,7 @@ export default function SettingsScreen({ onClose }) {
                 placeholder="e.g. 0712345678"
                 className={inputCls}
               />
+              <p className="text-xs text-gray-400 mt-1">Safaricom number registered for Pochi la Biashara — customers pay directly to this number</p>
             </Field>
             <Field label="Cloud Sync API Key">
               <input
@@ -496,23 +523,17 @@ export default function SettingsScreen({ onClose }) {
             )}
 
             {/* Device Serial */}
-            <Field label="Device Serial Number">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={etimsDvcSrlNo}
-                  onChange={(e) => setEtimsDvcSrlNo(e.target.value)}
-                  placeholder="e.g. VSCUP051234X0"
-                  className={`${inputCls} flex-1 font-mono`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setEtimsDvcSrlNo(autoSerial(etimsTin))}
-                  className="px-3 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold hover:bg-gray-200 transition shrink-0"
-                >
-                  Auto
-                </button>
-              </div>
+            <Field label="VSCU Device Serial Number">
+              <input
+                type="text"
+                value={etimsDvcSrlNo}
+                onChange={(e) => setEtimsDvcSrlNo(e.target.value.toUpperCase())}
+                placeholder="e.g. VSCUP051234X0001"
+                className={`${inputCls} font-mono uppercase`}
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Issued by KRA when your VSCU device is provisioned — found on the device sticker or your KRA provisioning letter. Do not invent this number.
+              </p>
             </Field>
 
             {/* Save config button */}
