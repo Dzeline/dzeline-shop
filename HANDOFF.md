@@ -1,10 +1,10 @@
 # Dzeline Shop — Project Handoff
 
-Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local (IndexedDB via Dexie). Syncs to a FastAPI backend when online.
+Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local (IndexedDB via Dexie v9). Syncs to a FastAPI backend when online.
 
 ---
 
-## Status: Phases C + D Complete — MVP + AI Scanning Ready
+## Status: Phase F Complete — Field-Ready
 
 | Phase | Theme | Status |
 | --- | --- | --- |
@@ -13,11 +13,12 @@ Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
 | 3 | Staff / PIN login | ✅ |
 | 4 | Backend, sync, transaction history | ✅ |
 | 5 | Product editing, Pochi, analytics, scanner | ✅ |
-| E | Navigation overhaul (bottom tab bar + inline panels) | ✅ |
+| E | Navigation overhaul (bottom tab + inline panels) | ✅ |
 | A | RBAC — granular role-based permissions | ✅ |
+| C | Financial intelligence / P&L | ✅ |
+| D | AI invoice scanning | ✅ |
+| F | Offline reliability + thermal printing + staged stock receiving | ✅ |
 | B | Real-time multi-device sync (WebSocket) | 📋 Planned |
-| C | Financial intelligence / balance sheet | ✅ |
-| D | AI invoice / receipt scanning | ✅ |
 
 ---
 
@@ -31,30 +32,91 @@ Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
 │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐   │
 │  │  Zustand    │  │   Dexie.js   │  │  Service Worker  │   │
 │  │  (cart,     │  │  IndexedDB   │  │  (offline cache) │   │
-│  │  staff,     │  │  v8 schema   │  │  Workbox         │   │
-│  │  nav, prefs)│  │  8 tables    │  └──────────────────┘   │
+│  │  staff,     │  │  v9 schema   │  │  Workbox         │   │
+│  │  nav, prefs)│  │  10 tables   │  └──────────────────┘   │
 │  └─────────────┘  └──────────────┘                          │
 │         ↑                ↑                                   │
 │         └────── App.jsx ─┘                                   │
 │                    ↓  (when online)                          │
-│              sync.js / etims.js                              │
-│              X-API-Key header (apiHeaders.js)                │
+│        sync.js · etims.js · thermalPrinter.js                │
+│        X-API-Key header (apiHeaders.js)                      │
 └─────────────────────────┬───────────────────────────────────┘
                           │ HTTPS
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│               FastAPI Backend (Render / Railway)             │
+│               FastAPI Backend (Render)                       │
 │                                                             │
 │  /products  /sync  /mpesa  /etims  /sms  /admin             │
+│  /scan  /stock-receipts                                     │
 │        ↓                                                    │
-│  SQLAlchemy ORM (SQLite dev / PostgreSQL prod)               │
-│  9 tables, multi-tenant by X-API-Key                         │
+│  SQLAlchemy ORM · pool_pre_ping · pool_recycle=1800          │
+│  11 tables, multi-tenant by X-API-Key                        │
 └──────────────────┬──────────────────┬────────────────────────┘
                    │                  │
                    ▼                  ▼
          Safaricom Daraja          KRA eTIMS
          (M-Pesa STK Push)        (VSCU API)
 ```
+
+---
+
+## What Phase F Added
+
+### Offline Indicator Banner
+
+`App.jsx` renders an amber banner whenever `navigator.onLine` is false:
+
+```jsx
+{!isOnline && (
+  <div className="shrink-0 bg-amber-500 text-amber-950 px-4 py-1.5 ...">
+    Offline — sales save locally and sync automatically when reconnected
+  </div>
+)}
+```
+
+The `isOnline` useEffect also calls `syncService.pushUnsyncedReceipts()` on reconnect alongside the existing transaction push.
+
+### Sync Loop Fix
+
+`sync.js:pushUnsynced()` previously had a `break` in its catch block — one failed transaction permanently stalled the entire sync queue until app restart. Changed to `continue`.
+
+### Thermal Printer Service (`thermalPrinter.js`)
+
+Web Bluetooth ESC/POS service with automatic profile discovery across three known BLE printer GATT profiles (Rongta, Sewoo, Microchip). Falls back to `window.print()` via popup/iframe for USB and OS-paired Bluetooth.
+
+Key behaviors:
+
+- `connect()` — opens browser device picker, tries profiles in order, saves device name to localStorage
+- `printBluetooth(sale, settings)` — builds full ESC/POS byte array, writes in 20-byte MTU-safe chunks
+- `printBrowser(sale, settings)` — generates 58mm monospace HTML, opens popup, calls `window.print()`
+- `Receipt.jsx` — BT Print button (shown only if Web Bluetooth available) + Print button (always shown)
+- `SettingsScreen.jsx` — "Receipt Printer" card: shows paired printer name + Remove, or Connect button
+
+### Staged Stock Receiving Workflow
+
+Separates the attendant role (submit delivery) from the manager role (approve + price):
+
+```text
+Attendant (any role with stock access)
+  → StockReceiving.jsx
+  → fills qty, unit cost, expiry date, condition per item
+  → clicks "Submit for Pricing Review"
+  → saved as draft in IndexedDB (stock NOT incremented)
+
+Manager (EDIT_PRODUCTS permission)
+  → ManagerReceiving.jsx (shown above StockReceiving for eligible roles)
+  → sees pending draft receipts with condition badges + expiry dates
+  → enters selling price per item
+  → clicks "Activate Stock"
+  → dbHelpers.activateStockReceipt() increments product.stock, sets prices
+  → receipt marked activated; synced to backend on next reconnect
+```
+
+The "Receiving" sub-tab label shows a badge count of pending drafts when any exist.
+
+### Stock Receipts Sync
+
+`sync.js:pushUnsyncedReceipts()` — on reconnect, fetches activated unsynced receipts from IndexedDB, POSTs to `/stock-receipts`, marks synced. Failures skip with `continue` (same pattern as transaction sync).
 
 ---
 
@@ -65,12 +127,11 @@ Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
 All API calls go through two utility functions in `frontend/src/utils/apiHeaders.js`:
 
 ```js
-// Injected on app start from IndexedDB settings → setApiKey(key)
-apiHeaders()     // { Content-Type, X-API-Key }  — used for POST/PUT
-apiGetHeaders()  // { X-API-Key }                — used for GET
+apiHeaders()     // { Content-Type, X-API-Key }  — POST/PUT
+apiGetHeaders()  // { X-API-Key }                — GET
 ```
 
-The API base URL is set via environment variable:
+API base URL:
 
 ```bash
 # frontend/.env.local (dev)  or  Vercel env var (prod)
@@ -81,85 +142,84 @@ VITE_API_URL=https://dzeline-api.onrender.com
 
 | File | Endpoint | Method | Trigger |
 | --- | --- | --- | --- |
-| `sync.js` | `/sync/transactions` | POST | App reconnects (online event) |
-| `sync.js` | `/mpesa/stk-push` | POST | Customer pays via M-Pesa |
-| `sync.js` | `/mpesa/stk-query/{id}` | GET | Polling deferred STK checks |
-| `sync.js` | `/mpesa/status/{id}` | GET | STK status check |
-| `sync.js` | `/sms/verified-codes?since=` | GET | Pull SMS-confirmed M-Pesa codes |
+| `sync.js` | `/sync/transactions` | POST | Reconnect |
+| `sync.js` | `/stock-receipts` | POST | Reconnect (activated receipts) |
+| `sync.js` | `/mpesa/stk-push` | POST | M-Pesa checkout |
+| `sync.js` | `/mpesa/stk-query/{id}` | GET | Deferred STK check |
+| `sync.js` | `/mpesa/status/{id}` | GET | STK status polling |
+| `sync.js` | `/sms/verified-codes?since=` | GET | SMS M-Pesa reconciliation |
 | `etims.js` | `/etims/status` | GET | eTIMS panel load |
 | `etims.js` | `/etims/config` | GET / POST | Load / save KRA credentials |
-| `etims.js` | `/etims/branches` | POST | Query KRA branch list |
+| `etims.js` | `/etims/branches` | POST | KRA branch list |
 | `etims.js` | `/etims/device/init` | POST | Initialize VSCU device |
-| `etims.js` | `/etims/items/register` | POST | Register product catalogue with KRA |
+| `etims.js` | `/etims/items/register` | POST | Register product catalogue |
 | `etims.js` | `/etims/submit-batch` | POST | Submit invoices to KRA |
-| `StockReceiving.jsx` | `/scan/invoice` | POST | AI invoice scan (Claude Haiku vision) |
+| `StockReceiving.jsx` | `/scan/invoice` | POST | AI invoice scan |
 
 ### Frontend State → Components
 
 ```text
-staffStore (persist)   → usePermissions() hook → can(feature) booleans
-  currentStaff.role                              → tab visibility (App.jsx)
-  currentStaff.permissions                       → action guards (ProductList, TransactionHistory)
+staffStore (persist)   → usePermissions() → can(feature) booleans
+  currentStaff.role                       → tab visibility (App.jsx)
+  currentStaff.permissions                → action guards
 
-navStore (in-memory)   → panel, sub            → which panel/sub-tab renders (App.jsx)
-  navigate(panel, sub)                          → called from bottom tab bar
-  navigateSub(sub)                              → called from sub-tab bars
+navStore (in-memory)   → panel, sub      → which panel/sub-tab renders
+  navigate(panel, sub)                   → bottom tab bar
+  navigateSub(sub)                       → sub-tab bars
 
-cartStore (persist)    → items[], totals        → Cart.jsx, checkout flow
-settingsStore (persist)→ shopName, vatRate, etc → header, receipt, VAT calc
+cartStore (persist)    → items[], totals → Cart.jsx, checkout flow
+settingsStore (persist)→ shopName, etc   → header, receipt, VAT calc
 ```
 
 ### Backend Auth Flow
 
 ```text
 Request arrives
-    │
-    ├─ /health            → public, no auth
-    ├─ /admin/*           → require X-Admin-Secret header (ADMIN_SECRET env var)
-    ├─ /sms/webhook       → require X-SMS-Secret header (SMS_WEBHOOK_SECRET env var)
-    ├─ /mpesa/callback    → IP-restricted to Safaricom CIDRs (production)
+    ├─ /health            → public
+    ├─ /admin/*           → X-Admin-Secret header
+    ├─ /sms/webhook       → X-SMS-Secret header
+    ├─ /mpesa/callback    → IP-restricted to Safaricom CIDRs
     └─ everything else    → Depends(get_tenant)
-                               hash(X-API-Key) → lookup Tenant in DB
-                               check tenant.active + billing_cycle_end
-                               inject tenant into route handler
+                               hash(X-API-Key) → Tenant lookup
+                               check active + billing_cycle_end
 ```
 
 ### M-Pesa Payment Flow
 
 ```text
-1. Customer selects M-Pesa at checkout
+1. Cashier selects M-Pesa at checkout
 2. CheckoutModal → sync.initiateMpesaStk(txnId, phone, amount)
 3. Backend: POST /mpesa/stk-push → Daraja STK Push API
-   → stores StkRequest(status=pending, checkout_request_id)
-   → responds immediately with checkoutRequestId
-4. Daraja sends push notification to customer's phone
-5. Customer enters PIN on phone
-6. Daraja posts result to /mpesa/callback (IP-whitelisted)
-   → updates StkRequest(status=confirmed, mpesa_code)
-   → updates Transaction with M-Pesa code
-7. Frontend polls /mpesa/status/{id} every ~3s until confirmed
-   OR: SMS gateway posts to /sms/webhook with confirmation code
-   → frontend polls /sms/verified-codes to reconcile
+   → StkRequest(status=pending, checkout_request_id)
+4. Customer enters PIN on phone
+5. Daraja posts result to /mpesa/callback (IP-whitelisted)
+   → StkRequest(status=confirmed, mpesa_code)
+6. Frontend polls /mpesa/status/{id} every ~3s until confirmed
+   OR: SMS gateway posts to /sms/webhook
+   → /sms/verified-codes reconciles on reconnect
 
 Offline fallback:
   - STK Push queued in pending_mpesa (IndexedDB)
   - On reconnect: sync.resumePendingStkChecks() retries
-  - SMS reconciliation runs automatically on reconnect
 ```
 
 ### Transaction Sync Flow
 
 ```text
 Sale completed locally:
-  transactions + transaction_items written to IndexedDB atomically
-  Transaction marked synced=false
+  transactions + transaction_items → IndexedDB (atomic)
+  synced = false
 
-On reconnect (useOnline hook triggers):
+On reconnect:
   sync.pushUnsynced()
-    → db.transactions.filter(!synced).toArray()
-    → POST /sync/transactions (batch)
-    → backend deduplicates by local_id (idempotent)
-    → marks transactions synced=true in IndexedDB
+    → db.transactions.filter(!synced)
+    → POST /sync/transactions (backend deduplicates by local_id)
+    → marks synced = true
+
+  sync.pushUnsyncedReceipts()
+    → dbHelpers.getUnsyncedReceipts() (status=activated, synced=false)
+    → POST /stock-receipts
+    → marks synced = true
 ```
 
 ---
@@ -192,6 +252,13 @@ X-API-Key: <tenant api key>
 | GET | `/sync/transactions` | List synced transactions (skip/limit) |
 | GET | `/sync/status` | `{ synced_transactions: int }` |
 
+### Stock Receipts
+
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | `/stock-receipts` | Upload activated receipt + items (idempotent by local_id) |
+| GET | `/stock-receipts` | List receipts for tenant (limit 50) |
+
 ### M-Pesa
 
 | Method | Path | Auth | Description |
@@ -219,78 +286,82 @@ X-API-Key: <tenant api key>
 | POST | `/sms/webhook` | X-SMS-Secret | Receive M-Pesa SMS from shop device |
 | GET | `/sms/verified-codes` | X-API-Key | Pull codes since timestamp |
 
-### Admin (Platform Ops)
+### AI Invoice Scanning
+
+Rate limited: 6 requests/minute per tenant. Requires `ANTHROPIC_API_KEY`.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | `/scan/invoice` | Base64 invoice photo → `{ supplier, invoice_number, items[] }` |
+
+### Admin
 
 All require `X-Admin-Secret` header.
 
 | Method | Path | Description |
 | --- | --- | --- |
-| POST | `/admin/tenants` | Create new shop tenant (returns raw API key once) |
-| GET | `/admin/tenants` | List all tenants |
-| GET | `/admin/tenants/{id}` | Get tenant details |
-| PATCH | `/admin/tenants/{id}` | Update plan / active status |
-| POST | `/admin/tenants/{id}/rotate-key` | Rotate API key (returns new raw key once) |
-| POST | `/admin/tenants/{id}/claim-legacy-data` | Migrate single-tenant data to tenant_id |
-
-### AI Invoice Scanning
-
-Requires `ANTHROPIC_API_KEY` set in backend env. Rate limited: 6 requests/minute per tenant.
-
-| Method | Path | Description |
-| --- | --- | --- |
-| POST | `/scan/invoice` | Analyze base64 invoice photo → `{ supplier, invoice_number, items[] }` |
+| POST | `/admin/tenants` | Create tenant (returns raw API key once) |
+| GET | `/admin/tenants` | List tenants |
+| GET | `/admin/tenants/{id}` | Get tenant |
+| PATCH | `/admin/tenants/{id}` | Update plan / active |
+| POST | `/admin/tenants/{id}/rotate-key` | Rotate API key |
+| POST | `/admin/tenants/{id}/claim-legacy-data` | Migrate single-tenant data |
 
 ### Health
 
 ```http
-GET /health  → { status: "ok", db: "ok" }  (public, no auth)
+GET /health  → { status: "ok" }  (public)
 ```
 
-Interactive docs auto-generated by FastAPI: `http://localhost:8000/docs`
+Interactive docs: `http://localhost:8000/docs`
 
 ---
 
-## IndexedDB Schema (v8 via Dexie)
+## IndexedDB Schema (v9 via Dexie)
 
-Migration chain: v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8
+Migration chain: v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9
 
 | Version | Change |
 | --- | --- |
-| v1 | Base schema: products, transactions, transaction_items, pending_mpesa, sync_queue, staff, settings |
-| v2 | Add stock_receipts |
+| v1 | Base: products, transactions, transaction_items, pending_mpesa, sync_queue, staff, settings |
+| v2 | Add stock_receipts (old flat schema) |
 | v3 | Add reorder_level index to products |
 | v4 | Add suppliers table |
 | v5 | Drop sync_queue; add role index to staff; backfill roles + hash PINs + voided:false |
 | v6 | Add cost_price index to products |
 | v7 | Add etims_item_cd + etims_status indexes; backfill etims_status:'pending' |
 | v8 | Add checkout_request_id index to pending_mpesa |
+| v9 | Replace flat stock_receipts with stock_receipts + stock_receipt_items; add status/synced indexes; backfill existing rows as activated+synced |
 
-| Table | Key | Indexed fields | Notable stored-only fields |
+| Table | Key | Indexed fields | Notable fields |
 | --- | --- | --- | --- |
 | `products` | `++id` | `barcode, name, price, cost_price, stock, category, etims_item_cd, reorder_level, *tags` | `image_blob` (base64) |
 | `transactions` | `++id` | `timestamp, total, payment_method, synced, staff_id, etims_status` | `subtotal, vat, change_given, voided` |
-| `transaction_items` | `++id` | `transaction_id, product_id, quantity, price, subtotal` | — |
+| `transaction_items` | `++id` | `transaction_id, product_id` | `quantity, price, subtotal` |
 | `pending_mpesa` | `++id` | `transaction_id, code, checkout_request_id, timestamp, verified, amount` | — |
-| `staff` | `++id` | `name, pin, role, active, created_at` | `permissions[]` (custom role only) |
+| `staff` | `++id` | `name, pin, role, active, created_at` | `permissions[]` (custom role) |
 | `settings` | `key` | `value` | Keys: shop_name, kra_pin, mpesa_till, pochi_number, vat_rate, vat_enabled, setup_complete |
-| `stock_receipts` | `++id` | `timestamp, supplier, supplier_id, staff_id` | `items[]` (JSON), `photo_blob`, `invoice_number` |
+| `stock_receipts` | `++id` | `timestamp, supplier, supplier_id, staff_id, status, synced` | `invoice_number, photo_blob, activated_at` |
+| `stock_receipt_items` | `++id` | `receipt_id, product_id` | `qty_added, qty_before, unit_cost, selling_price, expiry_date, condition` |
 | `suppliers` | `++id` | `name, created_at` | `phone, email, notes` |
 
 ---
 
 ## Backend Database Schema (PostgreSQL)
 
-| Table | Purpose | Key relationships |
-| --- | --- | --- |
-| `tenants` | One row per shop | owns all other tables via tenant_id |
-| `stk_requests` | M-Pesa STK Push tracking | tenant_id FK |
-| `transactions` | Synced sales from frontend | tenant_id FK → transaction_items |
-| `transaction_items` | Line items per sale | transaction_id FK |
-| `products` | Cloud product catalogue | tenant_id FK |
-| `etims_invoices` | KRA invoice records | tenant_id FK |
-| `etims_counters` | Sequential invoice number per tenant | tenant_id unique |
-| `etims_configs` | KRA credentials per tenant | tenant_id FK |
-| `sms_verified_codes` | M-Pesa codes from SMS gateway | tenant_id FK |
+| Table | Purpose |
+| --- | --- |
+| `tenants` | One row per shop — owns all other tables via tenant_id |
+| `stk_requests` | M-Pesa STK Push tracking |
+| `transactions` | Synced sales from frontend |
+| `transaction_items` | Line items per sale |
+| `products` | Cloud product catalogue |
+| `etims_invoices` | KRA invoice records |
+| `etims_counters` | Sequential invoice number per tenant (unique per tenant) |
+| `etims_configs` | KRA credentials per tenant |
+| `sms_verified_codes` | M-Pesa codes from SMS gateway |
+| `stock_receipts` | Cloud mirror of activated deliveries |
+| `stock_receipt_items` | Line items per delivery (cascade delete from receipt) |
 
 ---
 
@@ -307,7 +378,9 @@ Defined in `frontend/src/utils/permissions.js`.
 | cashier | ✅ | — | ✅ | — | — | — | — |
 | custom | pick any combination | | | | | | |
 
-Permissions are evaluated at runtime via `usePermissions()` hook. The hook reads `currentStaff` from Zustand (persisted to localStorage). **Role changes take effect on next login** — persisted sessions carry the role they had at login time.
+`EDIT_PRODUCTS` permission also gates the Manager Pricing review panel in the Stock tab.
+
+Permissions evaluated at runtime via `usePermissions()` hook. Role changes take effect on next login.
 
 ---
 
@@ -318,7 +391,7 @@ Shelf prices **include** VAT (16% default, configurable per shop).
 ```text
 grandTotal = Σ(price × qty)          ← what customer pays
 subtotal   = grandTotal / (1 + rate) ← net ex-VAT (for KRA)
-vat        = grandTotal − subtotal   ← extracted VAT shown on receipt
+vat        = grandTotal − subtotal   ← extracted VAT on receipt
 ```
 
 ---
@@ -327,24 +400,23 @@ vat        = grandTotal − subtotal   ← extracted VAT shown on receipt
 
 ### Frontend
 
-- **Language**: JavaScript (no TypeScript). Pydantic covers types on the backend.
-- **Framework**: React 19 functional components + hooks only. No class components.
-- **Styling**: Tailwind CSS v4 CSS-first (`@theme` variables in CSS). Use `bg-linear-to-br` not `bg-gradient-to-br` (v4 class names).
-- **State**: Zustand stores for cross-component state; local `useState` for component-local UI state.
-- **Database access**: All IndexedDB reads/writes go through `dbHelpers` in `db.js`. Never import `db` directly in components.
-- **API calls**: All fetch calls go through `apiHeaders()` / `apiGetHeaders()` from `apiHeaders.js`. Never hardcode headers.
-- **Async**: All DB and API calls use `async/await`. No `.then()` chains in components.
-- **Error handling**: `try/catch` in service layer (`sync.js`, `etims.js`). Components use `showToast()` for user-facing errors.
-- **No `console.log`**: Dev startup logs in `main.jsx` only. All other logging is `console.error`.
-- **ESLint**: `npm run lint` — configured with `eslint-plugin-react-hooks`. Two rules relaxed for legitimate IndexedDB async patterns.
+- **Language**: JavaScript (no TypeScript)
+- **Framework**: React 19 functional components + hooks only
+- **Styling**: Tailwind CSS v4 CSS-first (`@theme` variables). Use `bg-linear-to-br` not `bg-gradient-to-br`
+- **State**: Zustand for cross-component; `useState` for component-local UI
+- **Database**: All IndexedDB access goes through `dbHelpers` in `db.js` — never import `db` directly in components
+- **API calls**: Always use `apiHeaders()` / `apiGetHeaders()` — never hardcode headers
+- **Async**: `async/await` only — no `.then()` chains in components
+- **Errors**: `try/catch` in service layer; `showToast()` for user-facing errors in components
+- **Logging**: `console.error` only — no `console.log` outside `main.jsx`
 
 ### Backend
 
-- **Language**: Python 3.11+. FastAPI + Pydantic v2 + SQLAlchemy 2.
-- **Auth**: `Depends(get_tenant)` injected into every protected route — never trust request body for tenant identity.
-- **Schemas**: Every route has explicit Pydantic request + response schemas in `schemas.py`.
-- **DB sessions**: `Depends(get_db)` — never hold a session across async calls.
-- **Environment**: All secrets via environment variables. Never hardcoded.
+- **Language**: Python 3.11+ / FastAPI + Pydantic v2 + SQLAlchemy 2
+- **Auth**: `Depends(get_tenant)` on every protected route
+- **DB sessions**: `Depends(get_db)` — never hold a session across async calls
+- **Connection pool**: `pool_pre_ping=True` + `pool_recycle=1800` (prevents SSL drop errors on Render free tier)
+- **Secrets**: environment variables only
 
 ---
 
@@ -363,12 +435,9 @@ vat        = grandTotal − subtotal   ← extracted VAT shown on receipt
 | `MPESA_SHORTCODE` | `174379` (sandbox) | ✅ (M-Pesa) |
 | `MPESA_PASSKEY` | from Daraja portal | ✅ (M-Pesa) |
 | `MPESA_SHORTCODE_TYPE` | `paybill` or `till` | ✅ (M-Pesa) |
-| `MPESA_CALLBACK_URL` | `https://dzeline.online/mpesa/callback` | ✅ (M-Pesa) |
+| `MPESA_CALLBACK_URL` | `https://dzeline-api.onrender.com/mpesa/callback` | ✅ (M-Pesa) |
 | `SMS_WEBHOOK_SECRET` | 32-char random hex | ✅ (SMS) |
 | `ETIMS_ENV` | `sandbox` or `production` | ✅ (eTIMS) |
-| `ETIMS_TIN` | real KRA TIN | ✅ (eTIMS) |
-| `ETIMS_BHF_ID` | `00` | ✅ (eTIMS) |
-| `ETIMS_DEVICE_SERIAL` | VSCU serial number | ✅ (eTIMS) |
 | `ANTHROPIC_API_KEY` | from console.anthropic.com | ✅ (AI scan) |
 
 Generate secrets: `python -c "import secrets; print(secrets.token_hex(32))"`
@@ -381,149 +450,61 @@ Generate secrets: `python -c "import secrets; print(secrets.token_hex(32))"`
 
 ---
 
-## Android APK (TWA — Trusted Web Activity)
+## Deployment
 
-The PWA is packaged as a real Android APK using Google's [bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap) tool. The APK wraps `dzeline.online` in a Chrome TWA shell — no code duplication. Distribute the signed APK directly (WhatsApp, email, download link) without Play Store.
+| Layer | Platform | Config |
+| --- | --- | --- |
+| Frontend | Vercel | `.vercel/project.json` — auto-deploys on push to `master` |
+| Backend | Render | `backend/render.yaml` — auto-deploys from `backend/` on push |
+| Database | Render managed Postgres | `DATABASE_URL` env var |
 
-**Prerequisites (install once):**
+**gitignore note**: The Android TWA build uses `/app/` (root-anchored) so the rule only matches `./app/` and never `backend/app/`. Previous bare `app/` rule caused Render to silently drop all new files under `backend/app/` from its deploy artifact.
 
-- [Java JDK 17+](https://adoptium.net) — provides `keytool` for signing
-- Node.js 18+ — already required for the frontend
+---
 
-Everything else (bubblewrap, icons, keystore, assetlinks.json) is handled automatically by the wizard.
+## Android APK (TWA)
 
-**Run the wizard:**
+The PWA is packaged as an Android APK via Google's bubblewrap tool. No code duplication — the APK wraps `dzeline.online` in a Chrome TWA shell.
 
 ```bash
 # From repo root
 npm run build-apk
 ```
 
-The wizard walks through five steps:
-
-| Step | What it does | Manual work required |
-| --- | --- | --- |
-| 1 | Checks Java and bubblewrap (auto-installs bubblewrap if missing) | Install Java if prompted |
-| 2 | Generates PNG icons from `favicon.svg` | None |
-| 3 | Creates signing keystore, extracts SHA-256, patches `assetlinks.json` | Choose a password |
-| 4 | Waits for you to push the frontend to Vercel, then verifies the live link | `git push` |
-| 5 | Runs `bubblewrap build`, shows APK path and distribution instructions | None |
-
-**Distribute the APK:**
-
-- Host `app-release-signed.apk` on GitHub Releases or any static URL
-- Share the download link — users tap it on Android, allow "Install unknown apps", done
-- To update: bump `appVersionCode` (integer) and `appVersionName` in `twa-manifest.json`, re-run `npm run build-apk`
-
-**How the TWA verification works:**
-
-```text
-Android opens https://dzeline.online
-    ↓
-Chrome fetches /.well-known/assetlinks.json
-    ↓
-Checks SHA256 fingerprint matches the installed APK's signing cert
-    ↓ match
-Runs in full-screen TWA mode (no browser chrome, looks fully native)
-    ↓ no match
-Falls back to Custom Tab (browser chrome visible — still works, just looks less native)
-```
-
-**iOS:**
-Apple requires a $99/year Developer Account + Mac with Xcode. PWABuilder (pwabduilder.microsoft.com) can generate an Xcode project from the PWA, but signing and distribution still require the Apple account. The PWA installs natively on iOS via "Add to Home Screen" from Safari — that's the practical iOS path for now.
+The wizard handles icons, keystore signing, `assetlinks.json`, and `bubblewrap build`. Distribute the signed APK directly (WhatsApp, download link) without Play Store.
 
 ---
 
-## Development Setup
-
-```bash
-# Frontend
-cd frontend
-npm install
-npm run dev          # → http://localhost:5173
-# First run: setup wizard creates admin + seeds 10 products
-# Default admin PIN (dev only): 1234
-```
-
-```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-cp .env.example .env    # fill in values
-python run.py           # → http://localhost:8000
-# API docs: http://localhost:8000/docs
-# Admin UI: http://localhost:8000/admin-ui
-```
-
-```bash
-# Run linter
-cd frontend && npm run lint
-
-# Create tenant (replace ADMIN_SECRET with value from .env)
-curl -X POST http://localhost:8000/admin/tenants \
-  -H "X-Admin-Secret: your_admin_secret" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Test Shop", "plan": "trial"}'
-# → Returns raw API key (stored in shop settings on first launch)
-```
-
-**Test offline mode**: DevTools → Network tab → Offline → Refresh → all sales still work.
-
----
-
-## Deployment
-
-| Layer | Platform | Config file |
-| --- | --- | --- |
-| Frontend (static) | Vercel | `.vercel/project.json` |
-| Backend (API) | Render | `backend/render.yaml` |
-| Database | PostgreSQL (Render managed or Supabase) | `DATABASE_URL` env var |
-
-Vercel auto-deploys on push to `master`. Set `VITE_API_URL` in Vercel dashboard.
-Render auto-deploys from `backend/` on push.
-
----
-
-## Known Issues (from code review)
+## Known Issues
 
 | Severity | File | Issue |
 | --- | --- | --- |
-| ~~🔴 Crash~~ | `StockReceiving.jsx:410` | ✅ Fixed — `onClose={() => navigateSub("inventory")}` passed from StockPanel |
-| 🟡 UX | `PinLogin.jsx:88` | 4-digit PIN mismatch gives zero feedback — by design (allows 6-digit continuation) |
-| ~~🟡 State~~ | `navStore.js` | ✅ Fixed — logout() now resets panel to "products" |
+| 🟡 UX | `PinLogin.jsx:88` | 4-digit PIN mismatch gives no feedback — by design (allows 6-digit continuation) |
 | 🟡 Security | `staffStore.js` | Persisted session carries stale role until explicit logout; role demotions not immediate |
-| 🔵 Design | `App.jsx:447` | Permission guards duplicated between tab array and render block — must be kept in sync manually |
+| 🔵 Design | `App.jsx` | Permission guards duplicated between tab array and render block — must be kept in sync manually |
 
 ---
 
 ## Production TODOs
 
-- [x] Fix `StockReceiving.jsx:410` Done button crash
-- [x] Reset navStore on logout
-- [x] Fix `DB_VERSION` in `constants.js`
-- [x] Add structured logging to backend
-- [x] Add rate limiting to `/mpesa/stk-push` and `/sync/transactions`
-- [ ] Replace `pochiNumber: "0700000000"` in `constants.js`
-- [ ] Replace `kraPin: "P051234567X"` in `constants.js`
+- [ ] Replace `pochiNumber: "0700000000"` placeholder in `constants.js`
+- [ ] Replace `kraPin: "P051234567X"` placeholder in `constants.js`
 - [ ] Add real 512×512 PNG app icon in `frontend/public/`
-- [ ] Add error tracking (Sentry or similar) on both frontend and backend
+- [ ] Add error tracking (Sentry) on frontend and backend
 - [ ] Wire Daraja per-tenant credentials from Settings UI → backend tenant record
+- [ ] Upgrade Render service from free tier (free tier spins down after ~15 min idle)
 
 ---
 
 ## Remaining Planned Work
 
-| Feature | Phase | Notes |
-| --- | --- | --- |
-| Real-time multi-device sync | B | WebSocket hub — backend + client code planned |
-| Financial intelligence / balance sheet | C | ✅ Live — Finance tab in Reports: P&L, margin, COGS, stock valuation, top products by profit |
-| AI invoice / receipt scanning | D | ✅ Live — "Scan Invoice" button in Stock Receiving; Claude Haiku vision auto-fills supplier, invoice no., line items |
-| M-Pesa STK Push (live) | — | Backend code exists; needs real Daraja creds + HTTPS callback URL |
-| KRA eTIMS VSCU signing | — | Requires KRA VSCU API access |
-| Bluetooth thermal printer | — | Web Bluetooth + ESC/POS protocol — not started |
-| Rate limiting | — | ✅ Done — slowapi on /mpesa/stk-push, /sync/transactions, /scan/invoice |
-| Observability | — | ✅ Done — structured JSON logging on backend; Sentry not yet added |
-| E2E test suite | — | Playwright installed, no test files yet |
+| Feature | Notes |
+| --- | --- |
+| Real-time multi-device sync | WebSocket hub — Phase B |
+| CSV / Excel product import | Bulk stock loading for new shops |
+| Category icon set | Grains, Sugar, Dairy, Oils, Bakery, Beverages, Spices, Household, Produce + 5 nav tab icons |
+| Selling price history | Track price changes per product over time |
+| Expiry date alerts | Surface items nearing expiry from stock_receipt_items |
 
 ---
 
