@@ -37,16 +37,21 @@ Base.metadata.create_all(bind=engine)
 logger.info("Database tables verified")
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    # Pre-warm PaddleOCR in a thread so models are downloaded/cached before
-    # the first real scan request hits.  Failure is non-fatal — the route
-    # will initialise lazily on its first call instead.
+async def _prewarm_ocr():
     try:
         await asyncio.to_thread(scan._get_ocr)
         logger.info("PaddleOCR pre-warm complete")
     except Exception as e:
         logger.warning("PaddleOCR pre-warm skipped: %s", e)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Fire pre-warm in background — don't block startup waiting for OCR.
+    # Render needs the port open within ~3 min; PaddleOCR can take 10+ min
+    # on a cold download. The scan route initialises lazily if the task is
+    # still running when the first request arrives.
+    asyncio.create_task(_prewarm_ocr())
     yield
 
 
