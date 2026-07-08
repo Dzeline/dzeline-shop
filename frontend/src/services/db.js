@@ -237,6 +237,8 @@ export const dbHelpers = {
           synced: false,
           voided: false,
           staff_id: staffId,
+          customer_name: payment.customer_name ?? null,
+          customer_phone: payment.customer_phone ?? null,
         });
 
         for (const item of cartItems) {

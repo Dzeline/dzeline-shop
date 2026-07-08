@@ -37,6 +37,47 @@ Base.metadata.create_all(bind=engine)
 logger.info("Database tables verified")
 
 
+def _apply_migrations():
+    """Idempotent ALTER TABLE migrations — safe to run on every startup.
+    Needed because SQLAlchemy's create_all only creates missing tables,
+    not missing columns on existing tables. Skipped for SQLite (local dev).
+    """
+    import os
+    from sqlalchemy import text
+
+    db_url = os.getenv("DATABASE_URL", "")
+    if not db_url or db_url.startswith("sqlite"):
+        return
+
+    pending = [
+        # tenants — owner contact + notes (Phase 3)
+        ("tenants", "owner_name",    "VARCHAR(200)"),
+        ("tenants", "owner_phone",   "VARCHAR(30)"),
+        ("tenants", "owner_email",   "VARCHAR(200)"),
+        ("tenants", "notes",         "TEXT"),
+        # tenants — M-Pesa Buy Goods till
+        ("tenants", "till_number",   "VARCHAR(20)"),
+        # transactions — customer identity + eTIMS status
+        ("transactions", "customer_name",  "VARCHAR(200)"),
+        ("transactions", "customer_phone", "VARCHAR(30)"),
+        ("transactions", "etims_status",   "VARCHAR(20)"),
+        # stk_requests — link to completed transaction
+        ("stk_requests", "transaction_id", "INTEGER REFERENCES transactions(id)"),
+    ]
+    with engine.connect() as conn:
+        for table, col, typ in pending:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {typ}"))
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                logger.warning("Migration skipped %s.%s: %s", table, col, exc)
+    logger.info("Schema migrations complete")
+
+
+_apply_migrations()
+
+
 async def _prewarm_ocr():
     try:
         await asyncio.to_thread(scan._get_ocr)

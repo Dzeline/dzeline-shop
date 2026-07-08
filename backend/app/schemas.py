@@ -7,6 +7,10 @@ from pydantic import BaseModel
 class TenantCreate(BaseModel):
     name: str
     plan: str = "trial"
+    owner_name: Optional[str] = None
+    owner_phone: Optional[str] = None
+    owner_email: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class TenantOut(BaseModel):
@@ -16,9 +20,19 @@ class TenantOut(BaseModel):
     active: bool
     billing_cycle_end: Optional[int] = None
     created_at: int
+    owner_name: Optional[str] = None
+    owner_phone: Optional[str] = None
+    owner_email: Optional[str] = None
+    notes: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class TenantWithMetrics(TenantOut):
+    txn_count: int = 0
+    total_revenue: float = 0.0
+    last_sync_at: Optional[int] = None
 
 
 class TenantCreated(TenantOut):
@@ -30,6 +44,10 @@ class TenantUpdate(BaseModel):
     plan: Optional[str] = None
     active: Optional[bool] = None
     billing_cycle_end: Optional[int] = None
+    owner_name: Optional[str] = None
+    owner_phone: Optional[str] = None
+    owner_email: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class TransactionItemIn(BaseModel):

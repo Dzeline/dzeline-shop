@@ -27,6 +27,12 @@ class Tenant(Base):
     # Till number for Lipa na M-Pesa Buy Goods (used for SMS payment verification)
     till_number            = Column(String(20),  nullable=True)
 
+    # Owner contact — for operator support reference
+    owner_name  = Column(String(200), nullable=True)
+    owner_phone = Column(String(30),  nullable=True)
+    owner_email = Column(String(200), nullable=True)
+    notes       = Column(Text,        nullable=True)
+
 
 class StkRequest(Base):
     __tablename__ = "stk_requests"

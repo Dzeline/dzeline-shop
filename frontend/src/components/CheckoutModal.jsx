@@ -419,8 +419,18 @@ function PochiTab({ grandTotal, onComplete }) {
 
 export default function CheckoutModal({ items, subtotal, vat, grandTotal, onComplete, onCancel }) {
   const [tab, setTab] = useState("cash");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const vatEnabled = useSettingsStore((s) => s.vatEnabled);
   const vatRate = useSettingsStore((s) => s.vatRate);
+
+  function handleComplete(payment) {
+    onComplete({
+      ...payment,
+      customer_name: customerName.trim() || null,
+      customer_phone: customerPhone.trim() || null,
+    });
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50">
@@ -437,6 +447,24 @@ export default function CheckoutModal({ items, subtotal, vat, grandTotal, onComp
         </div>
 
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+          {/* Customer (optional) */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="Customer name (optional)"
+              className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-primary"
+            />
+            <input
+              type="tel"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              placeholder="07XX XXX XXX"
+              className="w-36 px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-primary"
+            />
+          </div>
+
           {/* Order Summary */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-2">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Order Summary</p>
@@ -491,9 +519,9 @@ export default function CheckoutModal({ items, subtotal, vat, grandTotal, onComp
           </div>
 
           {/* Tab content */}
-          {tab === "cash" && <CashTab grandTotal={grandTotal} onComplete={onComplete} />}
-          {tab === "mpesa" && <MpesaTab grandTotal={grandTotal} onComplete={onComplete} />}
-          {tab === "pochi" && <PochiTab grandTotal={grandTotal} onComplete={onComplete} />}
+          {tab === "cash" && <CashTab grandTotal={grandTotal} onComplete={handleComplete} />}
+          {tab === "mpesa" && <MpesaTab grandTotal={grandTotal} onComplete={handleComplete} />}
+          {tab === "pochi" && <PochiTab grandTotal={grandTotal} onComplete={handleComplete} />}
         </div>
 
         {/* Cancel footer */}

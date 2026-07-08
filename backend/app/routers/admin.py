@@ -17,6 +17,7 @@ import hashlib
 import secrets
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -25,7 +26,7 @@ from ..models import (
     Tenant, Transaction, TransactionItem, Product,
     StkRequest, SmsVerifiedCode, EtimsInvoice, EtimsCounter, EtimsConfig,
 )
-from ..schemas import TenantCreate, TenantCreated, TenantOut, TenantUpdate
+from ..schemas import TenantCreate, TenantCreated, TenantOut, TenantUpdate, TenantWithMetrics
 
 router = APIRouter(
     prefix="/admin",
@@ -48,6 +49,10 @@ def create_tenant(payload: TenantCreate, db: Session = Depends(get_db)):
         name=payload.name,
         api_key_hash=key_hash,
         plan=payload.plan,
+        owner_name=payload.owner_name,
+        owner_phone=payload.owner_phone,
+        owner_email=payload.owner_email,
+        notes=payload.notes,
     )
     db.add(tenant)
     db.commit()
@@ -59,13 +64,37 @@ def create_tenant(payload: TenantCreate, db: Session = Depends(get_db)):
         active=tenant.active,
         billing_cycle_end=tenant.billing_cycle_end,
         created_at=tenant.created_at,
+        owner_name=tenant.owner_name,
+        owner_phone=tenant.owner_phone,
+        owner_email=tenant.owner_email,
+        notes=tenant.notes,
         api_key=raw_key,
     )
 
 
-@router.get("/tenants", response_model=list[TenantOut])
+@router.get("/tenants", response_model=list[TenantWithMetrics])
 def list_tenants(db: Session = Depends(get_db)):
-    return db.query(Tenant).order_by(Tenant.created_at.desc()).all()
+    rows = (
+        db.query(
+            Tenant,
+            func.count(Transaction.id).label("txn_count"),
+            func.coalesce(func.sum(Transaction.total), 0).label("total_revenue"),
+            func.max(Transaction.synced_at).label("last_sync_at"),
+        )
+        .outerjoin(Transaction, Transaction.tenant_id == Tenant.id)
+        .group_by(Tenant.id)
+        .order_by(Tenant.created_at.desc())
+        .all()
+    )
+    return [
+        TenantWithMetrics(
+            **TenantOut.model_validate(tenant).model_dump(),
+            txn_count=txn_count,
+            total_revenue=float(total_revenue or 0),
+            last_sync_at=last_sync_at,
+        )
+        for tenant, txn_count, total_revenue, last_sync_at in rows
+    ]
 
 
 @router.get("/tenants/{tenant_id}", response_model=TenantOut)

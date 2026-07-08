@@ -29,7 +29,27 @@
       "PowerShell(cd \"c:\\\\Users\\\\Deline\\\\Documents\\\\github repos\\\\Dzeline\\\\dzeline-shop\\\\frontend\"; $env:VERCEL_TOKEN = \"\"; npx --yes vercel@latest --version 2>&1 | Select-Object -First 5)",
       "Bash(git rm *)",
       "mcp__claude_ai_Canva__list-brand-kits",
-      "mcp__claude_ai_Canva__generate-design"
+      "mcp__claude_ai_Canva__generate-design",
+      "Bash(git ls-tree *)",
+      "Bash(ls ~/Downloads/grocery-inventory-and-sales-dataset* 2>/dev/null && echo \"found\" || echo \"not found\")",
+      "Read(//c/Users/Deline/Downloads/**)",
+      "Bash(ls /c/Users/Deline/Downloads/ | grep -i grocery)",
+      "Read(//c/Users/Deline/Downloads//**)",
+      "Bash(ls /c/Users/Deline/Downloads/ | head -20)",
+      "Bash(curl -L -o /c/Users/Deline/Downloads/grocery-inventory.zip \"https://www.kaggle.com/api/v1/datasets/download/salahuddinahmedshuvo/grocery-inventory-and-sales-dataset\")",
+      "Bash(unzip -o grocery-inventory.zip -d grocery-inventory/)",
+      "mcp__claude_ai_Canva__request-outline-review",
+      "mcp__claude_ai_Canva__generate-design-structured",
+      "Bash(ls \"c:/Users/Deline/Documents/github repos/Dzeline/\")",
+      "Read(//c/Users/Deline/Documents/github repos/Dzeline/**)",
+      "Read(//c/Users/Deline/Documents/github repos/Dzeline/Dzeline-port/**)",
+      "Bash(gh pr *)",
+      "Bash(cat backend/render.yaml)",
+      "Bash(cat render.yaml)",
+      "Bash(git config *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Deline\\Documents\\github repos\\Dzeline\\Dzeline-port\\Website-source"
     ]
   },
   "hooks": {
