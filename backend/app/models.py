@@ -24,6 +24,9 @@ class Tenant(Base):
     daraja_callback_url    = Column(String(500), nullable=True)
     daraja_shortcode_type  = Column(String(20),  default="paybill")
 
+    # Till number for Lipa na M-Pesa Buy Goods (used for SMS payment verification)
+    till_number            = Column(String(20),  nullable=True)
+
 
 class StkRequest(Base):
     __tablename__ = "stk_requests"
@@ -35,6 +38,7 @@ class StkRequest(Base):
     mpesa_code          = Column(String(30), nullable=True)
     phone_number        = Column(String(20), nullable=True)
     amount              = Column(Float, nullable=True)
+    transaction_id      = Column(Integer, ForeignKey("transactions.id"), nullable=True, index=True)
     created_at          = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
 
 
@@ -53,6 +57,9 @@ class Transaction(Base):
     change_given   = Column(Float, default=0)
     mpesa_code     = Column(String(20), nullable=True)
     staff_id       = Column(Integer, nullable=True)
+    customer_name  = Column(String(200), nullable=True)
+    customer_phone = Column(String(30),  nullable=True)
+    etims_status   = Column(String(20),  nullable=True)   # pending|submitted|accepted|failed
     synced_at      = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
 
     items = relationship("TransactionItem", back_populates="transaction")

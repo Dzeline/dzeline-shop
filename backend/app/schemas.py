@@ -51,6 +51,9 @@ class TransactionIn(BaseModel):
     change_given: Optional[float] = 0
     mpesa_code: Optional[str] = None
     staff_id: Optional[int] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    etims_status: Optional[str] = None
     items: list[TransactionItemIn] = []
 
 
@@ -60,6 +63,10 @@ class TransactionOut(BaseModel):
     timestamp: int
     total: float
     payment_method: str
+    mpesa_code: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    etims_status: Optional[str] = None
     synced_at: int
 
     class Config:

@@ -41,6 +41,9 @@ def sync_transaction(
         change_given=payload.change_given or 0,
         mpesa_code=payload.mpesa_code,
         staff_id=payload.staff_id,
+        customer_name=payload.customer_name,
+        customer_phone=payload.customer_phone,
+        etims_status=payload.etims_status,
         synced_at=int(datetime.utcnow().timestamp() * 1000),
     )
     db.add(txn)
