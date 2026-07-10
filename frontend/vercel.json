@@ -1,4 +1,5 @@
 {
+  "outputDirectory": "dist",
   "rewrites": [
     { "source": "/admin-ui",     "destination": "https://dzeline-api.onrender.com/admin-ui" },
     { "source": "/admin/:path*", "destination": "https://dzeline-api.onrender.com/admin/:path*" },
