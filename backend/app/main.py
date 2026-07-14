@@ -79,6 +79,16 @@ def _apply_migrations():
         ("tenants", "mpesa_till_type",     "VARCHAR(20)"),
         ("tenants", "currency",            "VARCHAR(10) DEFAULT 'KES'"),
         ("tenants", "settings_updated_at", "BIGINT"),
+        # transactions — cross-device Reports pull (void state, cashier name,
+        # incremental-pull watermark)
+        ("transactions", "voided",     "BOOLEAN DEFAULT FALSE"),
+        ("transactions", "staff_name", "VARCHAR(200)"),
+        ("transactions", "updated_at", "BIGINT"),
+        # transaction_items — cross-device COGS + product id remapping
+        ("transaction_items", "cost_price",       "FLOAT"),
+        ("transaction_items", "cloud_product_id", "INTEGER"),
+        # products — cross-device COGS/margin math
+        ("products", "cost_price", "FLOAT"),
     ]
     with engine.connect() as conn:
         for table, col, typ in pending:
@@ -88,6 +98,31 @@ def _apply_migrations():
             except Exception as exc:
                 conn.rollback()
                 logger.warning("Migration skipped %s.%s: %s", table, col, exc)
+
+        # Existing rows get NULL updated_at from a bare ADD COLUMN (no
+        # DEFAULT) — and NULL > since is never true, so every transaction
+        # this tenant already has would silently vanish from the new
+        # since-based pull forever unless backfilled. Idempotent — no-op
+        # once every row has a value.
+        try:
+            conn.execute(text(
+                "UPDATE transactions SET updated_at = COALESCE(synced_at, timestamp) "
+                "WHERE updated_at IS NULL"
+            ))
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            logger.warning("updated_at backfill skipped: %s", exc)
+
+        try:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_transactions_tenant_updated "
+                "ON transactions (tenant_id, updated_at)"
+            ))
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            logger.warning("Index creation skipped: %s", exc)
     logger.info("Schema migrations complete")
 
 

@@ -78,10 +78,13 @@ class Transaction(Base):
     change_given   = Column(Float, default=0)
     mpesa_code     = Column(String(20), nullable=True)
     staff_id       = Column(Integer, nullable=True)
+    staff_name     = Column(String(200), nullable=True)   # denormalized — staff_id is only meaningful on its own device
     customer_name  = Column(String(200), nullable=True)
     customer_phone = Column(String(30),  nullable=True)
     etims_status   = Column(String(20),  nullable=True)   # pending|submitted|accepted|failed
+    voided         = Column(Boolean, default=False)
     synced_at      = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+    updated_at     = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
 
     items = relationship("TransactionItem", back_populates="transaction")
 
@@ -89,13 +92,15 @@ class Transaction(Base):
 class TransactionItem(Base):
     __tablename__ = "transaction_items"
 
-    id             = Column(Integer, primary_key=True, index=True)
-    transaction_id = Column(Integer, ForeignKey("transactions.id"), index=True)
-    product_id     = Column(Integer, nullable=False)
-    quantity       = Column(Integer, nullable=False)
-    price          = Column(Float, nullable=False)
-    subtotal       = Column(Float, nullable=False)
-    product_name   = Column(String(200), nullable=True)
+    id                = Column(Integer, primary_key=True, index=True)
+    transaction_id    = Column(Integer, ForeignKey("transactions.id"), index=True)
+    product_id        = Column(Integer, nullable=False)
+    quantity          = Column(Integer, nullable=False)
+    price             = Column(Float, nullable=False)
+    subtotal          = Column(Float, nullable=False)
+    product_name      = Column(String(200), nullable=True)
+    cost_price        = Column(Float, nullable=True)       # snapshot at sale time — for cross-device COGS
+    cloud_product_id  = Column(Integer, nullable=True)      # lets a puller remap to its own local product
 
     transaction = relationship("Transaction", back_populates="items")
 
@@ -110,6 +115,7 @@ class Product(Base):
     barcode       = Column(String(50), nullable=True)
     name          = Column(String(200), nullable=False, index=True)
     price         = Column(Float, nullable=False)
+    cost_price    = Column(Float, nullable=True)
     stock         = Column(Integer, default=0)
     category      = Column(String(100), nullable=True)
     reorder_level = Column(Integer, default=10)

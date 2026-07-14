@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
 from ..deps import get_tenant
 from ..limiter import limiter
@@ -29,8 +29,22 @@ def sync_transaction(
         )
         .first()
     )
+    now = int(datetime.utcnow().timestamp() * 1000)
+
     if existing:
-        logger.info("sync_transaction duplicate tenant=%s device=%s local_id=%s", tenant.id, payload.device_id, payload.id)
+        # A re-push (e.g. after voidTransaction() resets synced:false) must
+        # actually update the stored row, not just no-op — otherwise voided
+        # status, eTIMS status, etc. never reach the backend past the first sync.
+        existing.voided = payload.voided or False
+        existing.mpesa_code = payload.mpesa_code
+        existing.staff_name = payload.staff_name
+        existing.customer_name = payload.customer_name
+        existing.customer_phone = payload.customer_phone
+        existing.etims_status = payload.etims_status
+        existing.updated_at = now
+        db.commit()
+        db.refresh(existing)
+        logger.info("sync_transaction updated tenant=%s device=%s local_id=%s", tenant.id, payload.device_id, payload.id)
         return existing
 
     txn = Transaction(
@@ -46,10 +60,13 @@ def sync_transaction(
         change_given=payload.change_given or 0,
         mpesa_code=payload.mpesa_code,
         staff_id=payload.staff_id,
+        staff_name=payload.staff_name,
         customer_name=payload.customer_name,
         customer_phone=payload.customer_phone,
         etims_status=payload.etims_status,
-        synced_at=int(datetime.utcnow().timestamp() * 1000),
+        voided=payload.voided or False,
+        synced_at=now,
+        updated_at=now,
     )
     db.add(txn)
     db.flush()
@@ -62,6 +79,8 @@ def sync_transaction(
             price=item.price,
             subtotal=item.subtotal,
             product_name=item.name,
+            cost_price=item.cost_price,
+            cloud_product_id=item.cloud_product_id,
         ))
         if item.cloud_product_id:
             product = (
@@ -80,17 +99,21 @@ def sync_transaction(
 
 @router.get("/transactions", response_model=list[TransactionOut])
 def list_transactions(
-    skip: int = 0,
-    limit: int = 100,
+    since: int = 0,
+    limit: int = 300,
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_tenant),
 ):
+    # Filtered/ordered by updated_at, not timestamp — a void that happens
+    # days after the sale must still be picked up by a since-bounded pull
+    # even though the sale's own timestamp is old. Callers page forward by
+    # advancing since to the max updated_at they've seen.
     return (
         db.query(Transaction)
-        .filter(Transaction.tenant_id == tenant.id)
-        .order_by(Transaction.timestamp.desc())
-        .offset(skip)
-        .limit(limit)
+        .filter(Transaction.tenant_id == tenant.id, Transaction.updated_at > since)
+        .order_by(Transaction.updated_at.asc())
+        .limit(min(limit, 500))
+        .options(joinedload(Transaction.items))
         .all()
     )
 

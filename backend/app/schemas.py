@@ -111,6 +111,20 @@ class TransactionItemIn(BaseModel):
     subtotal: float
     name: Optional[str] = None
     cloud_product_id: Optional[int] = None   # if set, backend decrements Product.stock
+    cost_price: Optional[float] = None       # snapshot at sale time — cross-device COGS
+
+
+class TransactionItemOut(BaseModel):
+    product_id: int
+    quantity: int
+    price: float
+    subtotal: float
+    product_name: Optional[str] = None
+    cost_price: Optional[float] = None
+    cloud_product_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True
 
 
 class TransactionIn(BaseModel):
@@ -125,23 +139,35 @@ class TransactionIn(BaseModel):
     change_given: Optional[float] = 0
     mpesa_code: Optional[str] = None
     staff_id: Optional[int] = None
+    staff_name: Optional[str] = None
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     etims_status: Optional[str] = None
+    voided: Optional[bool] = False
     items: list[TransactionItemIn] = []
 
 
 class TransactionOut(BaseModel):
     id: int
     local_id: Optional[int]
+    device_id: Optional[str] = None
     timestamp: int
+    subtotal: float
+    vat: float
     total: float
     payment_method: str
+    payment_amount: Optional[float] = None
+    change_given: Optional[float] = None
     mpesa_code: Optional[str] = None
+    staff_id: Optional[int] = None
+    staff_name: Optional[str] = None
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     etims_status: Optional[str] = None
+    voided: bool = False
     synced_at: int
+    updated_at: Optional[int] = None
+    items: list[TransactionItemOut] = []
 
     class Config:
         from_attributes = True
@@ -153,6 +179,7 @@ class ProductIn(BaseModel):
     barcode: Optional[str] = None
     name: str
     price: float
+    cost_price: Optional[float] = None
     stock: int = 0
     category: Optional[str] = None
     reorder_level: int = 10
