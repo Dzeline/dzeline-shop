@@ -139,6 +139,24 @@ db.version(12).stores({
   await tx.table("suppliers").toCollection().modify({ cloud_id: null, updated_at: now, deleted_at: null, synced: false });
 });
 
+// Version 13: stock receipt drafts now sync cross-device — an attendant's
+// draft is no longer stuck invisible on their own phone until a manager
+// happens to activate it from that same device. cloud_id links a local
+// receipt to its backend id; device_id tags who created it (informational —
+// unlike transactions, activation legitimately mutates another device's
+// receipt via PUT /stock-receipts/{id}, not a device-scoped push).
+db.version(13).stores({
+  stock_receipts: "++id, timestamp, supplier, supplier_id, staff_id, status, synced, cloud_id, device_id",
+}).upgrade(async (tx) => {
+  let deviceRow = await tx.table("settings").get("device_id");
+  let deviceId = deviceRow?.value;
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    await tx.table("settings").put({ key: "device_id", value: deviceId });
+  }
+  await tx.table("stock_receipts").toCollection().modify({ cloud_id: null, device_id: deviceId });
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -494,6 +512,9 @@ export const dbHelpers = {
    * Items land in stock_receipt_items; stock only moves on activateStockReceipt().
    */
   async addStockReceipt({ supplier, supplier_id, invoice_number, photo_blob, items, staff_id }) {
+    // Resolved before the transaction block — getDeviceId() touches
+    // db.settings, which isn't in the table list below.
+    const deviceId = await this.getDeviceId();
     return await db.transaction("rw", [db.stock_receipts, db.stock_receipt_items, db.products], async () => {
       const receiptId = await db.stock_receipts.add({
         timestamp:      Date.now(),
@@ -504,6 +525,8 @@ export const dbHelpers = {
         staff_id,
         status:  "draft",
         synced:  false,
+        device_id: deviceId,
+        cloud_id:  null,
       });
 
       await Promise.all(
@@ -587,11 +610,13 @@ export const dbHelpers = {
     return await db.stock_receipts.orderBy("timestamp").reverse().limit(limit).toArray();
   },
 
-  /** Returns unsynced receipts (status=activated, synced=false) with their items. */
+  /** Returns unsynced receipts (drafts and activated) with their items. */
   async getUnsyncedReceipts() {
     // .filter(), not .where().equals(false) — see getUnsyncedProducts() note.
+    // No status filter — drafts push too now, so a manager on another device
+    // can see and activate them, not just already-activated receipts.
     const receipts = await db.stock_receipts
-      .filter((r) => !r.synced && r.status === "activated")
+      .filter((r) => !r.synced)
       .toArray();
     return Promise.all(
       receipts.map(async (r) => ({
@@ -601,8 +626,8 @@ export const dbHelpers = {
     );
   },
 
-  async markReceiptSynced(receiptId) {
-    return db.stock_receipts.update(receiptId, { synced: true });
+  async markReceiptSynced(receiptId, cloudId) {
+    return db.stock_receipts.update(receiptId, { synced: true, cloud_id: cloudId });
   },
 
   // ── Shop settings ────────────────────────────────────────────────────────

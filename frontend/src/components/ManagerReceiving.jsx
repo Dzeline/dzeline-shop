@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
+import { syncService } from "../services/sync";
 import { formatPrice } from "../utils/formatters";
 import { showToast } from "../utils/toast";
 
@@ -33,6 +34,7 @@ function ReceiptCard({ receipt, onActivated }) {
       await dbHelpers.activateStockReceipt(receipt.id, pricingMap);
       showToast("Stock activated!");
       onActivated();
+      syncService.pushUnsyncedReceipts().catch(() => {});
     } catch (err) {
       console.error(err);
       showToast("Failed to activate — try again");

@@ -123,6 +123,14 @@ export const syncService = {
     return res.json(); // { checkout_request_id, status, mpesa_code }
   },
 
+  /**
+   * Push drafts and activated receipts. Branches on whether the local row
+   * already has a cloud_id: no cloud_id -> POST (brand-new local draft,
+   * device-scoped create); has cloud_id -> PUT by real id, which covers both
+   * "I created this and I'm updating my own draft" AND "I pulled this and
+   * I'm activating someone else's draft" — activation is a genuinely
+   * cross-device write, so it can't go through the device-scoped POST path.
+   */
   async pushUnsyncedReceipts() {
     if (!API_BASE) return { pushed: 0 };
     const receipts = await dbHelpers.getUnsyncedReceipts();
@@ -132,25 +140,54 @@ export const syncService = {
     let pushed = 0;
     for (const receipt of receipts) {
       try {
-        const res = await fetch(`${API_BASE}/stock-receipts`, {
-          method: "POST",
-          headers: apiHeaders(),
-          body: JSON.stringify({
-            local_id:       receipt.id,
-            device_id:      deviceId,
-            status:         receipt.status,
-            supplier:       receipt.supplier,
-            supplier_id:    receipt.supplier_id,
-            invoice_number: receipt.invoice_number,
-            staff_id:       receipt.staff_id,
-            created_at:     receipt.timestamp,
-            activated_at:   receipt.activated_at ?? null,
-            items:          receipt.items,
-          }),
-          signal: AbortSignal.timeout(10_000),
-        });
+        const productIds = [...new Set(receipt.items.map((i) => i.product_id).filter(Boolean))];
+        const products = await db.products.bulkGet(productIds);
+        const cloudIdMap = new Map(products.filter(Boolean).map((p) => [p.id, p.cloud_id]));
+        const itemsWithCloudIds = receipt.items.map((i) => ({
+          ...i,
+          cloud_product_id: i.cloud_product_id ?? cloudIdMap.get(i.product_id) ?? null,
+        }));
+
+        let res;
+        if (receipt.cloud_id) {
+          res = await fetch(`${API_BASE}/stock-receipts/${receipt.cloud_id}`, {
+            method: "PUT",
+            headers: apiHeaders(),
+            body: JSON.stringify({
+              status:       receipt.status,
+              activated_at: receipt.activated_at ?? null,
+              items: itemsWithCloudIds.map((i) => ({
+                product_id:       i.product_id,
+                cloud_product_id: i.cloud_product_id,
+                selling_price:    i.selling_price,
+                unit_cost:        i.unit_cost,
+              })),
+            }),
+            signal: AbortSignal.timeout(10_000),
+          });
+        } else {
+          res = await fetch(`${API_BASE}/stock-receipts`, {
+            method: "POST",
+            headers: apiHeaders(),
+            body: JSON.stringify({
+              local_id:       receipt.id,
+              device_id:      deviceId,
+              status:         receipt.status,
+              supplier:       receipt.supplier,
+              supplier_id:    receipt.supplier_id,
+              invoice_number: receipt.invoice_number,
+              staff_id:       receipt.staff_id,
+              created_at:     receipt.timestamp,
+              activated_at:   receipt.activated_at ?? null,
+              items:          itemsWithCloudIds,
+            }),
+            signal: AbortSignal.timeout(10_000),
+          });
+        }
+
         if (res.ok) {
-          await dbHelpers.markReceiptSynced(receipt.id);
+          const data = await res.json();
+          await dbHelpers.markReceiptSynced(receipt.id, data.id);
           pushed++;
         }
       } catch {
@@ -652,6 +689,78 @@ export const syncService = {
             name: r.name, phone: r.phone, email: r.email, notes: r.notes,
             created_at: new Date(r.updated_at).toISOString(),
             cloud_id: r.id, deleted_at: null, synced: true, updated_at: r.updated_at,
+          });
+        }
+      }
+    } catch { /* offline — try again next reconnect */ }
+  },
+
+  // ── Stock receipt sync ───────────────────────────────────────────────────
+
+  /**
+   * Pull the tenant's stock receipts (drafts and activated) and reconcile
+   * into local Dexie. Unlike transactions, there's no "foreign rows are
+   * read-only" rule here — the whole point is that a manager on a different
+   * device needs to activate a draft someone else created. That write goes
+   * out through pushUnsyncedReceipts()'s PUT-by-cloud_id path, not through
+   * this pull; this function only ever reads from the cloud.
+   */
+  async pullReceipts() {
+    if (!API_BASE) return;
+    try {
+      const res = await fetch(`${API_BASE}/stock-receipts`, {
+        headers: apiGetHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return;
+      const rows = await res.json();
+
+      const local = await db.stock_receipts.toArray();
+      const byCloudId = new Map(local.filter((r) => r.cloud_id != null).map((r) => [r.cloud_id, r]));
+
+      const products = await db.products.toArray();
+      const productByCloudId = new Map(products.filter((p) => p.cloud_id != null).map((p) => [p.cloud_id, p]));
+
+      for (const r of rows) {
+        const existing = byCloudId.get(r.id);
+
+        if (existing) {
+          if (!existing.synced) continue; // pending local edit — don't clobber
+          await db.stock_receipts.update(existing.id, {
+            status: r.status, activated_at: r.activated_at, synced: true,
+          });
+          for (const item of r.items ?? []) {
+            const local_item = await db.stock_receipt_items
+              .where("receipt_id").equals(existing.id)
+              .filter((li) => li.cloud_product_id === item.cloud_product_id || li.product_id === item.product_id)
+              .first();
+            if (local_item) {
+              await db.stock_receipt_items.update(local_item.id, {
+                selling_price: item.selling_price, unit_cost: item.unit_cost,
+              });
+            }
+          }
+          continue;
+        }
+
+        const localReceiptId = await db.stock_receipts.add({
+          timestamp: r.created_at, supplier: r.supplier, supplier_id: r.supplier_id,
+          invoice_number: r.invoice_number, staff_id: r.staff_id,
+          status: r.status, activated_at: r.activated_at ?? null,
+          synced: true, cloud_id: r.id, device_id: r.device_id,
+        });
+        for (const item of r.items ?? []) {
+          await db.stock_receipt_items.add({
+            receipt_id: localReceiptId,
+            product_id: productByCloudId.get(item.cloud_product_id)?.id ?? null,
+            cloud_product_id: item.cloud_product_id ?? null,
+            product_name: item.product_name,
+            qty_added: item.qty_added,
+            qty_before: item.qty_before,
+            unit_cost: item.unit_cost,
+            selling_price: item.selling_price,
+            expiry_date: item.expiry_date,
+            condition: item.condition,
           });
         }
       }

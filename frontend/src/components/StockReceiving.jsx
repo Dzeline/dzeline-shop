@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { dbHelpers } from "../services/db";
+import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import { useDebounce } from "../utils/useDebounce";
@@ -350,6 +351,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
       });
       setSubmitted(true);
       showToast("Submitted for pricing review");
+      syncService.pushUnsyncedReceipts().catch(() => {});
     } catch (err) {
       console.error(err);
       showToast("Failed to save — please try again");
