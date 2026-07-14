@@ -89,6 +89,10 @@ def _apply_migrations():
         ("transaction_items", "cloud_product_id", "INTEGER"),
         # products — cross-device COGS/margin math
         ("products", "cost_price", "FLOAT"),
+        # etims_invoices — real transaction id as the dedup key, replacing the
+        # per-device-ambiguous local_txn_id, so any device can safely submit
+        # any of the tenant's pending transactions to KRA
+        ("etims_invoices", "transaction_id", "INTEGER REFERENCES transactions(id)"),
     ]
     with engine.connect() as conn:
         for table, col, typ in pending:

@@ -256,7 +256,7 @@ class StkStatusResponse(BaseModel):
 
 class EtimsItemIn(BaseModel):
     """One line item inside a transaction submitted for eTIMS."""
-    product_id: int
+    product_id: Optional[int] = None   # may be unresolved for a foreign (pulled) item
     cloud_product_id: Optional[int] = None   # tenant-wide id — see _auto_item_cd
     name: str
     barcode: Optional[str] = None
@@ -271,6 +271,7 @@ class EtimsItemIn(BaseModel):
 class EtimsTransactionIn(BaseModel):
     """Full transaction payload sent from the frontend for eTIMS submission."""
     local_id: int
+    transaction_id: Optional[int] = None   # real backend Transaction.id — the dedup key
     timestamp: int                     # ms epoch
     items: list[EtimsItemIn]
     subtotal: float

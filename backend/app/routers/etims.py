@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_tenant
-from ..models import EtimsInvoice, EtimsCounter, EtimsConfig, Tenant
+from ..models import EtimsInvoice, EtimsCounter, EtimsConfig, Tenant, Transaction
 from ..schemas import (
     EtimsBatchRequest,
     EtimsBatchResponse,
@@ -100,7 +100,7 @@ def _build_kra_payload(txn: EtimsTransactionIn, invc_no: int, vat_rate: float, t
         # from two different tills was reported to KRA under two different
         # item codes. Falls back to product_id only when the product hasn't
         # synced yet (rare, self-heals once it does).
-        item_cd = item.etims_item_cd or _auto_item_cd(item.cloud_product_id or item.product_id)
+        item_cd = item.etims_item_cd or _auto_item_cd(item.cloud_product_id or item.product_id or 0)
 
         if vat_rate > 0:
             taxbl_amt = round(line_total / (1 + vat_rate), 2)
@@ -345,12 +345,21 @@ def submit_batch(
     now_ms        = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
 
     for txn in payload.transactions:
+        # transaction_id is the real, tenant-wide Transaction.id (what the
+        # frontend calls cloud_id) — local_id alone is a per-device Dexie
+        # autoincrement id and is ambiguous once transactions sync across
+        # devices, so it can no longer be trusted as the dedup key.
+        if txn.transaction_id is None:
+            results.append(EtimsInvoiceResult(local_id=txn.local_id, status="skipped"))
+            skipped += 1
+            continue
+
         existing = (
             db.query(EtimsInvoice)
             .filter(
-                EtimsInvoice.tenant_id   == tenant.id,
-                EtimsInvoice.local_txn_id == txn.local_id,
-                EtimsInvoice.status      == "submitted",
+                EtimsInvoice.tenant_id      == tenant.id,
+                EtimsInvoice.transaction_id == txn.transaction_id,
+                EtimsInvoice.status         == "submitted",
             )
             .first()
         )
@@ -377,8 +386,9 @@ def submit_batch(
         data      = kra_resp.get("data", {}) or {}
 
         record = EtimsInvoice(
-            tenant_id    = tenant.id,
-            local_txn_id = txn.local_id,
+            tenant_id      = tenant.id,
+            local_txn_id   = txn.local_id,
+            transaction_id = txn.transaction_id,
             invc_no      = invc_no,
             rcpt_typ     = txn.rcpt_typ or "S",
             status       = "submitted" if success else "failed",
@@ -393,6 +403,19 @@ def submit_batch(
             submitted_at = now_ms if success else None,
         )
         db.add(record)
+
+        # Write the outcome back onto the actual transaction row so it's
+        # visible cross-device — etims_status already rides pullTransactions()/
+        # push unchanged, this is what makes that propagation carry a real value.
+        txn_row = (
+            db.query(Transaction)
+            .filter(Transaction.id == txn.transaction_id, Transaction.tenant_id == tenant.id)
+            .first()
+        )
+        if txn_row:
+            txn_row.etims_status = "submitted" if success else "failed"
+            txn_row.updated_at = now_ms
+
         db.commit()
         db.refresh(record)
 

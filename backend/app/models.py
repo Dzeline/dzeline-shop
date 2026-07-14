@@ -127,9 +127,10 @@ class EtimsInvoice(Base):
     __tablename__ = "etims_invoices"
 
     id           = Column(Integer, primary_key=True, index=True)
-    tenant_id    = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
-    local_txn_id = Column(Integer, index=True, nullable=False)
-    invc_no      = Column(Integer, nullable=False)
+    tenant_id      = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    local_txn_id   = Column(Integer, index=True, nullable=False)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True, index=True)  # real, tenant-wide id — dedup key
+    invc_no        = Column(Integer, nullable=False)
     rcpt_typ     = Column(String(1), default="S")
 
     status   = Column(String(20), default="pending", nullable=False)
