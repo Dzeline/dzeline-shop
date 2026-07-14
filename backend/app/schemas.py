@@ -232,6 +232,39 @@ class StaffOut(BaseModel):
         from_attributes = True
 
 
+# ── Supplier schemas ─────────────────────────────────────────────────────────
+
+class SupplierIn(BaseModel):
+    device_id: Optional[str] = None
+    local_id:  Optional[int] = None
+    name:      str
+    phone:     Optional[str] = None
+    email:     Optional[str] = None
+    notes:     Optional[str] = None
+
+
+class SupplierUpdate(BaseModel):
+    name:  Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SupplierOut(BaseModel):
+    id:         int
+    device_id:  Optional[str] = None
+    local_id:   Optional[int] = None
+    name:       str
+    phone:      Optional[str] = None
+    email:      Optional[str] = None
+    notes:      Optional[str] = None
+    deleted_at: Optional[int] = None
+    updated_at: int
+
+    class Config:
+        from_attributes = True
+
+
 class MpesaStkRequest(BaseModel):
     transaction_id: Optional[int] = None
     phone_number: str

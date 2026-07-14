@@ -231,6 +231,24 @@ class Staff(Base):
     updated_at  = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
 
 
+class Supplier(Base):
+    """Cloud mirror of a shop's supplier directory, shared across devices."""
+    __tablename__ = "suppliers"
+    __table_args__ = (UniqueConstraint("tenant_id", "device_id", "local_id", name="uq_supplier_device_local"),)
+
+    id         = Column(Integer, primary_key=True, index=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    device_id  = Column(String(64), nullable=True, index=True)
+    local_id   = Column(Integer, nullable=True, index=True)
+    name       = Column(String(200), nullable=False)
+    phone      = Column(String(30),  nullable=True)
+    email      = Column(String(200), nullable=True)
+    notes      = Column(Text, nullable=True)
+    deleted_at = Column(BigInteger, nullable=True)
+    created_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+    updated_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+
+
 class EtimsConfig(Base):
     """Per-tenant eTIMS credentials. One row per tenant."""
     __tablename__ = "etims_config"
