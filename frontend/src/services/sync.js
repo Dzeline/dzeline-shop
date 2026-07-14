@@ -197,12 +197,13 @@ export const syncService = {
   // Cloud is transport only — PIN login always stays a local Dexie lookup.
 
   async pushUnsyncedStaff() {
-    if (!API_BASE) return { pushed: 0 };
+    if (!API_BASE) return { pushed: 0, reason: "no API_BASE configured" };
     const unsynced = await dbHelpers.getUnsyncedStaff();
-    if (unsynced.length === 0) return { pushed: 0 };
+    if (unsynced.length === 0) return { pushed: 0, reason: "nothing unsynced" };
 
     const deviceId = await dbHelpers.getDeviceId();
     let pushed = 0;
+    const errors = [];
     for (const s of unsynced) {
       try {
         const body = {
@@ -225,12 +226,17 @@ export const syncService = {
           const data = await res.json();
           await dbHelpers.markStaffSynced(s.id, data.id);
           pushed++;
+        } else {
+          const detail = await res.text().catch(() => "");
+          console.error("pushUnsyncedStaff: server rejected", res.status, detail);
+          errors.push(`${res.status}: ${detail}`);
         }
-      } catch {
-        continue;
+      } catch (err) {
+        console.error("pushUnsyncedStaff: request failed", err);
+        errors.push(String(err?.message ?? err));
       }
     }
-    return { pushed };
+    return { pushed, total: unsynced.length, errors };
   },
 
   /**

@@ -346,8 +346,19 @@ export default function StaffManagement({ currentStaffId, onClose }) {
 
   // Fire-and-forget: the local write is authoritative and instant; the cloud
   // push is best-effort and will retry on the next reconnect if it fails now.
-  function pushStaffInBackground() {
-    syncService.pushUnsyncedStaff().catch(() => {});
+  // Surfaces failures via toast (not just console) since this is tested on
+  // mobile devices where devtools aren't easily reachable.
+  async function pushStaffInBackground() {
+    try {
+      const result = await syncService.pushUnsyncedStaff();
+      if (result.errors?.length) {
+        showToast(`Cloud sync failed: ${result.errors[0]}`, 8000);
+      } else if (result.pushed === 0 && result.reason) {
+        showToast(`Cloud sync: ${result.reason}`, 8000);
+      }
+    } catch (err) {
+      showToast(`Cloud sync error: ${err.message ?? err}`, 8000);
+    }
   }
 
   async function handleToggle(staffId, active) {
