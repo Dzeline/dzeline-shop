@@ -861,6 +861,11 @@ export const dbHelpers = {
         const product = productMap.get(item.product_id) || {};
         return {
           product_id:    item.product_id,
+          // Tenant-wide stable id (assigned once a product first syncs) —
+          // lets the backend derive a KRA item code that's the same
+          // regardless of which till's local product_id made the sale.
+          // Falls back to null if this product hasn't synced yet.
+          cloud_product_id: product.cloud_id ?? null,
           name:          item.name || product.name || "Unknown",
           barcode:       product.barcode || null,
           qty:           item.quantity,

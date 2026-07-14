@@ -78,6 +78,8 @@ def _now_dt() -> str:
 
 
 def _auto_item_cd(product_id: int) -> str:
+    # Callers should pass a tenant-wide id (cloud_product_id) where available,
+    # not a device-local one — see call sites for why.
     return f"KE1NTXU{product_id:07d}"
 
 
@@ -92,7 +94,13 @@ def _build_kra_payload(txn: EtimsTransactionIn, invc_no: int, vat_rate: float, t
 
     for seq, item in enumerate(txn.items, start=1):
         line_total = round(item.price * item.qty, 2)
-        item_cd = item.etims_item_cd or _auto_item_cd(item.product_id)
+        # cloud_product_id is tenant-wide (assigned once by product sync);
+        # product_id is a per-device Dexie autoincrement id. Deriving the
+        # item code from the latter meant the same physical product sold
+        # from two different tills was reported to KRA under two different
+        # item codes. Falls back to product_id only when the product hasn't
+        # synced yet (rare, self-heals once it does).
+        item_cd = item.etims_item_cd or _auto_item_cd(item.cloud_product_id or item.product_id)
 
         if vat_rate > 0:
             taxbl_amt = round(line_total / (1 + vat_rate), 2)
@@ -302,7 +310,7 @@ def register_items(
     now  = _now_dt()
     item_list = []
     for seq, item in enumerate(payload.items, start=1):
-        item_cd = item.etims_item_cd or _auto_item_cd(item.product_id)
+        item_cd = item.etims_item_cd or _auto_item_cd(item.cloud_product_id or item.product_id)
         item_list.append({
             "itemSeq": seq, "itemCd": item_cd,
             "itemClsCd": item.item_cls_cd or "10000000",

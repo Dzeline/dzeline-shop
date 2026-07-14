@@ -257,6 +257,7 @@ class StkStatusResponse(BaseModel):
 class EtimsItemIn(BaseModel):
     """One line item inside a transaction submitted for eTIMS."""
     product_id: int
+    cloud_product_id: Optional[int] = None   # tenant-wide id — see _auto_item_cd
     name: str
     barcode: Optional[str] = None
     qty: float
@@ -290,6 +291,7 @@ class EtimsBatchRequest(BaseModel):
 class EtimsItemRegisterIn(BaseModel):
     """Minimal product fields needed for KRA item registration."""
     product_id: int
+    cloud_product_id: Optional[int] = None   # tenant-wide id — see _auto_item_cd
     name: str
     barcode: Optional[str] = None
     price: float
