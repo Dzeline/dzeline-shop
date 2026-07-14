@@ -106,14 +106,29 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,https://dzeline.online")
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,https://dzeline.online").split(",")
+    if origin.strip()
+]
+logger.info("CORS allowed_origins=%s", allowed_origins)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins.split(","),
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _log_rejected_preflight(request, call_next):
+    origin = request.headers.get("origin")
+    response = await call_next(request)
+    if request.method == "OPTIONS" and response.status_code == 400 and origin:
+        logger.warning("CORS preflight rejected origin=%s path=%s", origin, request.url.path)
+    return response
+
 
 # All routes. Auth is enforced per-route via Depends(get_tenant) or Depends(require_admin).
 # /mpesa/callback is exempt from API-key auth — it is IP-restricted in the mpesa router.
