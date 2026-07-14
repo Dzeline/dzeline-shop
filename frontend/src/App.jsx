@@ -416,6 +416,7 @@ function UpdateBanner() {
 function App() {
   const [isJoinLink] = useState(() => window.location.hash.startsWith("#join"));
   const [setupReady, setSetupReady] = useState(null);
+  const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
   const isOnline = useOnline();
   const { prompt: installPrompt, setPrompt, isStandalone } = useInstallPrompt();
   const [installDismissed, setInstallDismissed] = useState(
@@ -437,11 +438,19 @@ function App() {
         const key = await dbHelpers.getApiKey();
         if (key) setApiKey(key);
       }
+      // Set regardless of `done` — an incomplete setup has no key to load,
+      // but sync effects below should still stop waiting either way.
+      setApiKeyLoaded(true);
     });
   }, [loadSettings]);
 
+  // Gated on apiKeyLoaded, not just isOnline — this effect's dependency also
+  // fires on mount, which races the async chain above that loads the API key
+  // from IndexedDB. Without this gate, a reconnect/mount that lands before
+  // that finishes fires every sync call with an empty key, producing spurious
+  // 401s (harmless — retried next cycle — but noisy and delays the retry).
   useEffect(() => {
-    if (isOnline) {
+    if (isOnline && apiKeyLoaded) {
       syncService.pushUnsynced().catch(() => {});
       syncService.pushUnsyncedReceipts().catch(() => {});
       syncService.resumePendingStkChecks().catch(() => {});
@@ -452,21 +461,21 @@ function App() {
       syncService.pullStaff().catch(() => {});
       syncService.pullSettings().catch(() => {});
     }
-  }, [isOnline]);
+  }, [isOnline, apiKeyLoaded]);
 
   // A till that stays online for a full shift would otherwise never notice a
   // newly-added cashier or another till's stock/catalog change — the above
   // effect only fires on the reconnect edge. This is the one new trigger not
   // copied from an existing call site.
   useEffect(() => {
-    if (!isOnline) return;
+    if (!isOnline || !apiKeyLoaded) return;
     const id = setInterval(() => {
       syncService.pullProducts().catch(() => {});
       syncService.pullStaff().catch(() => {});
       syncService.pullSettings().catch(() => {});
     }, 45_000);
     return () => clearInterval(id);
-  }, [isOnline]);
+  }, [isOnline, apiKeyLoaded]);
 
   if (isJoinLink) {
     return <JoinShop />;
