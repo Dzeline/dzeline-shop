@@ -303,10 +303,12 @@ export const dbHelpers = {
     const mpesaRecs = await db.pending_mpesa
       .where("transaction_id").anyOf(txnIds).toArray();
     const mpesaMap = new Map(mpesaRecs.map((r) => [r.transaction_id, r.code]));
+    const mismatchMap = new Map(mpesaRecs.map((r) => [r.transaction_id, !!r.sms_mismatch]));
 
     return txns.map((txn, i) => ({
       ...txn,
       mpesa_code: mpesaMap.get(txn.id) ?? null,
+      sms_mismatch: mismatchMap.get(txn.id) ?? false,
       items: allItems[i].map((item) => ({
         ...item,
         name: nameMap.get(item.product_id) ?? null,

@@ -443,6 +443,7 @@ function App() {
       syncService.pushUnsynced().catch(() => {});
       syncService.pushUnsyncedReceipts().catch(() => {});
       syncService.resumePendingStkChecks().catch(() => {});
+      syncService.reconcileSmsCodes().catch(() => {});
     }
   }, [isOnline]);
 

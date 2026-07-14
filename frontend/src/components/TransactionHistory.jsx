@@ -153,6 +153,14 @@ export default function TransactionHistory({ onClose, canVoid = false }) {
                         Local
                       </span>
                     )}
+                    {txn.sms_mismatch && !isVoided && (
+                      <span
+                        className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700"
+                        title="No matching SMS confirmation was found for this code — verify with the customer or M-Pesa statement"
+                      >
+                        ⚠ Unverified
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400">
                     {formatDate(txn.timestamp)} · {txn.items.length} item{txn.items.length !== 1 ? "s" : ""}

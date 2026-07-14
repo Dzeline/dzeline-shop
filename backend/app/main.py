@@ -12,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from .database import Base, engine
 from .limiter import limiter
-from .routers import products, sync, mpesa, etims, admin, scan, stock_receipts
+from .routers import products, sync, mpesa, etims, admin, scan, stock_receipts, sms
 
 load_dotenv()
 
@@ -132,6 +132,7 @@ async def _log_rejected_preflight(request, call_next):
 
 # All routes. Auth is enforced per-route via Depends(get_tenant) or Depends(require_admin).
 # /mpesa/callback is exempt from API-key auth — it is IP-restricted in the mpesa router.
+# /sms/webhook has its own auth (?key= or X-SMS-Secret) — the SMS gateway device has no tenant API key.
 # /health is public for uptime probes.
 app.include_router(products.router)
 app.include_router(sync.router)
@@ -140,6 +141,7 @@ app.include_router(etims.router)
 app.include_router(admin.router)
 app.include_router(scan.router)
 app.include_router(stock_receipts.router)
+app.include_router(sms.router)
 
 
 @app.get("/health")

@@ -119,6 +119,49 @@ export const syncService = {
     return { pushed };
   },
 
+  /**
+   * Reconcile manually-entered M-Pesa/Pochi codes (typed by the cashier while
+   * offline or when STK Push wasn't used) against codes actually seen by the
+   * SMS gateway on the shop's till phone.
+   *
+   * Matches are marked verified. A code that's been pending for longer than
+   * STALE_MS with no matching SMS gets flagged (sms_mismatch) for admin
+   * review in Transaction History — the sale itself is never auto-voided,
+   * since the goods have already left the shop.
+   */
+  async reconcileSmsCodes() {
+    if (!API_BASE) return { verified: 0, flagged: 0 };
+    const STALE_MS = 6 * 60 * 60 * 1000; // 6h grace period for the SMS gateway to catch up
+    const since = Date.now() - 24 * 60 * 60 * 1000; // look back 24h of SMS codes
+
+    let verified = 0;
+    let flagged = 0;
+    try {
+      const res = await fetch(
+        `${API_BASE}/sms/verified-codes?since=${since}`,
+        { headers: apiGetHeaders(), signal: AbortSignal.timeout(10_000) },
+      );
+      if (!res.ok) return { verified, flagged };
+      const { codes } = await res.json();
+      const smsByCode = new Map(codes.map((c) => [String(c.confirmation_code).toUpperCase(), c]));
+
+      const unverified = await db.pending_mpesa
+        .filter((p) => !p.verified && !p.sms_mismatch && !!p.code)
+        .toArray();
+
+      for (const p of unverified) {
+        if (smsByCode.has(String(p.code).toUpperCase())) {
+          await db.pending_mpesa.update(p.id, { verified: true });
+          verified++;
+        } else if (Date.now() - p.timestamp > STALE_MS) {
+          await db.pending_mpesa.update(p.id, { sms_mismatch: true });
+          flagged++;
+        }
+      }
+    } catch { /* offline — try again next reconnect */ }
+    return { verified, flagged };
+  },
+
   async getMpesaMode() {
     if (!API_BASE) return null;
     try {
