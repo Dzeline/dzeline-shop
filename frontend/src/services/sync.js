@@ -558,6 +558,10 @@ export const syncService = {
           await db.transaction_items.add({
             transaction_id: localTxnId,
             product_id: productByCloudId.get(item.cloud_product_id)?.id ?? null,
+            // Kept even when product_id resolves — if this device hasn't
+            // synced the product yet, it's the only stable identity left for
+            // downstream uses (e.g. eTIMS item-code derivation).
+            cloud_product_id: item.cloud_product_id ?? null,
             name: item.product_name,
             quantity: item.quantity,
             price: item.price,

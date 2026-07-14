@@ -89,6 +89,9 @@ export const etimsService = {
       await Promise.all(txnIds.map((id) => dbHelpers.getTransactionWithItems(id)))
     ).filter(Boolean).map((txn) => ({
       local_id:       txn.id,
+      // Real backend Transaction.id — the dedup key that makes it safe to
+      // submit a transaction from a different device than the one that made it.
+      transaction_id: txn.cloud_id ?? null,
       timestamp:      txn.timestamp,
       items:          txn.items,
       subtotal:       txn.subtotal,

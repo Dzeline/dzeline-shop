@@ -40,6 +40,7 @@ export default function EtimsModal({ onClose }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [backendOk, setBackendOk] = useState(null); // null=checking true/false
+  const [myDeviceId, setMyDeviceId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,6 +59,7 @@ export default function EtimsModal({ onClose }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { dbHelpers.getDeviceId().then(setMyDeviceId); }, []);
 
   function toggleSelect(id) {
     setSelected((prev) => {
@@ -215,6 +217,7 @@ export default function EtimsModal({ onClose }) {
                       <p className="text-white text-sm font-semibold">{formatDate(txn.timestamp)}</p>
                       <p className="text-gray-400 text-xs truncate">
                         {txn.payment_method} · TXN{String(txn.id).padStart(6, "0")}
+                        {txn.device_id && myDeviceId && txn.device_id !== myDeviceId && " · Other device"}
                       </p>
                     </div>
                   </div>

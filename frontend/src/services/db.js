@@ -801,15 +801,17 @@ export const dbHelpers = {
   // ── eTIMS helpers ─────────────────────────────────────────────────────────
 
   async getEtimsQueue(limit = 200) {
-    // Returns transactions that haven't been successfully submitted yet.
-    // Compliance-critical: excludes foreign (pulled) transactions — if a
-    // sale made on another device showed up here, submitting it would
-    // create a second real KRA fiscal receipt for one sale.
-    const myDeviceId = await this.getDeviceId();
+    // Returns transactions that haven't been successfully submitted yet,
+    // tenant-wide — any device with eTIMS access (already role-gated) can see
+    // and submit any pending sale, not just its own. Safe because submission
+    // now dedupes server-side on the real transaction id (cloud_id), not the
+    // per-device-ambiguous local id — see backend/app/routers/etims.py.
+    // Requires cloud_id: a transaction still mid-sync has no stable identity
+    // to submit against yet (narrow, self-healing window).
     return await db.transactions
       .where("etims_status")
       .anyOf(["pending", "failed"])
-      .filter((t) => !t.voided && (!t.device_id || t.device_id === myDeviceId))
+      .filter((t) => !t.voided && t.cloud_id != null)
       .reverse()
       .limit(limit)
       .toArray();
@@ -851,8 +853,12 @@ export const dbHelpers = {
     const items = await db.transaction_items
       .where("transaction_id").equals(txnId)
       .toArray();
-    // Enrich items with product details for eTIMS payload
-    const productIds = [...new Set(items.map((i) => i.product_id))];
+    // Enrich items with product details for eTIMS payload. A foreign item
+    // whose product hasn't synced locally has product_id: null — filter it
+    // out before bulkGet, since null isn't a valid IndexedDB key (previously
+    // impossible to reach here at all, since such items were excluded
+    // upstream; now that the eTIMS queue is tenant-wide, they can be).
+    const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
     const products = await db.products.bulkGet(productIds);
     const productMap = new Map(products.filter(Boolean).map((p) => [p.id, p]));
     return {
@@ -864,8 +870,9 @@ export const dbHelpers = {
           // Tenant-wide stable id (assigned once a product first syncs) —
           // lets the backend derive a KRA item code that's the same
           // regardless of which till's local product_id made the sale.
-          // Falls back to null if this product hasn't synced yet.
-          cloud_product_id: product.cloud_id ?? null,
+          // Prefer the item's own stored value (set for foreign/pulled items
+          // whose product_id may not resolve locally) before a live lookup.
+          cloud_product_id: item.cloud_product_id ?? product.cloud_id ?? null,
           name:          item.name || product.name || "Unknown",
           barcode:       product.barcode || null,
           qty:           item.quantity,
