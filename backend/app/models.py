@@ -193,16 +193,17 @@ class StockReceipt(Base):
 class StockReceiptItem(Base):
     __tablename__ = "stock_receipt_items"
 
-    id            = Column(Integer, primary_key=True, index=True)
-    receipt_id    = Column(Integer, ForeignKey("stock_receipts.id"), index=True)
-    product_id    = Column(Integer, nullable=True)
-    product_name  = Column(String(200), nullable=True)
-    qty_added     = Column(Integer, nullable=False, default=0)
-    qty_before    = Column(Integer, nullable=True)
-    unit_cost     = Column(Float, nullable=True)
-    selling_price = Column(Float, nullable=True)
-    expiry_date   = Column(String(20), nullable=True)
-    condition     = Column(String(20), default="good", nullable=True)
+    id               = Column(Integer, primary_key=True, index=True)
+    receipt_id       = Column(Integer, ForeignKey("stock_receipts.id"), index=True)
+    product_id       = Column(Integer, nullable=True)
+    cloud_product_id = Column(Integer, nullable=True)  # tenant-wide id — lets another device remap/match this item
+    product_name     = Column(String(200), nullable=True)
+    qty_added        = Column(Integer, nullable=False, default=0)
+    qty_before       = Column(Integer, nullable=True)
+    unit_cost        = Column(Float, nullable=True)
+    selling_price    = Column(Float, nullable=True)
+    expiry_date      = Column(String(20), nullable=True)
+    condition        = Column(String(20), default="good", nullable=True)
 
     receipt = relationship("StockReceipt", back_populates="items")
 
