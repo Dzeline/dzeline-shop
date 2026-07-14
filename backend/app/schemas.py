@@ -70,16 +70,52 @@ class TenantUpdate(BaseModel):
     till_number:            Optional[str] = None
 
 
+# ── Shop settings schemas ────────────────────────────────────────────────────
+# Shop-owner-editable subset of Tenant — never touches plan/billing/Daraja
+# secrets, which stay under /admin/* only.
+
+class ShopSettingsIn(BaseModel):
+    shop_name:       Optional[str]   = None
+    town:            Optional[str]   = None
+    phone:           Optional[str]   = None
+    kra_pin:         Optional[str]   = None
+    vat_enabled:     Optional[bool]  = None
+    vat_rate:        Optional[float] = None
+    till_number:     Optional[str]   = None
+    pochi_number:    Optional[str]   = None
+    mpesa_till_type: Optional[str]   = None
+    currency:        Optional[str]   = None
+
+
+class ShopSettingsOut(BaseModel):
+    shop_name:           Optional[str]   = None
+    town:                Optional[str]   = None
+    phone:               Optional[str]   = None
+    kra_pin:             Optional[str]   = None
+    vat_enabled:         Optional[bool]  = None
+    vat_rate:            Optional[float] = None
+    till_number:         Optional[str]   = None
+    pochi_number:        Optional[str]   = None
+    mpesa_till_type:     Optional[str]   = None
+    currency:            Optional[str]   = None
+    settings_updated_at: Optional[int]   = None
+
+    class Config:
+        from_attributes = True
+
+
 class TransactionItemIn(BaseModel):
     product_id: int
     quantity: int
     price: float
     subtotal: float
     name: Optional[str] = None
+    cloud_product_id: Optional[int] = None   # if set, backend decrements Product.stock
 
 
 class TransactionIn(BaseModel):
     id: Optional[int] = None
+    device_id: Optional[str] = None
     timestamp: int
     subtotal: float
     vat: float
@@ -112,6 +148,7 @@ class TransactionOut(BaseModel):
 
 
 class ProductIn(BaseModel):
+    device_id: Optional[str] = None
     local_id: Optional[int] = None
     barcode: Optional[str] = None
     name: str
@@ -125,6 +162,44 @@ class ProductOut(ProductIn):
     id: int
     active: bool
     updated_at: int
+
+
+# ── Staff schemas ──────────────────────────────────────────────────────────────
+# Transport only — the backend never verifies a PIN. pin_hash travels as-is so
+# a receiving device can do its own local lookup, exactly like the creating one.
+
+class StaffIn(BaseModel):
+    device_id:   Optional[str] = None
+    local_id:    Optional[int] = None
+    name:        str
+    pin_hash:    str
+    role:        str = "cashier"
+    permissions: Optional[str] = None   # JSON-encoded array, role="custom" only
+    active:      bool = True
+
+
+class StaffUpdate(BaseModel):
+    name:        Optional[str]  = None
+    pin_hash:    Optional[str]  = None
+    role:        Optional[str]  = None
+    permissions: Optional[str]  = None
+    active:      Optional[bool] = None
+
+
+class StaffOut(BaseModel):
+    id:          int
+    device_id:   Optional[str] = None
+    local_id:    Optional[int] = None
+    name:        str
+    pin_hash:    str
+    role:        str
+    permissions: Optional[str] = None
+    active:      bool
+    deleted_at:  Optional[int] = None
+    updated_at:  int
+
+    class Config:
+        from_attributes = True
 
     class Config:
         from_attributes = True

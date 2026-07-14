@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import get_tenant
 from ..limiter import limiter
-from ..models import Transaction, TransactionItem, Tenant
+from ..models import Transaction, TransactionItem, Tenant, Product
 from ..schemas import TransactionIn, TransactionOut
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -22,15 +22,20 @@ def sync_transaction(
 ):
     existing = (
         db.query(Transaction)
-        .filter(Transaction.tenant_id == tenant.id, Transaction.local_id == payload.id)
+        .filter(
+            Transaction.tenant_id == tenant.id,
+            Transaction.device_id == payload.device_id,
+            Transaction.local_id == payload.id,
+        )
         .first()
     )
     if existing:
-        logger.info("sync_transaction duplicate tenant=%s local_id=%s", tenant.id, payload.id)
+        logger.info("sync_transaction duplicate tenant=%s device=%s local_id=%s", tenant.id, payload.device_id, payload.id)
         return existing
 
     txn = Transaction(
         tenant_id=tenant.id,
+        device_id=payload.device_id,
         local_id=payload.id,
         timestamp=payload.timestamp,
         subtotal=payload.subtotal,
@@ -58,6 +63,14 @@ def sync_transaction(
             subtotal=item.subtotal,
             product_name=item.name,
         ))
+        if item.cloud_product_id:
+            product = (
+                db.query(Product)
+                .filter(Product.id == item.cloud_product_id, Product.tenant_id == tenant.id)
+                .first()
+            )
+            if product:
+                product.stock = max(0, product.stock - item.quantity)
 
     db.commit()
     db.refresh(txn)

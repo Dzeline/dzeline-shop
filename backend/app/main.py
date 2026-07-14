@@ -12,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from .database import Base, engine
 from .limiter import limiter
-from .routers import products, sync, mpesa, etims, admin, scan, stock_receipts, sms
+from .routers import products, sync, mpesa, etims, admin, scan, stock_receipts, sms, staff, settings
 
 load_dotenv()
 
@@ -63,6 +63,22 @@ def _apply_migrations():
         ("transactions", "etims_status",   "VARCHAR(20)"),
         # stk_requests — link to completed transaction
         ("stk_requests", "transaction_id", "INTEGER REFERENCES transactions(id)"),
+        # device-scoped identity — prevents cross-device local_id collisions
+        # once a tenant has more than one till (multi-device sync)
+        ("transactions",   "device_id", "VARCHAR(64)"),
+        ("stock_receipts", "device_id", "VARCHAR(64)"),
+        ("products",       "device_id", "VARCHAR(64)"),
+        # tenants — shop-owner-editable settings, synced to every device via /settings
+        ("tenants", "shop_name",           "VARCHAR(200)"),
+        ("tenants", "town",                "VARCHAR(100)"),
+        ("tenants", "phone",               "VARCHAR(30)"),
+        ("tenants", "kra_pin",             "VARCHAR(20)"),
+        ("tenants", "vat_enabled",         "BOOLEAN DEFAULT TRUE"),
+        ("tenants", "vat_rate",            "FLOAT DEFAULT 0.16"),
+        ("tenants", "pochi_number",        "VARCHAR(20)"),
+        ("tenants", "mpesa_till_type",     "VARCHAR(20)"),
+        ("tenants", "currency",            "VARCHAR(10) DEFAULT 'KES'"),
+        ("tenants", "settings_updated_at", "BIGINT"),
     ]
     with engine.connect() as conn:
         for table, col, typ in pending:
@@ -142,6 +158,8 @@ app.include_router(admin.router)
 app.include_router(scan.router)
 app.include_router(stock_receipts.router)
 app.include_router(sms.router)
+app.include_router(staff.router)
+app.include_router(settings.router)
 
 
 @app.get("/health")

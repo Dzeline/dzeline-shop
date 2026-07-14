@@ -28,6 +28,7 @@ class StockReceiptItemIn(BaseModel):
 
 class StockReceiptIn(BaseModel):
     local_id:       Optional[int]   = None
+    device_id:      Optional[str]   = None
     status:         str             = "activated"
     supplier:       Optional[str]   = None
     supplier_id:    Optional[int]   = None
@@ -46,8 +47,22 @@ def create_receipt(
     db:      Session = Depends(get_db),
     tenant:  Tenant  = Depends(get_tenant),
 ):
+    existing = (
+        db.query(StockReceipt)
+        .filter(
+            StockReceipt.tenant_id == tenant.id,
+            StockReceipt.device_id == payload.device_id,
+            StockReceipt.local_id == payload.local_id,
+        )
+        .first()
+    )
+    if existing:
+        logger.info("stock_receipt duplicate tenant=%s device=%s local_id=%s", tenant.id, payload.device_id, payload.local_id)
+        return {"id": existing.id}
+
     receipt = StockReceipt(
         tenant_id      = tenant.id,
+        device_id      = payload.device_id,
         local_id       = payload.local_id,
         status         = payload.status,
         supplier       = payload.supplier,

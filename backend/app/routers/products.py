@@ -28,6 +28,19 @@ def create_product(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_tenant),
 ):
+    if payload.device_id and payload.local_id is not None:
+        existing = (
+            db.query(Product)
+            .filter(
+                Product.tenant_id == tenant.id,
+                Product.device_id == payload.device_id,
+                Product.local_id == payload.local_id,
+            )
+            .first()
+        )
+        if existing:
+            return existing
+
     product = Product(
         **payload.model_dump(),
         tenant_id=tenant.id,

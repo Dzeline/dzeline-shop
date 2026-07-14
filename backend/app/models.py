@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, BigInteger, Text
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, BigInteger, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -33,6 +33,20 @@ class Tenant(Base):
     owner_email = Column(String(200), nullable=True)
     notes       = Column(Text,        nullable=True)
 
+    # Shop-owner-editable settings — synced to every device via GET/PUT /settings.
+    # Distinct from the operator-only fields above (plan, billing, Daraja secrets),
+    # which are never touched by the /settings router.
+    shop_name           = Column(String(200), nullable=True)
+    town                = Column(String(100), nullable=True)
+    phone               = Column(String(30),  nullable=True)
+    kra_pin             = Column(String(20),  nullable=True)
+    vat_enabled         = Column(Boolean,     default=True)
+    vat_rate            = Column(Float,       default=0.16)
+    pochi_number        = Column(String(20),  nullable=True)
+    mpesa_till_type     = Column(String(20),  nullable=True)
+    currency            = Column(String(10),  default="KES")
+    settings_updated_at = Column(BigInteger,  nullable=True)
+
 
 class StkRequest(Base):
     __tablename__ = "stk_requests"
@@ -53,6 +67,7 @@ class Transaction(Base):
 
     id             = Column(Integer, primary_key=True, index=True)
     tenant_id      = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    device_id      = Column(String(64), nullable=True, index=True)
     local_id       = Column(Integer, index=True)
     timestamp      = Column(BigInteger, index=True)
     subtotal       = Column(Float, nullable=False)
@@ -90,6 +105,7 @@ class Product(Base):
 
     id            = Column(Integer, primary_key=True, index=True)
     tenant_id     = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    device_id     = Column(String(64), nullable=True, index=True)
     local_id      = Column(Integer, nullable=True)
     barcode       = Column(String(50), nullable=True)
     name          = Column(String(200), nullable=False, index=True)
@@ -154,6 +170,7 @@ class StockReceipt(Base):
 
     id             = Column(Integer, primary_key=True, index=True)
     tenant_id      = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    device_id      = Column(String(64), nullable=True, index=True)
     local_id       = Column(Integer, nullable=True)
     status         = Column(String(20), default="draft", nullable=False)
     supplier       = Column(String(200), nullable=True)
@@ -181,6 +198,30 @@ class StockReceiptItem(Base):
     condition     = Column(String(20), default="good", nullable=True)
 
     receipt = relationship("StockReceipt", back_populates="items")
+
+
+class Staff(Base):
+    """
+    Cloud mirror of a shop's staff roster — transport only, never an auth
+    server. PIN verification always happens locally on the device via a
+    Dexie lookup against pin_hash; this table just carries staff records
+    between a tenant's devices so a new phone can join with the real roster.
+    """
+    __tablename__ = "staff"
+    __table_args__ = (UniqueConstraint("tenant_id", "device_id", "local_id", name="uq_staff_device_local"),)
+
+    id          = Column(Integer, primary_key=True, index=True)
+    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    device_id   = Column(String(64), nullable=True, index=True)
+    local_id    = Column(Integer, nullable=True, index=True)
+    name        = Column(String(200), nullable=False)
+    pin_hash    = Column(String(64), nullable=False)
+    role        = Column(String(30), default="cashier", nullable=False)
+    permissions = Column(Text, nullable=True)   # JSON-encoded array — role="custom" only
+    active      = Column(Boolean, default=True)
+    deleted_at  = Column(BigInteger, nullable=True)
+    created_at  = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+    updated_at  = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
 
 
 class EtimsConfig(Base):
