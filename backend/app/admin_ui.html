@@ -182,6 +182,7 @@
 <script>
   const API = '';
   let SECRET = sessionStorage.getItem('dzl_admin') || '';
+  let TENANTS = [];
 
   function api(path, opts) {
     opts = opts || {};
@@ -193,13 +194,22 @@
   function showErr(el, msg) { el.textContent = msg; el.classList.remove('hidden'); }
   function hideErr(el) { el.classList.add('hidden'); }
 
+  async function apiErrorText(r) {
+    var detail = '';
+    try {
+      var data = await r.json();
+      if (data && data.detail) detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+    } catch (e) {}
+    return r.status + (detail ? ' — ' + detail : ' ' + r.statusText);
+  }
+
   async function signIn() {
     SECRET = document.getElementById('secretInput').value.trim();
     var err = document.getElementById('loginError');
     if (!SECRET) { showErr(err, 'Enter the admin secret.'); return; }
     var r = await api('/admin/tenants');
     if (r.status === 401 || r.status === 403) { showErr(err, 'Wrong secret.'); return; }
-    if (!r.ok) { showErr(err, 'Connection failed.'); return; }
+    if (!r.ok) { showErr(err, 'Connection failed: ' + await apiErrorText(r)); return; }
     sessionStorage.setItem('dzl_admin', SECRET);
     showDashboard(await r.json());
   }
@@ -222,7 +232,7 @@
     var r = await api('/admin/tenants');
     if (!r.ok) {
       var el = document.getElementById('loadError');
-      el.textContent = 'Failed to load tenants.';
+      el.textContent = 'Failed to load tenants: ' + await apiErrorText(r);
       el.classList.remove('hidden');
       return;
     }
@@ -230,6 +240,7 @@
   }
 
   function renderTenants(tenants) {
+    TENANTS = tenants;
     var grid  = document.getElementById('tenantGrid');
     var empty = document.getElementById('emptyState');
     document.getElementById('loadError').classList.add('hidden');
@@ -279,8 +290,6 @@
       ? 'Billing until ' + fmtDate(t.billing_cycle_end)
       : 'No billing expiry';
 
-    var safeT = JSON.stringify(t).replace(/'/g, "&#39;");
-
     return '<div class="bg-[#0e1d35] border border-[#1a2d4a] rounded-2xl p-5 flex flex-col gap-3 hover:border-sky-500/30 transition">'
       + '<div class="flex items-start justify-between gap-2">'
         + '<div>'
@@ -291,7 +300,7 @@
             + '<span class="' + badge + ' text-xs font-semibold px-2 py-0.5 rounded-full capitalize">' + t.plan + '</span>'
           + '</div>'
         + '</div>'
-        + '<button onclick="openEdit(\'' + safeT + '\')" class="text-slate-400 hover:text-white text-xs bg-[#1a2d4a] hover:bg-[#243d5a] px-3 py-1.5 rounded-lg transition whitespace-nowrap">Edit</button>'
+        + '<button onclick="openEdit(' + t.id + ')" class="text-slate-400 hover:text-white text-xs bg-[#1a2d4a] hover:bg-[#243d5a] px-3 py-1.5 rounded-lg transition whitespace-nowrap">Edit</button>'
       + '</div>'
       + contact
       + notes
@@ -334,7 +343,7 @@
       notes:       document.getElementById('c_notes').value.trim()       || null,
     };
     var r = await api('/admin/tenants', { method: 'POST', body: JSON.stringify(body) });
-    if (!r.ok) { showErr(err, 'Failed to create tenant.'); return; }
+    if (!r.ok) { showErr(err, 'Failed to create tenant: ' + await apiErrorText(r)); return; }
     var data = await r.json();
     closeCreate();
     showKey(data.api_key);
@@ -354,8 +363,9 @@
   }
 
   // ── Edit ────────────────────────────────────────────────────────────────────
-  function openEdit(raw) {
-    var t = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  function openEdit(id) {
+    var t = TENANTS.find(function(x) { return x.id === id; });
+    if (!t) return;
     document.getElementById('e_id').value              = t.id;
     document.getElementById('e_tenant_name_ref').value = t.name;
     document.getElementById('e_name').value            = t.name;
@@ -388,7 +398,7 @@
       notes:       document.getElementById('e_notes').value.trim()       || null,
     };
     var r = await api('/admin/tenants/' + id, { method: 'PATCH', body: JSON.stringify(body) });
-    if (!r.ok) { showErr(err, 'Failed to save changes.'); return; }
+    if (!r.ok) { showErr(err, 'Failed to save changes: ' + await apiErrorText(r)); return; }
     closeEdit();
     loadTenants();
   }
@@ -398,7 +408,7 @@
     var name = document.getElementById('e_tenant_name_ref').value;
     if (!confirm('Rotate the API key for "' + name + '"?\n\nThe old key stops working immediately.')) return;
     var r = await api('/admin/tenants/' + id + '/rotate-key', { method: 'POST' });
-    if (!r.ok) { showErr(document.getElementById('editError'), 'Failed to rotate key.'); return; }
+    if (!r.ok) { showErr(document.getElementById('editError'), 'Failed to rotate key: ' + await apiErrorText(r)); return; }
     var data = await r.json();
     closeEdit();
     showKey(data.api_key);
