@@ -41,3 +41,7 @@ services:
         value: /opt/paddle_models
       - key: PYTHON_VERSION
         value: "3.11"
+    disk:
+      name: paddle-models
+      mountPath: /opt/paddle_models
+      sizeGB: 2

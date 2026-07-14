@@ -34,19 +34,41 @@ _ocr_instance = None
 _ocr_lock = Lock()
 
 
-def _get_ocr():
+def _init_ocr():
     global _ocr_instance
-    if _ocr_instance is None:
-        with _ocr_lock:
+    from paddleocr import PaddleOCR
+    logger.info("Initialising PaddleOCR (models may download now)")
+    _ocr_instance = PaddleOCR(
+        use_angle_cls=True,
+        lang="en",
+        enable_mkldnn=False,   # MKL-DNN off → more stable on cloud
+    )
+    logger.info("PaddleOCR ready")
+
+
+def _get_ocr(wait: bool = True):
+    """
+    wait=True  — background pre-warm at startup: block until ready.
+    wait=False — request path: if warm-up is already running elsewhere
+    (pre-warm, or another request), return None immediately instead of
+    blocking this request for minutes. Callers must turn None into a
+    retryable error, not hang.
+    """
+    global _ocr_instance
+    if _ocr_instance is not None:
+        return _ocr_instance
+    if not wait:
+        if not _ocr_lock.acquire(blocking=False):
+            return None
+        try:
             if _ocr_instance is None:
-                from paddleocr import PaddleOCR
-                logger.info("Initialising PaddleOCR (models may download now)")
-                _ocr_instance = PaddleOCR(
-                    use_angle_cls=True,
-                    lang="en",
-                    enable_mkldnn=False,   # MKL-DNN off → more stable on cloud
-                )
-                logger.info("PaddleOCR ready")
+                _init_ocr()
+            return _ocr_instance
+        finally:
+            _ocr_lock.release()
+    with _ocr_lock:
+        if _ocr_instance is None:
+            _init_ocr()
     return _ocr_instance
 
 
@@ -264,8 +286,14 @@ def scan_invoice(
         logger.warning("scan decode error tenant=%s %s", tenant.id, e)
         raise HTTPException(status_code=400, detail="Could not decode image")
 
+    ocr = _get_ocr(wait=False)
+    if ocr is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Scanner is still starting up — try again in about a minute",
+        )
+
     try:
-        ocr = _get_ocr()
         result = ocr.ocr(img_array, cls=True)
     except Exception as e:
         logger.error("paddleocr error tenant=%s %s", tenant.id, e)
