@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { dbHelpers } from "../services/db";
+import { syncService } from "../services/sync";
 import { etimsService } from "../services/etims";
 import { useSettingsStore } from "../store/settingsStore";
 import { showToast } from "../utils/toast";
@@ -155,6 +156,7 @@ export default function SettingsScreen({ onClose }) {
       await reload();
       setDirty(false);
       showToast("Settings saved");
+      syncService.pushSettings().catch(() => {});
     } catch (err) {
       console.error("Save settings failed:", err);
       showToast("Failed to save — try again");

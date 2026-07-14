@@ -95,6 +95,23 @@ db.version(9).stores({
   tx.table("stock_receipts").toCollection().modify({ status: "activated", synced: true })
 );
 
+// Version 10: multi-device sync — staff and products can now push to / pull
+// from the cloud. cloud_id links a local row to its backend id (null until
+// first successfully pushed); synced follows the same idiom already used on
+// transactions/stock_receipts; deleted_at is a tombstone (staff are now
+// soft-deleted so an unsynced delete can't be silently undone by a pull that
+// lands first).
+db.version(10).stores({
+  staff:    "++id, name, pin, role, active, created_at, cloud_id, updated_at, deleted_at, synced",
+  products: "++id, barcode, name, price, cost_price, stock, category, etims_item_cd, reorder_level, cloud_id, updated_at, synced, *tags",
+}).upgrade(async (tx) => {
+  const now = Date.now();
+  // Mark everything unsynced so it pushes to the cloud on first reconnect
+  // after upgrading — existing local rosters/catalogs have never been pushed.
+  await tx.table("staff").toCollection().modify({ cloud_id: null, updated_at: now, deleted_at: null, synced: false });
+  await tx.table("products").toCollection().modify({ cloud_id: null, updated_at: now, synced: false });
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -149,12 +166,22 @@ export const dbHelpers = {
 
   // Update product stock
   async updateStock(productId, newStock) {
-    return await db.products.update(productId, { stock: newStock });
+    return await db.products.update(productId, { stock: newStock, synced: false, updated_at: Date.now() });
   },
 
   // Update any product fields (name, price, image_blob, reorder_level, etc.)
   async updateProduct(productId, updates) {
-    return await db.products.update(productId, updates);
+    return await db.products.update(productId, { ...updates, synced: false, updated_at: Date.now() });
+  },
+
+  // Add a new product — attaches sync metadata so it pushes on next reconnect
+  async addProduct(product) {
+    return await db.products.add({
+      ...product,
+      cloud_id: null,
+      synced: false,
+      updated_at: Date.now(),
+    });
   },
 
   // Get products at or below their reorder level
@@ -162,6 +189,16 @@ export const dbHelpers = {
     return await db.products
       .filter((p) => p.stock <= (p.reorder_level ?? threshold) && p.stock >= 0)
       .toArray();
+  },
+
+  // ── Product sync ─────────────────────────────────────────────────────────
+
+  async getUnsyncedProducts() {
+    return await db.products.where("synced").equals(false).toArray();
+  },
+
+  async markProductSynced(id, cloudId) {
+    return await db.products.update(id, { synced: true, cloud_id: cloudId });
   },
 
   // Add transaction
@@ -200,6 +237,16 @@ export const dbHelpers = {
 
   async saveApiKey(key) {
     return await db.settings.put({ key: "api_key", value: key });
+  },
+
+  // Stable per-device identifier — get-or-create, so it's correct on both a
+  // fresh install (no upgrade hook runs) and an existing device upgrading.
+  async getDeviceId() {
+    const row = await db.settings.get("device_id");
+    if (row) return row.value;
+    const id = crypto.randomUUID();
+    await db.settings.put({ key: "device_id", value: id });
+    return id;
   },
 
   // Get today's sales
@@ -319,20 +366,20 @@ export const dbHelpers = {
   // ── Staff helpers ─────────────────────────────────────────────────────────
 
   async getAllStaff() {
-    return await db.staff.toArray();
+    return await db.staff.filter((s) => !s.deleted_at).toArray();
   },
 
   async getStaffByPin(pin, staffId = null) {
     const hashed = await hashPin(pin);
     const matchHashed = staffId != null
-      ? (s) => s.pin === hashed && s.active && s.id === staffId
-      : (s) => s.pin === hashed && s.active;
+      ? (s) => s.pin === hashed && s.active && !s.deleted_at && s.id === staffId
+      : (s) => s.pin === hashed && s.active && !s.deleted_at;
     let staff = await db.staff.filter(matchHashed).first();
     if (staff) return staff;
     // Backward-compat: v5 migration may have left some PINs unhashed
     const matchPlain = staffId != null
-      ? (s) => s.pin === pin && s.active && s.id === staffId
-      : (s) => s.pin === pin && s.active;
+      ? (s) => s.pin === pin && s.active && !s.deleted_at && s.id === staffId
+      : (s) => s.pin === pin && s.active && !s.deleted_at;
     staff = await db.staff.filter(matchPlain).first();
     if (staff) {
       await db.staff.update(staff.id, { pin: hashed });
@@ -350,6 +397,10 @@ export const dbHelpers = {
       permissions: role === "custom" ? permissions : [],
       active: true,
       created_at: new Date().toISOString(),
+      cloud_id: null,
+      deleted_at: null,
+      synced: false,
+      updated_at: Date.now(),
     });
   },
 
@@ -357,24 +408,39 @@ export const dbHelpers = {
     return await db.staff.update(staffId, {
       role,
       permissions: role === "custom" ? permissions : [],
+      synced: false,
+      updated_at: Date.now(),
     });
   },
 
   async updateStaffPin(staffId, newPin) {
     const hashed = await hashPin(newPin);
-    return await db.staff.update(staffId, { pin: hashed });
+    return await db.staff.update(staffId, { pin: hashed, synced: false, updated_at: Date.now() });
   },
 
   async updateStaffName(staffId, name) {
-    return await db.staff.update(staffId, { name });
+    return await db.staff.update(staffId, { name, synced: false, updated_at: Date.now() });
   },
 
   async toggleStaffActive(staffId, active) {
-    return await db.staff.update(staffId, { active });
+    return await db.staff.update(staffId, { active, synced: false, updated_at: Date.now() });
   },
 
+  // Soft delete — an unsynced delete must not be silently undone by a pull
+  // that lands before the delete has pushed.
   async deleteStaff(staffId) {
-    return await db.staff.delete(staffId);
+    const now = Date.now();
+    return await db.staff.update(staffId, { active: false, deleted_at: now, updated_at: now, synced: false });
+  },
+
+  // ── Staff sync ───────────────────────────────────────────────────────────
+
+  async getUnsyncedStaff() {
+    return await db.staff.where("synced").equals(false).toArray();
+  },
+
+  async markStaffSynced(id, cloudId) {
+    return await db.staff.update(id, { synced: true, cloud_id: cloudId });
   },
 
   // ── Stock receiving ───────────────────────────────────────────────────────
@@ -432,7 +498,11 @@ export const dbHelpers = {
           const product = await db.products.get(item.product_id);
           if (!product) return;
 
-          const update = { stock: (product.stock ?? 0) + item.qty_added };
+          const update = {
+            stock: (product.stock ?? 0) + item.qty_added,
+            synced: false,       // receipt-driven stock changes push via the product sync path
+            updated_at: Date.now(),
+          };
           if (item.unit_cost  > 0) update.cost_price = item.unit_cost;
 
           const sellingPrice = pricingMap[item.product_id];

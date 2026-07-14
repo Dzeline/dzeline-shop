@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { dbHelpers } from "../services/db";
+import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import BarcodeScanner from "./BarcodeScanner";
@@ -47,6 +48,7 @@ export default function ProductEditModal({ product, onSave, onClose }) {
       await dbHelpers.updateProduct(product.id, updates);
       showToast("Product updated");
       onSave({ ...product, ...updates });
+      syncService.pushUnsyncedProducts().catch(() => {});
     } catch (err) {
       console.error(err);
       showToast("Failed to save — try again");

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { db } from "../services/db";
+import { dbHelpers } from "../services/db";
+import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import BarcodeScanner from "./BarcodeScanner";
@@ -56,9 +57,10 @@ export default function ProductAddModal({ onSave, onClose }) {
         tags: [category.toLowerCase()],
         ...(imageBlob && { image_blob: imageBlob }),
       };
-      const id = await db.products.add(newProduct);
+      const id = await dbHelpers.addProduct(newProduct);
       showToast(`${newProduct.name} added`);
       onSave({ id, ...newProduct });
+      syncService.pushUnsyncedProducts().catch(() => {});
     } catch (err) {
       console.error(err);
       showToast("Failed to add product — try again");

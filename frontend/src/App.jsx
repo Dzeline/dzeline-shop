@@ -3,6 +3,7 @@ import ProductList from "./components/ProductList";
 import Cart from "./components/Cart";
 import PinLogin from "./components/PinLogin";
 import SetupWizard from "./components/SetupWizard";
+import JoinShop from "./components/JoinShop";
 import SettingsScreen from "./components/SettingsScreen";
 import StaffManagement from "./components/StaffManagement";
 import StockReceiving from "./components/StockReceiving";
@@ -413,6 +414,7 @@ function UpdateBanner() {
 }
 
 function App() {
+  const [isJoinLink] = useState(() => window.location.hash.startsWith("#join"));
   const [setupReady, setSetupReady] = useState(null);
   const isOnline = useOnline();
   const { prompt: installPrompt, setPrompt, isStandalone } = useInstallPrompt();
@@ -444,8 +446,31 @@ function App() {
       syncService.pushUnsyncedReceipts().catch(() => {});
       syncService.resumePendingStkChecks().catch(() => {});
       syncService.reconcileSmsCodes().catch(() => {});
+      syncService.pushUnsyncedProducts().catch(() => {});
+      syncService.pushUnsyncedStaff().catch(() => {});
+      syncService.pullProducts().catch(() => {});
+      syncService.pullStaff().catch(() => {});
+      syncService.pullSettings().catch(() => {});
     }
   }, [isOnline]);
+
+  // A till that stays online for a full shift would otherwise never notice a
+  // newly-added cashier or another till's stock/catalog change — the above
+  // effect only fires on the reconnect edge. This is the one new trigger not
+  // copied from an existing call site.
+  useEffect(() => {
+    if (!isOnline) return;
+    const id = setInterval(() => {
+      syncService.pullProducts().catch(() => {});
+      syncService.pullStaff().catch(() => {});
+      syncService.pullSettings().catch(() => {});
+    }, 45_000);
+    return () => clearInterval(id);
+  }, [isOnline]);
+
+  if (isJoinLink) {
+    return <JoinShop />;
+  }
 
   if (setupReady === null) {
     return (

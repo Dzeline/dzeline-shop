@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import QRCode from "qrcode";
 import { dbHelpers } from "../services/db";
+import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import {
   ASSIGNABLE_ROLES,
@@ -250,6 +252,81 @@ function StaffRow({ staff, isCurrentUser, onToggle, onChangePin, onChangeRole, o
   );
 }
 
+// ── Invite staff (QR / link) ─────────────────────────────────────────────────
+function InviteStaffCard() {
+  const [open, setOpen] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState(null);
+  const [link, setLink] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  async function handleOpen() {
+    setOpen(true);
+    const [key, settings] = await Promise.all([
+      dbHelpers.getApiKey(),
+      dbHelpers.getShopSettings(),
+    ]);
+    if (!key) { showToast("No API key configured yet — check Shop Settings"); setOpen(false); return; }
+    const shopName = settings.shop_name || "your shop";
+    // Fragment (#), not a query string — fragments never reach the server and
+    // are excluded from link-preview crawler fetches (WhatsApp/Telegram
+    // unfurl the URL server-side before a human taps it).
+    const url = `${window.location.origin}/#join?key=${encodeURIComponent(key)}&shop=${encodeURIComponent(shopName)}`;
+    setLink(url);
+    const dataUrl = await QRCode.toDataURL(url, { width: 240, margin: 1 });
+    setQrDataUrl(dataUrl);
+  }
+
+  function handleCopy() {
+    navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      {!open ? (
+        <button
+          onClick={handleOpen}
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-100 transition"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 4v16m8-8H4" />
+          </svg>
+          Invite Staff to Their Own Phone
+        </button>
+      ) : (
+        <div className="text-center">
+          <p className="font-bold text-gray-700 text-sm mb-1">Scan to join this shop</p>
+          <p className="text-xs text-gray-400 mb-3">
+            Add the staff member here first, then have them scan this with their phone's camera.
+            They'll log in afterwards with the PIN you set.
+          </p>
+          {qrDataUrl ? (
+            <img src={qrDataUrl} alt="Join shop QR code" className="mx-auto rounded-xl border border-gray-100" />
+          ) : (
+            <div className="h-60 flex items-center justify-center text-xs text-gray-400">Generating…</div>
+          )}
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={handleCopy}
+              className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-semibold hover:bg-gray-200 transition"
+            >
+              {copied ? "Copied!" : "Copy Link Instead"}
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              className="px-4 py-2 bg-gray-100 text-gray-500 rounded-xl text-xs hover:bg-gray-200 transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main screen ──────────────────────────────────────────────────────────────
 export default function StaffManagement({ currentStaffId, onClose }) {
   const [staffList, setStaffList] = useState([]);
@@ -267,21 +344,30 @@ export default function StaffManagement({ currentStaffId, onClose }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Fire-and-forget: the local write is authoritative and instant; the cloud
+  // push is best-effort and will retry on the next reconnect if it fails now.
+  function pushStaffInBackground() {
+    syncService.pushUnsyncedStaff().catch(() => {});
+  }
+
   async function handleToggle(staffId, active) {
     await dbHelpers.toggleStaffActive(staffId, active);
     showToast(active ? "Staff activated" : "Staff deactivated");
     load();
+    pushStaffInBackground();
   }
 
   async function handleChangePin(staffId, pin) {
     await dbHelpers.updateStaffPin(staffId, pin);
-    showToast("PIN updated");
+    showToast("PIN updated — applies on their other devices next time they're online");
+    pushStaffInBackground();
   }
 
   async function handleChangeRole(staffId, role, permissions) {
     await dbHelpers.updateStaffRole(staffId, role, permissions);
     showToast("Role updated");
     load();
+    pushStaffInBackground();
   }
 
   async function handleDelete(staffId) {
@@ -290,6 +376,7 @@ export default function StaffManagement({ currentStaffId, onClose }) {
     await dbHelpers.deleteStaff(staffId);
     showToast("Staff removed");
     load();
+    pushStaffInBackground();
   }
 
   async function handleAdd() {
@@ -306,6 +393,7 @@ export default function StaffManagement({ currentStaffId, onClose }) {
     setNewRole("cashier"); setNewCustomPerms([]);
     setShowAdd(false);
     load();
+    pushStaffInBackground();
   }
 
   return (
@@ -328,6 +416,8 @@ export default function StaffManagement({ currentStaffId, onClose }) {
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <InviteStaffCard />
+
         {/* Add staff */}
         {!showAdd ? (
           <button

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { dbHelpers } from "../services/db";
+import { syncService } from "../services/sync";
 import { setApiKey } from "../utils/apiHeaders";
 import { showToast } from "../utils/toast";
 
@@ -353,6 +354,13 @@ export default function SetupWizard({ onComplete }) {
       for (const s of staffList) {
         await dbHelpers.addStaff(s.name, s.pin, s.role);
       }
+      // Best-effort — so a second device can join right away instead of
+      // waiting for this device's next reconnect cycle. Setup still
+      // completes immediately if this fails or there's no connection.
+      await Promise.all([
+        syncService.pushUnsyncedStaff().catch(() => {}),
+        syncService.pushSettings().catch(() => {}),
+      ]);
       showToast("Setup complete! Welcome to Dzeline.");
       onComplete();
     } catch (err) {
