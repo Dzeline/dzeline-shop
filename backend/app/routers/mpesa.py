@@ -82,7 +82,7 @@ def stk_push(
     tenant: Tenant = Depends(get_tenant),
 ):
     shortcode      = tenant.daraja_shortcode      or os.getenv("MPESA_SHORTCODE", "174379")
-    passkey        = os.getenv("MPESA_PASSKEY", "")
+    passkey        = tenant.daraja_passkey        or os.getenv("MPESA_PASSKEY", "")
     callback_url   = tenant.daraja_callback_url   or os.getenv("MPESA_CALLBACK_URL", "")
     shortcode_type = (tenant.daraja_shortcode_type or os.getenv("MPESA_SHORTCODE_TYPE", "paybill")).lower()
     transaction_type = "CustomerBuyGoodsOnline" if shortcode_type == "till" else "CustomerPayBillOnline"
@@ -211,7 +211,7 @@ def stk_query(
     tenant: Tenant = Depends(get_tenant),
 ):
     shortcode = tenant.daraja_shortcode or os.getenv("MPESA_SHORTCODE", "174379")
-    passkey   = os.getenv("MPESA_PASSKEY", "")
+    passkey   = tenant.daraja_passkey or os.getenv("MPESA_PASSKEY", "")
     if not passkey:
         raise HTTPException(status_code=503, detail="M-Pesa passkey not configured")
 

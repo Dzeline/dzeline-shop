@@ -25,6 +25,14 @@ class TenantOut(BaseModel):
     owner_email: Optional[str] = None
     notes: Optional[str] = None
 
+    # Non-secret Daraja config — safe to read back and prefill in a form.
+    # daraja_consumer_secret and daraja_passkey are write-only (never echoed).
+    daraja_consumer_key:   Optional[str] = None
+    daraja_shortcode:      Optional[str] = None
+    daraja_shortcode_type: Optional[str] = None
+    daraja_callback_url:   Optional[str] = None
+    till_number:           Optional[str] = None
+
     class Config:
         from_attributes = True
 
@@ -48,6 +56,18 @@ class TenantUpdate(BaseModel):
     owner_phone: Optional[str] = None
     owner_email: Optional[str] = None
     notes: Optional[str] = None
+
+    # Per-tenant Daraja overrides — falls back to the shared env vars when unset.
+    # Omit daraja_consumer_secret / daraja_passkey from the request entirely to
+    # leave a previously-saved secret untouched (they're never sent back by
+    # TenantOut, so the admin UI can't round-trip them).
+    daraja_consumer_key:    Optional[str] = None
+    daraja_consumer_secret: Optional[str] = None
+    daraja_shortcode:       Optional[str] = None
+    daraja_passkey:         Optional[str] = None
+    daraja_callback_url:    Optional[str] = None
+    daraja_shortcode_type:  Optional[str] = None
+    till_number:            Optional[str] = None
 
 
 class TransactionItemIn(BaseModel):

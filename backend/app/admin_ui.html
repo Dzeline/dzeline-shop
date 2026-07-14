@@ -169,6 +169,31 @@
         <textarea id="e_notes" rows="3"
           class="w-full bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 resize-none"></textarea>
       </div>
+      <div class="border-t border-[#1a2d4a] pt-3">
+        <p class="text-xs font-semibold text-slate-400 mb-2">M-Pesa / Daraja (per-tenant)</p>
+        <p class="text-xs text-slate-500 mb-2">Blank fields fall back to the shared platform credentials. Leave secret fields blank to keep them unchanged.</p>
+        <div class="space-y-2">
+          <div class="flex gap-2">
+            <input id="e_daraja_shortcode" type="text" placeholder="Shortcode / till number"
+              class="flex-1 bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500" />
+            <select id="e_daraja_shortcode_type"
+              class="w-32 bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500">
+              <option value="paybill">Paybill</option>
+              <option value="till">Till (Buy Goods)</option>
+            </select>
+          </div>
+          <input id="e_till_number" type="text" placeholder="Lipa na M-Pesa till number (for SMS matching)"
+            class="w-full bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500" />
+          <input id="e_daraja_consumer_key" type="text" placeholder="Consumer key"
+            class="w-full bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500" />
+          <input id="e_daraja_consumer_secret" type="password" placeholder="Consumer secret — leave blank to keep unchanged"
+            class="w-full bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500" />
+          <input id="e_daraja_passkey" type="password" placeholder="Passkey — leave blank to keep unchanged"
+            class="w-full bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500" />
+          <input id="e_daraja_callback_url" type="text" placeholder="Callback URL (optional override)"
+            class="w-full bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500" />
+        </div>
+      </div>
     </div>
     <div id="editError" class="text-red-400 text-xs mt-3 hidden"></div>
     <div class="flex gap-2 mt-5">
@@ -377,6 +402,14 @@
     document.getElementById('e_notes').value           = t.notes       || '';
     document.getElementById('e_billing').value = t.billing_cycle_end
       ? new Date(t.billing_cycle_end).toISOString().split('T')[0] : '';
+    document.getElementById('e_daraja_shortcode').value      = t.daraja_shortcode      || '';
+    document.getElementById('e_daraja_shortcode_type').value = t.daraja_shortcode_type || 'paybill';
+    document.getElementById('e_till_number').value           = t.till_number           || '';
+    document.getElementById('e_daraja_consumer_key').value   = t.daraja_consumer_key   || '';
+    document.getElementById('e_daraja_callback_url').value   = t.daraja_callback_url   || '';
+    // Secrets are never sent back by the API — always start blank.
+    document.getElementById('e_daraja_consumer_secret').value = '';
+    document.getElementById('e_daraja_passkey').value         = '';
     hideErr(document.getElementById('editError'));
     document.getElementById('editModal').classList.remove('hidden');
   }
@@ -396,7 +429,19 @@
       owner_phone: document.getElementById('e_owner_phone').value.trim() || null,
       owner_email: document.getElementById('e_owner_email').value.trim() || null,
       notes:       document.getElementById('e_notes').value.trim()       || null,
+      daraja_shortcode:      document.getElementById('e_daraja_shortcode').value.trim()      || null,
+      daraja_shortcode_type: document.getElementById('e_daraja_shortcode_type').value,
+      till_number:           document.getElementById('e_till_number').value.trim()           || null,
+      daraja_consumer_key:   document.getElementById('e_daraja_consumer_key').value.trim()    || null,
+      daraja_callback_url:   document.getElementById('e_daraja_callback_url').value.trim()    || null,
     };
+    // Secrets: only include if the operator actually typed a new value —
+    // omitting the key entirely leaves the previously-saved secret untouched.
+    var newSecret = document.getElementById('e_daraja_consumer_secret').value.trim();
+    var newPasskey = document.getElementById('e_daraja_passkey').value.trim();
+    if (newSecret)  body.daraja_consumer_secret = newSecret;
+    if (newPasskey) body.daraja_passkey = newPasskey;
+
     var r = await api('/admin/tenants/' + id, { method: 'PATCH', body: JSON.stringify(body) });
     if (!r.ok) { showErr(err, 'Failed to save changes: ' + await apiErrorText(r)); return; }
     closeEdit();
