@@ -219,7 +219,11 @@ export default function TransactionHistory({ onClose, canVoid = false }) {
                     )}
                   </div>
 
-                  {canVoid && !isVoided && (
+                  {/* Foreign-origin (pulled from another device) sales can never be
+                      voided here — doing so would re-push under this device's
+                      device_id, miss the backend's duplicate check, and insert a
+                      phantom duplicate transaction tenant-wide. */}
+                  {canVoid && !isVoided && txn.origin !== "remote" && (
                     <div className="pt-2 border-t border-gray-200">
                       <button
                         onClick={() => handleVoid(txn)}

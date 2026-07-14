@@ -460,6 +460,7 @@ function App() {
       syncService.pullProducts().catch(() => {});
       syncService.pullStaff().catch(() => {});
       syncService.pullSettings().catch(() => {});
+      syncService.pullTransactions().catch(() => {});
     }
   }, [isOnline, apiKeyLoaded]);
 
@@ -473,6 +474,7 @@ function App() {
       syncService.pullProducts().catch(() => {});
       syncService.pullStaff().catch(() => {});
       syncService.pullSettings().catch(() => {});
+      syncService.pullTransactions().catch(() => {});
     }, 45_000);
     return () => clearInterval(id);
   }, [isOnline, apiKeyLoaded]);

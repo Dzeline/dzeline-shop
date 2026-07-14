@@ -59,23 +59,40 @@ export const syncService = {
         // least once) so the backend can decrement Product.stock server-side
         // — this is how a sale's stock change reaches other devices, not a
         // product push (which would fight with this on an absolute value).
-        const productIds = [...new Set(items.map((i) => i.product_id))];
+        // Also attach cost_price as a sale-time snapshot for cross-device COGS.
+        const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
         const products = await db.products.bulkGet(productIds);
         const cloudIdMap = new Map(products.filter(Boolean).map((p) => [p.id, p.cloud_id]));
+        const costPriceMap = new Map(products.filter(Boolean).map((p) => [p.id, p.cost_price]));
         const itemsWithCloudIds = items.map((i) => ({
           ...i,
           cloud_product_id: cloudIdMap.get(i.product_id) ?? null,
+          cost_price: i.cost_price ?? costPriceMap.get(i.product_id) ?? null,
         }));
+
+        // mpesa_code lives in pending_mpesa, not on the transaction row —
+        // resolve it here so it actually reaches the backend (previously the
+        // spread of `txn` alone never carried it, so no synced transaction
+        // has ever had a real mpesa_code server-side until this fix).
+        const mpesaRec = await db.pending_mpesa.where("transaction_id").equals(txn.id).first();
+        const staffRec = txn.staff_id ? await db.staff.get(txn.staff_id) : null;
 
         const res = await fetch(`${API_BASE}/sync/transactions`, {
           method: "POST",
           headers: apiHeaders(),
-          body: JSON.stringify({ ...txn, device_id: deviceId, items: itemsWithCloudIds }),
+          body: JSON.stringify({
+            ...txn,
+            device_id: deviceId,
+            mpesa_code: mpesaRec?.code ?? txn.mpesa_code ?? null,
+            staff_name: staffRec?.name ?? null,
+            items: itemsWithCloudIds,
+          }),
           signal: AbortSignal.timeout(10_000),
         });
 
         if (res.ok) {
-          await db.transactions.update(txn.id, { synced: true });
+          const data = await res.json();
+          await db.transactions.update(txn.id, { synced: true, cloud_id: data.id });
           pushed++;
         }
       } catch {
@@ -453,6 +470,104 @@ export const syncService = {
         currency: s.currency ?? "KES",
       });
       useSettingsStore.getState().reload();
+    } catch { /* offline — try again next reconnect */ }
+  },
+
+  // ── Transaction pull ─────────────────────────────────────────────────────
+  // Cross-device Reports correlation: pull other devices' synced sales into
+  // the *same* transactions/transaction_items tables (tagged with device_id/
+  // cloud_id), rather than a separate mirror table — see plan doc for why.
+  //
+  // LOAD-BEARING INVARIANT: a foreign-origin row (device_id !== this device's
+  // id) must never have `synced` flipped back to false locally. If it is,
+  // the next push cycle sends it under *this* device's device_id, the
+  // backend's duplicate lookup misses (different device_id), and a phantom
+  // duplicate transaction is inserted tenant-wide — double-counting real
+  // revenue. This is why TransactionHistory.jsx hides the Void button for
+  // txn.origin === "remote". Do not add any other write path that could
+  // touch a foreign row's `synced` flag without preserving this guarantee.
+
+  async pullTransactions() {
+    if (!API_BASE) return;
+    try {
+      const myDeviceId = await dbHelpers.getDeviceId();
+      const sinceRaw = await dbHelpers.getSetting("last_txn_pull_at");
+      // ~35 days back on first-ever pull — covers Reports' widest realistic range.
+      const since = sinceRaw ? Number(sinceRaw) : Date.now() - 35 * 24 * 60 * 60 * 1000;
+
+      const res = await fetch(`${API_BASE}/sync/transactions?since=${since}&limit=300`, {
+        headers: apiGetHeaders(),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return;
+      const rows = await res.json();
+      if (rows.length === 0) return;
+
+      const local = await db.transactions.toArray();
+      const byCloudId = new Map(local.filter((t) => t.cloud_id != null).map((t) => [t.cloud_id, t]));
+      const myLocalIds = new Set(local.filter((t) => t.device_id === myDeviceId).map((t) => t.id));
+
+      const products = await db.products.toArray();
+      const productByCloudId = new Map(products.filter((p) => p.cloud_id != null).map((p) => [p.cloud_id, p]));
+
+      let maxUpdatedAt = since;
+      for (const r of rows) {
+        maxUpdatedAt = Math.max(maxUpdatedAt, r.updated_at ?? 0);
+
+        // "Mine" primarily by device_id match. The local_id fallback covers
+        // rows pushed before device_id tracking existed on the backend
+        // (NULL there) — without it, this device's own pre-existing history
+        // would look foreign and get duplicated locally.
+        const isMine = r.device_id === myDeviceId || (r.device_id == null && myLocalIds.has(r.local_id));
+        if (isMine) {
+          const mine = byCloudId.get(r.id) ?? (myLocalIds.has(r.local_id) ? local.find((t) => t.id === r.local_id) : null);
+          if (mine && mine.cloud_id == null) {
+            await db.transactions.update(mine.id, { cloud_id: r.id });
+          }
+          continue; // never re-insert my own transaction
+        }
+
+        const existing = byCloudId.get(r.id);
+        if (existing) {
+          // Items are immutable once synced — only mutable header fields refresh.
+          await db.transactions.update(existing.id, { voided: r.voided, etims_status: r.etims_status });
+          continue;
+        }
+
+        const localTxnId = await db.transactions.add({
+          timestamp: r.timestamp,
+          subtotal: r.subtotal,
+          vat: r.vat,
+          total: r.total,
+          payment_method: r.payment_method,
+          payment_amount: r.payment_amount,
+          change_given: r.change_given,
+          mpesa_code: r.mpesa_code,
+          staff_id: null,
+          staff_name: r.staff_name,
+          customer_name: r.customer_name,
+          customer_phone: r.customer_phone,
+          voided: r.voided,
+          etims_status: r.etims_status,
+          synced: true,
+          cloud_id: r.id,
+          device_id: r.device_id,
+        });
+
+        for (const item of r.items ?? []) {
+          await db.transaction_items.add({
+            transaction_id: localTxnId,
+            product_id: productByCloudId.get(item.cloud_product_id)?.id ?? null,
+            name: item.product_name,
+            quantity: item.quantity,
+            price: item.price,
+            subtotal: item.subtotal,
+            cost_price: item.cost_price ?? null,
+          });
+        }
+      }
+
+      await dbHelpers.updateSetting("last_txn_pull_at", String(maxUpdatedAt));
     } catch { /* offline — try again next reconnect */ }
   },
 

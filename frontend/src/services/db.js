@@ -112,6 +112,23 @@ db.version(10).stores({
   await tx.table("products").toCollection().modify({ cloud_id: null, updated_at: now, synced: false });
 });
 
+// Version 11: cross-device transaction pull — transactions can now be pulled
+// down from other devices, not just pushed up. device_id tags who created a
+// row (needed to tell "mine" from "foreign" on pull, so foreign rows are
+// never re-inserted or re-pushed); cloud_id links a local row to its backend
+// id. Every pre-existing local transaction was created on this device.
+db.version(11).stores({
+  transactions: "++id, timestamp, total, payment_method, synced, staff_id, etims_status, cloud_id, device_id",
+}).upgrade(async (tx) => {
+  let deviceRow = await tx.table("settings").get("device_id");
+  let deviceId = deviceRow?.value;
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    await tx.table("settings").put({ key: "device_id", value: deviceId });
+  }
+  await tx.table("transactions").toCollection().modify({ cloud_id: null, device_id: deviceId });
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -271,6 +288,9 @@ export const dbHelpers = {
 
   // Complete a sale atomically: insert transaction, line items, decrement stock
   async completeTransaction(cartItems, payment, staffId = 1) {
+    // Resolved before the transaction block — getDeviceId() touches
+    // db.settings, which isn't in the table list below.
+    const deviceId = await this.getDeviceId();
     return await db.transaction(
       "rw",
       [db.transactions, db.transaction_items, db.products, db.pending_mpesa],
@@ -289,18 +309,22 @@ export const dbHelpers = {
           staff_id: staffId,
           customer_name: payment.customer_name ?? null,
           customer_phone: payment.customer_phone ?? null,
+          device_id: deviceId,
+          cloud_id: null,
         });
 
         for (const item of cartItems) {
+          const product = await db.products.get(item.id);
+
           await db.transaction_items.add({
             transaction_id: transactionId,
             product_id: item.id,
             quantity: item.quantity,
             price: item.price,
             subtotal: item.price * item.quantity,
+            cost_price: product?.cost_price ?? null,
           });
 
-          const product = await db.products.get(item.id);
           if (product) {
             await db.products.update(item.id, {
               stock: Math.max(0, product.stock - item.quantity),
@@ -332,6 +356,7 @@ export const dbHelpers = {
 
   // Get recent transactions with line items enriched with product names and mpesa codes
   async getTransactionHistory(limit = 20) {
+    const myDeviceId = await this.getDeviceId();
     const txns = await db.transactions
       .orderBy("timestamp")
       .reverse()
@@ -344,11 +369,13 @@ export const dbHelpers = {
       )
     );
 
-    const productIds = [...new Set(allItems.flat().map((i) => i.product_id))];
+    const productIds = [...new Set(allItems.flat().map((i) => i.product_id).filter(Boolean))];
     const products = await db.products.bulkGet(productIds);
     const nameMap = new Map(products.filter(Boolean).map((p) => [p.id, p.name]));
 
-    // Attach M-Pesa / Pochi codes from pending_mpesa (single source of truth)
+    // Attach M-Pesa / Pochi codes from pending_mpesa (single source of truth
+    // for locally-made sales) — foreign/pulled transactions have no local
+    // pending_mpesa row, so fall back to the denormalized code from the cloud.
     const txnIds = txns.map((t) => t.id);
     const mpesaRecs = await db.pending_mpesa
       .where("transaction_id").anyOf(txnIds).toArray();
@@ -357,11 +384,14 @@ export const dbHelpers = {
 
     return txns.map((txn, i) => ({
       ...txn,
-      mpesa_code: mpesaMap.get(txn.id) ?? null,
+      mpesa_code: mpesaMap.get(txn.id) ?? txn.mpesa_code ?? null,
       sms_mismatch: mismatchMap.get(txn.id) ?? false,
+      origin: (txn.device_id && txn.device_id !== myDeviceId) ? "remote" : "local",
       items: allItems[i].map((item) => ({
         ...item,
-        name: nameMap.get(item.product_id) ?? null,
+        // Prefer the item's own denormalized name (needed for foreign items
+        // whose product_id may not resolve locally) before a products lookup.
+        name: item.name ?? nameMap.get(item.product_id) ?? null,
       })),
     }));
   },
@@ -650,24 +680,33 @@ export const dbHelpers = {
       .anyOf(txns.map((t) => t.id))
       .toArray();
 
+    // Grouped by product_id when resolvable, else by name — a foreign item
+    // whose product isn't synced locally still gets its own bucket instead
+    // of collapsing into a single shared "unresolved" entry.
     const productMap = new Map();
     for (const item of allItems) {
-      const e = productMap.get(item.product_id) || { product_id: item.product_id, name: null, totalQty: 0, totalRevenue: 0 };
+      const key = item.product_id ?? `name:${item.name}`;
+      const e = productMap.get(key) || { product_id: item.product_id, name: item.name ?? null, totalQty: 0, totalRevenue: 0 };
       e.totalQty += item.quantity;
       e.totalRevenue += item.subtotal;
-      productMap.set(item.product_id, e);
+      productMap.set(key, e);
     }
 
-    const products = await db.products.bulkGet([...productMap.keys()]);
-    products.forEach((p) => { if (p) productMap.get(p.id).name = p.name; });
+    const localProductIds = [...productMap.values()].map((e) => e.product_id).filter(Boolean);
+    const products = await db.products.bulkGet(localProductIds);
+    const productNameMap = new Map(products.filter(Boolean).map((p) => [p.id, p.name]));
+    for (const e of productMap.values()) {
+      if (!e.name && e.product_id) e.name = productNameMap.get(e.product_id) ?? null;
+    }
 
-    // Cashier breakdown
+    // Cashier breakdown — staff_name is a denormalized snapshot for foreign
+    // (pulled) transactions, since staff_id is only meaningful on its own device.
     const staffIds = [...new Set(txns.map((t) => t.staff_id).filter(Boolean))];
     const staffMembers = await db.staff.bulkGet(staffIds);
     const staffNameMap = new Map(staffMembers.filter(Boolean).map((s) => [s.id, s.name]));
     const staffTotals = {};
     for (const txn of txns) {
-      const name = staffNameMap.get(txn.staff_id) ?? "Unknown";
+      const name = txn.staff_name ?? staffNameMap.get(txn.staff_id) ?? "Unknown";
       if (!staffTotals[name]) staffTotals[name] = { name, count: 0, total: 0 };
       staffTotals[name].count++;
       staffTotals[name].total += txn.total || 0;
@@ -712,7 +751,7 @@ export const dbHelpers = {
       .where("transaction_id").anyOf(txns.map((t) => t.id))
       .toArray();
 
-    const productIds = [...new Set(allItems.map((i) => i.product_id))];
+    const productIds = [...new Set(allItems.map((i) => i.product_id).filter(Boolean))];
     const products = await db.products.bulkGet(productIds);
     const productMap = new Map(products.filter(Boolean).map((p) => [p.id, p]));
 
@@ -720,19 +759,23 @@ export const dbHelpers = {
     const productMetrics = new Map();
     for (const item of allItems) {
       const product = productMap.get(item.product_id);
-      const costPrice = product?.cost_price ?? 0;
+      // Prefer the item's own cost-at-sale-time snapshot — the puller's
+      // current product catalog may have a different cost_price today than
+      // whatever it was when a foreign device made this sale.
+      const costPrice = item.cost_price ?? product?.cost_price ?? 0;
       const itemCogs = item.quantity * costPrice;
       cogs += itemCogs;
 
-      const m = productMetrics.get(item.product_id) ?? {
-        id: item.product_id, name: product?.name ?? "Unknown",
+      const key = item.product_id ?? `name:${item.name}`;
+      const m = productMetrics.get(key) ?? {
+        id: item.product_id, name: item.name ?? product?.name ?? "Unknown",
         revenue: 0, cogs: 0, profit: 0, qty: 0,
       };
       m.revenue += item.subtotal;
       m.cogs += itemCogs;
       m.profit += item.subtotal - itemCogs;
       m.qty += item.quantity;
-      productMetrics.set(item.product_id, m);
+      productMetrics.set(key, m);
     }
 
     const revenue = txns.reduce((s, t) => s + (t.total || 0), 0);
@@ -758,11 +801,15 @@ export const dbHelpers = {
   // ── eTIMS helpers ─────────────────────────────────────────────────────────
 
   async getEtimsQueue(limit = 200) {
-    // Returns transactions that haven't been successfully submitted yet
+    // Returns transactions that haven't been successfully submitted yet.
+    // Compliance-critical: excludes foreign (pulled) transactions — if a
+    // sale made on another device showed up here, submitting it would
+    // create a second real KRA fiscal receipt for one sale.
+    const myDeviceId = await this.getDeviceId();
     return await db.transactions
       .where("etims_status")
       .anyOf(["pending", "failed"])
-      .filter((t) => !t.voided)
+      .filter((t) => !t.voided && (!t.device_id || t.device_id === myDeviceId))
       .reverse()
       .limit(limit)
       .toArray();
