@@ -457,10 +457,12 @@ function App() {
       syncService.reconcileSmsCodes().catch(() => {});
       syncService.pushUnsyncedProducts().catch(() => {});
       syncService.pushUnsyncedStaff().catch(() => {});
+      syncService.pushUnsyncedSuppliers().catch(() => {});
       syncService.pullProducts().catch(() => {});
       syncService.pullStaff().catch(() => {});
       syncService.pullSettings().catch(() => {});
       syncService.pullTransactions().catch(() => {});
+      syncService.pullSuppliers().catch(() => {});
     }
   }, [isOnline, apiKeyLoaded]);
 
@@ -475,6 +477,7 @@ function App() {
       syncService.pullStaff().catch(() => {});
       syncService.pullSettings().catch(() => {});
       syncService.pullTransactions().catch(() => {});
+      syncService.pullSuppliers().catch(() => {});
     }, 45_000);
     return () => clearInterval(id);
   }, [isOnline, apiKeyLoaded]);

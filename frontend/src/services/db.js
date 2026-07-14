@@ -129,6 +129,16 @@ db.version(11).stores({
   await tx.table("transactions").toCollection().modify({ cloud_id: null, device_id: deviceId });
 });
 
+// Version 12: supplier directory sync — same cloud_id/synced/deleted_at
+// idiom as staff/products, so two tills stop building independent,
+// uncorrelated supplier lists.
+db.version(12).stores({
+  suppliers: "++id, name, created_at, cloud_id, updated_at, deleted_at, synced",
+}).upgrade(async (tx) => {
+  const now = Date.now();
+  await tx.table("suppliers").toCollection().modify({ cloud_id: null, updated_at: now, deleted_at: null, synced: false });
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -632,7 +642,7 @@ export const dbHelpers = {
   // ── Suppliers ─────────────────────────────────────────────────────────────
 
   async getAllSuppliers() {
-    return await db.suppliers.orderBy("name").toArray();
+    return await db.suppliers.orderBy("name").filter((s) => !s.deleted_at).toArray();
   },
 
   async addSupplier({ name, phone, email, notes }) {
@@ -642,15 +652,32 @@ export const dbHelpers = {
       email: email || null,
       notes: notes || null,
       created_at: new Date().toISOString(),
+      cloud_id: null,
+      deleted_at: null,
+      synced: false,
+      updated_at: Date.now(),
     });
   },
 
   async updateSupplier(id, updates) {
-    return await db.suppliers.update(id, updates);
+    return await db.suppliers.update(id, { ...updates, synced: false, updated_at: Date.now() });
   },
 
+  // Soft delete — an unsynced delete must not be silently undone by a pull
+  // that lands before the delete has pushed.
   async deleteSupplier(id) {
-    return await db.suppliers.delete(id);
+    const now = Date.now();
+    return await db.suppliers.update(id, { deleted_at: now, updated_at: now, synced: false });
+  },
+
+  // ── Supplier sync ────────────────────────────────────────────────────────
+
+  async getUnsyncedSuppliers() {
+    return await db.suppliers.filter((s) => !s.synced).toArray();
+  },
+
+  async markSupplierSynced(id, cloudId) {
+    return await db.suppliers.update(id, { synced: true, cloud_id: cloudId });
   },
 
   // ── Daily analytics ───────────────────────────────────────────────────────

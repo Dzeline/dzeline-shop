@@ -575,4 +575,87 @@ export const syncService = {
     } catch { /* offline — try again next reconnect */ }
   },
 
+  // ── Supplier sync ────────────────────────────────────────────────────────
+
+  async pushUnsyncedSuppliers() {
+    if (!API_BASE) return { pushed: 0 };
+    const unsynced = await dbHelpers.getUnsyncedSuppliers();
+    if (unsynced.length === 0) return { pushed: 0 };
+
+    const deviceId = await dbHelpers.getDeviceId();
+    let pushed = 0;
+    for (const s of unsynced) {
+      try {
+        const body = {
+          device_id: deviceId,
+          local_id: s.id,
+          name: s.name,
+          phone: s.phone ?? null,
+          email: s.email ?? null,
+          notes: s.notes ?? null,
+        };
+        const url = s.cloud_id ? `${API_BASE}/suppliers/${s.cloud_id}` : `${API_BASE}/suppliers`;
+        const res = await fetch(url, {
+          method: s.cloud_id ? "PUT" : "POST",
+          headers: apiHeaders(),
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          await dbHelpers.markSupplierSynced(s.id, data.id);
+          pushed++;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return { pushed };
+  },
+
+  /**
+   * Pull the tenant's supplier directory and reconcile into local Dexie —
+   * same shape as pullStaff: unmatched cloud rows insert locally, a local
+   * row with a pending unsynced edit is left alone this cycle, a cloud row
+   * marked deleted_at soft-deletes the local row.
+   */
+  async pullSuppliers() {
+    if (!API_BASE) return;
+    try {
+      const res = await fetch(`${API_BASE}/suppliers`, {
+        headers: apiGetHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return;
+      const rows = await res.json();
+
+      const local = await db.suppliers.toArray();
+      const byCloudId = new Map(local.filter((s) => s.cloud_id != null).map((s) => [s.cloud_id, s]));
+
+      for (const r of rows) {
+        const existing = byCloudId.get(r.id);
+
+        if (r.deleted_at) {
+          if (existing && !existing.deleted_at) {
+            await db.suppliers.update(existing.id, { deleted_at: r.deleted_at, synced: true });
+          }
+          continue;
+        }
+
+        if (existing) {
+          if (!existing.synced) continue; // pending local edit — don't clobber
+          await db.suppliers.update(existing.id, {
+            name: r.name, phone: r.phone, email: r.email, notes: r.notes, synced: true,
+          });
+        } else {
+          await db.suppliers.add({
+            name: r.name, phone: r.phone, email: r.email, notes: r.notes,
+            created_at: new Date(r.updated_at).toISOString(),
+            cloud_id: r.id, deleted_at: null, synced: true, updated_at: r.updated_at,
+          });
+        }
+      }
+    } catch { /* offline — try again next reconnect */ }
+  },
+
 };

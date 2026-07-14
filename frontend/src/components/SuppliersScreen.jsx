@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
+import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 
@@ -28,6 +29,7 @@ function SupplierModal({ supplier, onSave, onClose }) {
         });
         onSave({ id, name: name.trim(), phone: phone.trim() || null, email: email.trim() || null, notes: notes.trim() || null });
       }
+      syncService.pushUnsyncedSuppliers().catch(() => {});
     } catch {
       showToast("Failed to save supplier");
     } finally {
@@ -367,6 +369,7 @@ export default function SuppliersScreen({ onClose }) {
     setSuppliers((prev) => prev.filter((s) => s.id !== id));
     setConfirmDelete(null);
     showToast("Supplier removed");
+    syncService.pushUnsyncedSuppliers().catch(() => {});
   }
 
   return (
