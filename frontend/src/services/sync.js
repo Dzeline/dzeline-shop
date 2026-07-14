@@ -36,7 +36,14 @@ export const syncService = {
   async pushUnsynced() {
     if (!API_BASE) return { pushed: 0 };
 
-    const unsynced = await db.transactions.where("synced").equals(false).toArray();
+    // .filter(), not .where().equals(false) — IndexedDB rejects booleans as
+    // keys (IDBKeyRange.bound throws "not a valid key" DataError on browsers
+    // that enforce the spec), so any .equals() on a boolean index throws.
+    // Deliberately NOT using getUnsyncedTransactions() here — that excludes
+    // voided transactions, but voidTransaction() resets synced:false so the
+    // voided status itself gets pushed; excluding them here would silently
+    // stop void state from ever reaching the cloud.
+    const unsynced = await db.transactions.filter((t) => !t.synced).toArray();
     if (unsynced.length === 0) return { pushed: 0 };
 
     const deviceId = await dbHelpers.getDeviceId();

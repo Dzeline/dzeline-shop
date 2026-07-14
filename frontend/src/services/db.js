@@ -194,7 +194,10 @@ export const dbHelpers = {
   // ── Product sync ─────────────────────────────────────────────────────────
 
   async getUnsyncedProducts() {
-    return await db.products.where("synced").equals(false).toArray();
+    // .filter(), not .where().equals(false) — IndexedDB rejects booleans as
+    // keys (IDBKeyRange.bound throws "not a valid key"), so any .equals() on
+    // a boolean-valued index throws a DataError on browsers that enforce it.
+    return await db.products.filter((p) => !p.synced).toArray();
   },
 
   async markProductSynced(id, cloudId) {
@@ -208,9 +211,9 @@ export const dbHelpers = {
 
   // Get unsynced transactions (excludes voided)
   async getUnsyncedTransactions() {
+    // .filter(), not .where().equals(false) — see getUnsyncedProducts() note.
     return await db.transactions
-      .where("synced").equals(false)
-      .filter((t) => !t.voided)
+      .filter((t) => !t.synced && !t.voided)
       .toArray();
   },
 
@@ -436,7 +439,8 @@ export const dbHelpers = {
   // ── Staff sync ───────────────────────────────────────────────────────────
 
   async getUnsyncedStaff() {
-    return await db.staff.where("synced").equals(false).toArray();
+    // .filter(), not .where().equals(false) — see getUnsyncedProducts() note.
+    return await db.staff.filter((s) => !s.synced).toArray();
   },
 
   async markStaffSynced(id, cloudId) {
@@ -545,9 +549,9 @@ export const dbHelpers = {
 
   /** Returns unsynced receipts (status=activated, synced=false) with their items. */
   async getUnsyncedReceipts() {
+    // .filter(), not .where().equals(false) — see getUnsyncedProducts() note.
     const receipts = await db.stock_receipts
-      .where("synced").equals(false)
-      .filter((r) => r.status === "activated")
+      .filter((r) => !r.synced && r.status === "activated")
       .toArray();
     return Promise.all(
       receipts.map(async (r) => ({
