@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { dbHelpers } from "../services/db";
 import { formatPrice, formatDate } from "../utils/formatters";
 import { useSettingsStore } from "../store/settingsStore";
 import { thermalPrinter } from "../services/thermalPrinter";
@@ -36,6 +37,26 @@ export default function Receipt({ sale, onNewSale }) {
   function handleBrowserPrint() {
     thermalPrinter.printBrowser(sale, printerSettings);
   }
+
+  // Auto-print is a device-local preference (Settings > Receipt Printer) —
+  // deliberately not synced, since it only makes sense on whichever device
+  // actually has a printer attached. Prefer an already-live Bluetooth
+  // connection (silent, no dialog); Web Bluetooth's requestDevice() needs a
+  // user gesture, so we never attempt to auto-*connect* one here — only use
+  // it if it's already connected from earlier in the session. Otherwise fall
+  // back to the browser print dialog, which unlike Bluetooth pairing doesn't
+  // require a user gesture to trigger programmatically.
+  useEffect(() => {
+    dbHelpers.getSetting("auto_print_receipts").then((v) => {
+      if (v !== "true") return;
+      if (thermalPrinter.isConnected) {
+        handleBluetoothPrint();
+      } else {
+        handleBrowserPrint();
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const bannerBg = isMpesa ? "bg-green-600" : isPochi ? "bg-orange-500" : "bg-primary";
   const bannerText = isMpesa ? "text-green-100" : isPochi ? "text-orange-100" : "text-blue-100";

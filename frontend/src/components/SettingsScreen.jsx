@@ -94,6 +94,11 @@ export default function SettingsScreen({ onClose }) {
   const [printerName, setPrinterName] = useState(() => thermalPrinter.savedDeviceName);
   const [printerConnecting, setPrinterConnecting] = useState(false);
   const [printerErr, setPrinterErr] = useState("");
+  // Device-local only — deliberately NOT part of synced shop settings, since
+  // a printer preference belongs to whichever physical device is actually
+  // wired to a printer, not to the shop as a whole (every other device would
+  // otherwise also try to auto-print with nothing attached).
+  const [autoPrint, setAutoPrint] = useState(false);
 
   useEffect(() => {
     dbHelpers.getShopSettings().then((s) => {
@@ -111,6 +116,7 @@ export default function SettingsScreen({ onClose }) {
       setPochiNumber(s.pochi_number || "");
 
       dbHelpers.getApiKey().then((k) => { if (k) setApiKeyInput(k); });
+      dbHelpers.getSetting("auto_print_receipts").then((v) => setAutoPrint(v === "true"));
 
       // Pre-fill eTIMS TIN from KRA PIN
       if (registered && pin) setEtimsTin(pin);
@@ -460,6 +466,28 @@ export default function SettingsScreen({ onClose }) {
                 )}
               </div>
             )}
+
+            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+              <div className="pr-3">
+                <p className="text-sm font-bold text-gray-800">Print automatically after each sale</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Opens the print dialog right away instead of waiting for a tap on Receipt. This device only —
+                  won't affect other tills.
+                </p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={autoPrint}
+                onClick={() => {
+                  const next = !autoPrint;
+                  setAutoPrint(next);
+                  dbHelpers.updateSetting("auto_print_receipts", String(next));
+                }}
+                className={`shrink-0 w-12 h-7 rounded-full transition relative ${autoPrint ? "bg-primary" : "bg-gray-200"}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${autoPrint ? "translate-x-5" : ""}`} />
+              </button>
+            </div>
           </SectionCard>
 
           {/* KRA eTIMS */}
