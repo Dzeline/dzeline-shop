@@ -182,8 +182,14 @@
               <option value="till">Till (Buy Goods)</option>
             </select>
           </div>
-          <input id="e_till_number" type="text" placeholder="Lipa na M-Pesa till number (for SMS matching)"
-            class="w-full bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500" />
+          <div class="flex gap-2 items-start">
+            <div class="flex-1">
+              <input id="e_till_number" type="text" placeholder="Lipa na M-Pesa till number (for SMS matching)"
+                class="w-full bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500" />
+              <p id="e_till_mismatch" class="hidden text-xs text-amber-400 mt-1">⚠ Differs from shortcode above — the shop's checkout screen will show this number to customers, but payments actually route to the shortcode. Usually these should match.</p>
+            </div>
+            <button type="button" onclick="matchTillToShortcode()" class="shrink-0 py-2.5 px-3 rounded-xl text-xs text-slate-400 border border-[#1a2d4a] hover:text-white hover:border-slate-500 transition whitespace-nowrap">↻ Match shortcode</button>
+          </div>
           <input id="e_daraja_consumer_key" type="text" placeholder="Consumer key"
             class="w-full bg-[#060d1f] border border-[#1a2d4a] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500" />
           <input id="e_daraja_consumer_secret" type="password" placeholder="Consumer secret — leave blank to keep unchanged"
@@ -404,16 +410,36 @@
       ? new Date(t.billing_cycle_end).toISOString().split('T')[0] : '';
     document.getElementById('e_daraja_shortcode').value      = t.daraja_shortcode      || '';
     document.getElementById('e_daraja_shortcode_type').value = t.daraja_shortcode_type || 'paybill';
-    document.getElementById('e_till_number').value           = t.till_number           || '';
+    // Safe auto-fill: only when till_number is blank (e.g. a brand-new
+    // tenant) — never overwrites a value the operator may have set on
+    // purpose. Existing tenants that already diverge get the mismatch
+    // warning + explicit "Match shortcode" button instead of a silent fix.
+    document.getElementById('e_till_number').value = t.till_number || t.daraja_shortcode || '';
     document.getElementById('e_daraja_consumer_key').value   = t.daraja_consumer_key   || '';
     document.getElementById('e_daraja_callback_url').value   = t.daraja_callback_url   || '';
     // Secrets are never sent back by the API — always start blank.
     document.getElementById('e_daraja_consumer_secret').value = '';
     document.getElementById('e_daraja_passkey').value         = '';
     hideErr(document.getElementById('editError'));
+    checkTillMismatch();
     document.getElementById('editModal').classList.remove('hidden');
   }
   function closeEdit() { document.getElementById('editModal').classList.add('hidden'); }
+
+  function checkTillMismatch() {
+    var shortcode = document.getElementById('e_daraja_shortcode').value.trim();
+    var till      = document.getElementById('e_till_number').value.trim();
+    var warn      = document.getElementById('e_till_mismatch');
+    var mismatch  = shortcode && till && shortcode !== till;
+    warn.classList.toggle('hidden', !mismatch);
+  }
+  document.getElementById('e_daraja_shortcode').oninput = checkTillMismatch;
+  document.getElementById('e_till_number').oninput      = checkTillMismatch;
+
+  function matchTillToShortcode() {
+    document.getElementById('e_till_number').value = document.getElementById('e_daraja_shortcode').value.trim();
+    checkTillMismatch();
+  }
 
   async function submitEdit() {
     var id  = document.getElementById('e_id').value;
