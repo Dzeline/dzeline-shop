@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -142,21 +141,14 @@ def _apply_migrations():
 _apply_migrations()
 
 
-async def _prewarm_ocr():
-    try:
-        await asyncio.to_thread(scan._get_ocr)
-        logger.info("PaddleOCR pre-warm complete")
-    except Exception as e:
-        logger.warning("PaddleOCR pre-warm skipped: %s", e)
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Fire pre-warm in background — don't block startup waiting for OCR.
-    # Render needs the port open within ~3 min; PaddleOCR can take 10+ min
-    # on a cold download. The scan route initialises lazily if the task is
-    # still running when the first request arrives.
-    asyncio.create_task(_prewarm_ocr())
+    # OCR is intentionally NOT pre-warmed here anymore — it used to load
+    # ~1GB of PaddleOCR models into memory on every startup regardless of
+    # whether Scan was ever used, which was the likely cause of recurring
+    # SIGTERM/OOM crashes that took down the whole API, not just scanning.
+    # scan.py's _get_ocr() now loads lazily, in a background thread, only
+    # on the first actual scan attempt. See scan.py for the full reasoning.
     yield
 
 

@@ -12,6 +12,7 @@ import base64
 import io
 import logging
 import re
+import threading
 from threading import Lock
 
 import numpy as np
@@ -27,49 +28,51 @@ router = APIRouter(prefix="/scan", tags=["scan"])
 logger = logging.getLogger(__name__)
 
 # ── OCR singleton ─────────────────────────────────────────────────────────────
-# Double-checked lock so only one thread initialises PaddleOCR even under
-# concurrent requests.  Models download on first call (~300 MB, ~30 s).
+# Lazy, on-demand only — this used to be eagerly pre-warmed on every startup,
+# which meant PaddleOCR's ~1GB of models sat permanently loaded in RAM for
+# the lifetime of the process whether or not anyone ever used Scan. That was
+# the dominant driver of this service's baseline memory footprint and the
+# likely cause of recurring SIGTERM/OOM crashes that took down the *entire*
+# API — payments, sync, everything — not just scanning. Since AI scanning is
+# a deprioritized feature (manual entry + photo attach is the supported path
+# today), the models now only load if someone actually attempts a scan.
+#
+# The first attempt after a restart kicks off loading in a background thread
+# and returns None immediately, so that request fails fast with a retryable
+# 503 instead of blocking for the 10+ minutes a cold model download can take.
+# A later attempt, once loading finishes, succeeds normally.
 
 _ocr_instance = None
+_ocr_loading = False
 _ocr_lock = Lock()
 
 
 def _init_ocr():
-    global _ocr_instance
-    from paddleocr import PaddleOCR
-    logger.info("Initialising PaddleOCR (models may download now)")
-    _ocr_instance = PaddleOCR(
-        use_angle_cls=True,
-        lang="en",
-        enable_mkldnn=False,   # MKL-DNN off → more stable on cloud
-    )
-    logger.info("PaddleOCR ready")
+    global _ocr_instance, _ocr_loading
+    try:
+        from paddleocr import PaddleOCR
+        logger.info("Initialising PaddleOCR (models may download now)")
+        _ocr_instance = PaddleOCR(
+            use_angle_cls=True,
+            lang="en",
+            enable_mkldnn=False,   # MKL-DNN off → more stable on cloud
+        )
+        logger.info("PaddleOCR ready")
+    finally:
+        _ocr_loading = False
 
 
-def _get_ocr(wait: bool = True):
-    """
-    wait=True  — background pre-warm at startup: block until ready.
-    wait=False — request path: if warm-up is already running elsewhere
-    (pre-warm, or another request), return None immediately instead of
-    blocking this request for minutes. Callers must turn None into a
-    retryable error, not hang.
-    """
-    global _ocr_instance
+def _get_ocr():
+    global _ocr_instance, _ocr_loading
     if _ocr_instance is not None:
         return _ocr_instance
-    if not wait:
-        if not _ocr_lock.acquire(blocking=False):
-            return None
-        try:
-            if _ocr_instance is None:
-                _init_ocr()
-            return _ocr_instance
-        finally:
-            _ocr_lock.release()
     with _ocr_lock:
-        if _ocr_instance is None:
-            _init_ocr()
-    return _ocr_instance
+        if _ocr_instance is not None:
+            return _ocr_instance
+        if not _ocr_loading:
+            _ocr_loading = True
+            threading.Thread(target=_init_ocr, daemon=True).start()
+    return None
 
 
 # ── Image helpers ─────────────────────────────────────────────────────────────
@@ -286,7 +289,7 @@ def scan_invoice(
         logger.warning("scan decode error tenant=%s %s", tenant.id, e)
         raise HTTPException(status_code=400, detail="Could not decode image")
 
-    ocr = _get_ocr(wait=False)
+    ocr = _get_ocr()
     if ocr is None:
         raise HTTPException(
             status_code=503,
