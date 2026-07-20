@@ -294,10 +294,31 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     setSearch("");
   }
 
+  // Clamping on every keystroke made the field impossible to clear-and-retype:
+  // backspacing to "" instantly snapped back to 1 before a new digit could be
+  // entered. Keep the raw (possibly empty/partial) string while typing, only
+  // clamp to a valid integer on blur.
   function handleQtyChange(product_id, value) {
-    const qty = Math.max(1, parseInt(value) || 1);
     setLineItems((prev) =>
-      prev.map((li) => li.product_id === product_id ? { ...li, qty_added: qty } : li)
+      prev.map((li) => li.product_id === product_id ? { ...li, qty_added: value } : li)
+    );
+  }
+
+  function handleQtyBlur(product_id) {
+    setLineItems((prev) =>
+      prev.map((li) => li.product_id === product_id
+        ? { ...li, qty_added: Math.max(1, parseInt(li.qty_added) || 1) }
+        : li
+      )
+    );
+  }
+
+  function handleQtyStep(product_id, delta) {
+    setLineItems((prev) =>
+      prev.map((li) => li.product_id === product_id
+        ? { ...li, qty_added: Math.max(1, (parseInt(li.qty_added) || 0) + delta) }
+        : li
+      )
     );
   }
 
@@ -342,7 +363,10 @@ export default function StockReceiving({ currentStaffId, onClose }) {
         photo_blob:     photoBlob,
         items: lineItems.map(({ product_id, qty_added, unit_cost, expiry_date, condition }) => ({
           product_id,
-          qty_added,
+          // Defensive — the field normally clamps on blur, but a submit tap
+          // that doesn't trigger blur first shouldn't be able to send an
+          // empty/invalid quantity.
+          qty_added:   Math.max(1, parseInt(qty_added) || 1),
           unit_cost:   parseFloat(unit_cost) || null,
           expiry_date: expiry_date || null,
           condition:   condition || "good",
@@ -698,7 +722,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                             <label className="text-xs text-gray-500 mb-1 block">Qty received</label>
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() => handleQtyChange(li.product_id, li.qty_added - 1)}
+                                onClick={() => handleQtyStep(li.product_id, -1)}
                                 className="w-7 h-7 bg-white border border-gray-200 rounded-lg text-gray-600 font-bold flex items-center justify-center hover:bg-gray-100"
                               >
                                 −
@@ -709,10 +733,11 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                                 min="1"
                                 value={li.qty_added}
                                 onChange={(e) => handleQtyChange(li.product_id, e.target.value)}
-                                className="flex-1 text-center text-sm font-bold border border-gray-200 rounded-lg py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
+                                onBlur={() => handleQtyBlur(li.product_id)}
+                                className="flex-1 min-w-0 text-center text-sm font-bold border border-gray-200 rounded-lg py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
                               />
                               <button
-                                onClick={() => handleQtyChange(li.product_id, li.qty_added + 1)}
+                                onClick={() => handleQtyStep(li.product_id, 1)}
                                 className="w-7 h-7 bg-white border border-gray-200 rounded-lg text-gray-600 font-bold flex items-center justify-center hover:bg-gray-100"
                               >
                                 +
