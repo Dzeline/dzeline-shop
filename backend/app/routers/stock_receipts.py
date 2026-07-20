@@ -37,6 +37,7 @@ class StockReceiptIn(BaseModel):
     staff_id:       Optional[int]   = None
     created_at:     Optional[int]   = None
     activated_at:   Optional[int]   = None
+    photo_blob:     Optional[str]   = None  # set once at create — never resent on activation
     items:          list[StockReceiptItemIn] = []
 
 
@@ -82,6 +83,7 @@ class StockReceiptOut(BaseModel):
     staff_id:       Optional[int] = None
     created_at:     Optional[int] = None
     activated_at:   Optional[int] = None
+    photo_blob:     Optional[str] = None
     items:          list[StockReceiptItemOut] = []
 
     class Config:
@@ -120,6 +122,7 @@ def create_receipt(
         staff_id       = payload.staff_id,
         created_at     = payload.created_at or int(datetime.utcnow().timestamp() * 1000),
         activated_at   = payload.activated_at,
+        photo_blob     = payload.photo_blob,
     )
     db.add(receipt)
     db.flush()

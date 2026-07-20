@@ -186,6 +186,7 @@ class StockReceipt(Base):
     staff_id       = Column(Integer, nullable=True)
     created_at     = Column(BigInteger, nullable=True)
     activated_at   = Column(BigInteger, nullable=True)
+    photo_blob     = Column(Text, nullable=True)  # compressed base64 data URL — set once at create, never on activation
 
     items = relationship("StockReceiptItem", back_populates="receipt", cascade="all, delete-orphan")
 

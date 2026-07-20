@@ -98,6 +98,10 @@ def _apply_migrations():
         # any tenant has a receipt with items, since the ORM SELECTs this
         # column unconditionally regardless of which rows match.
         ("stock_receipt_items", "cloud_product_id", "INTEGER"),
+        # stock_receipts — compressed photo of the delivery, so the business
+        # owner can review it during approval regardless of which device
+        # they're on. Create-only (never resent on activation).
+        ("stock_receipts", "photo_blob", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, typ in pending:
