@@ -6,6 +6,7 @@ import { useSettingsStore } from "../store/settingsStore";
 import { showToast } from "../utils/toast";
 import { productsToCsv, downloadCsv } from "../utils/csvExport";
 import CsvImport from "./CsvImport";
+import BarcodeScanner from "./BarcodeScanner";
 
 const CATEGORY_COLOR = {
   Grains:    "#f59e0b",
@@ -119,6 +120,7 @@ export default function InventoryScreen({ onClose }) {
   const [expandedCats, setExpandedCats] = useState({});
   const [viewMode, setViewMode] = useState("category");
   const [showImport, setShowImport] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -164,6 +166,19 @@ export default function InventoryScreen({ onClose }) {
 
   function toggleCat(cat) {
     setExpandedCats((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  }
+
+  async function handleScan(barcode) {
+    setShowScanner(false);
+    const product = await dbHelpers.getProductByBarcode(barcode);
+    if (product) {
+      setSearch(product.barcode);
+      setViewMode("category");
+      setExpandedCats((prev) => ({ ...prev, [product.category || "Other"]: true }));
+    } else {
+      setSearch(barcode);
+      showToast(`Barcode ${barcode} — not found`);
+    }
   }
 
   function handleExport() {
@@ -308,21 +323,38 @@ export default function InventoryScreen({ onClose }) {
 
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 pb-10">
             {/* Search */}
-            <div className="relative">
-              <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <svg
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search products or barcode…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 bg-gray-800 border border-gray-700 text-white placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                />
+              </div>
+              <button
+                onClick={() => setShowScanner(true)}
+                className="shrink-0 w-10 h-10 flex items-center justify-center bg-gray-800 text-gray-300 rounded-xl hover:bg-gray-700 active:scale-95 transition"
+                title="Scan barcode"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Search products or barcode…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-gray-800 border border-gray-700 text-white placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-              />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
+                  <line x1="7" y1="8" x2="7" y2="16" strokeWidth={2} strokeLinecap="round" />
+                  <line x1="10" y1="8" x2="10" y2="16" strokeWidth={2} strokeLinecap="round" />
+                  <line x1="13" y1="8" x2="13" y2="12" strokeWidth={2} strokeLinecap="round" />
+                  <line x1="16" y1="8" x2="16" y2="16" strokeWidth={2} strokeLinecap="round" />
+                  <line x1="13" y1="14" x2="13" y2="16" strokeWidth={2} strokeLinecap="round" />
+                </svg>
+              </button>
             </div>
 
             {/* Alerts view */}
@@ -421,6 +453,10 @@ export default function InventoryScreen({ onClose }) {
           onClose={() => setShowImport(false)}
           onImported={() => { setShowImport(false); load(); }}
         />
+      )}
+
+      {showScanner && (
+        <BarcodeScanner onScan={handleScan} onClose={() => setShowScanner(false)} />
       )}
     </div>
   );
