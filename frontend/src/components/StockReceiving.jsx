@@ -8,6 +8,29 @@ import { apiHeaders } from "../utils/apiHeaders";
 import { useOnline } from "../utils/useOnline";
 import ProductAddModal from "./ProductAddModal";
 
+// ── Image compression ────────────────────────────────────────────────────────
+// A raw phone-camera capture can be several MB — fine sitting alone in local
+// IndexedDB, but too heavy to sync as a JSON payload on every draft, and it's
+// what gets uploaded whole for AI scanning today. Downscale + re-encode once,
+// at capture time, so every downstream use (storage, sync, scan upload) gets
+// the smaller version.
+function compressImage(dataUrl, maxDim = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => reject(new Error("Could not process image"));
+    img.src = dataUrl;
+  });
+}
+
 // ── Product matching ─────────────────────────────────────────────────────────
 
 function matchProductName(scannedName, products) {
@@ -183,9 +206,10 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     setPhotoPreview(URL.createObjectURL(file));
     setScanError(null);
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPhotoBlob(ev.target.result);
-      if (isOnline) handleAnalyze(ev.target.result);
+    reader.onload = async (ev) => {
+      const compressed = await compressImage(ev.target.result).catch(() => ev.target.result);
+      setPhotoBlob(compressed);
+      if (isOnline) handleAnalyze(compressed);
     };
     reader.readAsDataURL(file);
   }
@@ -237,9 +261,10 @@ export default function StockReceiving({ currentStaffId, onClose }) {
     setPhotoPreview(URL.createObjectURL(file));
     setScanError(null);
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPhotoBlob(ev.target.result);
-      if (isOnline) handleAnalyze(ev.target.result);
+    reader.onload = async (ev) => {
+      const compressed = await compressImage(ev.target.result).catch(() => ev.target.result);
+      setPhotoBlob(compressed);
+      if (isOnline) handleAnalyze(compressed);
     };
     reader.readAsDataURL(file);
   }

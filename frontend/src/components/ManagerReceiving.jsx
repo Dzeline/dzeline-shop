@@ -14,6 +14,7 @@ function ReceiptCard({ receipt, onActivated }) {
   const [open, setOpen]         = useState(false);
   const [prices, setPrices]     = useState({});
   const [activating, setActivating] = useState(false);
+  const [showFullPhoto, setShowFullPhoto] = useState(false);
 
   // Pre-fill selling price fields with current product prices
   useEffect(() => {
@@ -52,6 +53,21 @@ function ReceiptCard({ receipt, onActivated }) {
   );
 
   return (
+    <>
+    {showFullPhoto && receipt.photo_blob && (
+      <div
+        className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+        onClick={() => setShowFullPhoto(false)}
+      >
+        <img src={receipt.photo_blob} alt="Delivery receipt" className="max-w-full max-h-full object-contain rounded-lg" />
+        <button
+          onClick={() => setShowFullPhoto(false)}
+          className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 text-white flex items-center justify-center text-xl"
+        >
+          ×
+        </button>
+      </div>
+    )}
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       {/* Header row */}
       <button
@@ -87,6 +103,18 @@ function ReceiptCard({ receipt, onActivated }) {
       {/* Expanded body */}
       {open && (
         <div className="border-t border-gray-100 px-4 py-3 space-y-3">
+          {/* Delivery photo — attendant's proof of what arrived, so the
+              owner can review it before confirming into inventory */}
+          {receipt.photo_blob && (
+            <button
+              type="button"
+              onClick={() => setShowFullPhoto(true)}
+              className="block w-full rounded-xl overflow-hidden border border-gray-200"
+            >
+              <img src={receipt.photo_blob} alt="Delivery receipt" className="w-full max-h-48 object-cover" />
+            </button>
+          )}
+
           {/* Items */}
           <div className="space-y-2">
             {receipt.items.map((item) => {
@@ -159,6 +187,7 @@ function ReceiptCard({ receipt, onActivated }) {
         </div>
       )}
     </div>
+    </>
   );
 }
 

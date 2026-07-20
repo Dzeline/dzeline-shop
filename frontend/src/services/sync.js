@@ -179,6 +179,9 @@ export const syncService = {
               staff_id:       receipt.staff_id,
               created_at:     receipt.timestamp,
               activated_at:   receipt.activated_at ?? null,
+              // Create-only — never resent on the PUT (activation) branch
+              // above, since the photo never changes after submission.
+              photo_blob:     receipt.photo_blob ?? null,
               items:          itemsWithCloudIds,
             }),
             signal: AbortSignal.timeout(10_000),
@@ -747,6 +750,7 @@ export const syncService = {
           timestamp: r.created_at, supplier: r.supplier, supplier_id: r.supplier_id,
           invoice_number: r.invoice_number, staff_id: r.staff_id,
           status: r.status, activated_at: r.activated_at ?? null,
+          photo_blob: r.photo_blob ?? null,
           synced: true, cloud_id: r.id, device_id: r.device_id,
         });
         for (const item of r.items ?? []) {
