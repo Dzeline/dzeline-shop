@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { formatPrice } from "../utils/formatters";
 import { usePermissions } from "../hooks/usePermissions";
-import { FEATURES } from "../utils/permissions";
 import { useSettingsStore } from "../store/settingsStore";
 import { showToast } from "../utils/toast";
 import { productsToCsv, downloadCsv } from "../utils/csvExport";
@@ -111,7 +110,8 @@ function ProductRow({ p }) {
 }
 
 export default function InventoryScreen({ onClose }) {
-  const { can } = usePermissions();
+  const { role } = usePermissions();
+  const isAdmin = role === "admin";
   const shopName = useSettingsStore((s) => s.shopName);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -193,7 +193,7 @@ export default function InventoryScreen({ onClose }) {
             {alertCount} alert{alertCount !== 1 ? "s" : ""}
           </span>
         )}
-        {can(FEATURES.EDIT_PRODUCTS) && (
+        {isAdmin && (
           <button
             onClick={handleExport}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold shrink-0"
@@ -206,7 +206,7 @@ export default function InventoryScreen({ onClose }) {
             Export
           </button>
         )}
-        {can(FEATURES.EDIT_PRODUCTS) && (
+        {isAdmin && (
           <button
             onClick={() => setShowImport(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold shrink-0"
