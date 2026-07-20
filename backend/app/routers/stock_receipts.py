@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..deps import get_tenant
@@ -205,10 +205,14 @@ def list_receipts(
     db:     Session = Depends(get_db),
     tenant: Tenant  = Depends(get_tenant),
 ):
+    # joinedload avoids one lazy-load SELECT per receipt for .items — this
+    # endpoint is polled every 45s per device with no since-filtering, same
+    # fix already applied to the sibling /sync/transactions endpoint.
     return (
         db.query(StockReceipt)
         .filter(StockReceipt.tenant_id == tenant.id)
         .order_by(StockReceipt.created_at.desc())
         .limit(limit)
+        .options(joinedload(StockReceipt.items))
         .all()
     )

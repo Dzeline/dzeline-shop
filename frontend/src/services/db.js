@@ -341,24 +341,32 @@ export const dbHelpers = {
           cloud_id: null,
         });
 
-        for (const item of cartItems) {
-          const product = await db.products.get(item.id);
+        // Batch-fetch every product up front instead of one get() per item,
+        // then fire the item-insert + stock-update pairs concurrently rather
+        // than fully serialized — cuts checkout latency on larger carts.
+        // Safe to parallelize: cartStore.addItem merges into the existing
+        // line rather than creating duplicate entries, so cartItems never
+        // has two rows for the same product_id (which would otherwise race
+        // on the same product's stock value).
+        const products = await db.products.bulkGet(cartItems.map((i) => i.id));
+        const productMap = new Map(products.filter(Boolean).map((p) => [p.id, p]));
 
-          await db.transaction_items.add({
-            transaction_id: transactionId,
-            product_id: item.id,
-            quantity: item.quantity,
-            price: item.price,
-            subtotal: item.price * item.quantity,
-            cost_price: product?.cost_price ?? null,
-          });
-
-          if (product) {
-            await db.products.update(item.id, {
-              stock: Math.max(0, product.stock - item.quantity),
-            });
-          }
-        }
+        await Promise.all(cartItems.map((item) => {
+          const product = productMap.get(item.id);
+          return Promise.all([
+            db.transaction_items.add({
+              transaction_id: transactionId,
+              product_id: item.id,
+              quantity: item.quantity,
+              price: item.price,
+              subtotal: item.price * item.quantity,
+              cost_price: product?.cost_price ?? null,
+            }),
+            product
+              ? db.products.update(item.id, { stock: Math.max(0, product.stock - item.quantity) })
+              : Promise.resolve(),
+          ]);
+        }));
 
         if (payment.method === "MPESA" || payment.method === "POCHI") {
           await db.pending_mpesa.add({
