@@ -3,6 +3,9 @@ import { dbHelpers } from "../services/db";
 import { formatPrice } from "../utils/formatters";
 import { usePermissions } from "../hooks/usePermissions";
 import { FEATURES } from "../utils/permissions";
+import { useSettingsStore } from "../store/settingsStore";
+import { showToast } from "../utils/toast";
+import { productsToCsv, downloadCsv } from "../utils/csvExport";
 import CsvImport from "./CsvImport";
 
 const CATEGORY_COLOR = {
@@ -109,6 +112,7 @@ function ProductRow({ p }) {
 
 export default function InventoryScreen({ onClose }) {
   const { can } = usePermissions();
+  const shopName = useSettingsStore((s) => s.shopName);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -162,6 +166,13 @@ export default function InventoryScreen({ onClose }) {
     setExpandedCats((prev) => ({ ...prev, [cat]: !prev[cat] }));
   }
 
+  function handleExport() {
+    const slug = (shopName || "shop").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCsv(`${slug}-inventory-${date}.csv`, productsToCsv(products));
+    showToast(`Exported ${products.length} product${products.length !== 1 ? "s" : ""}`);
+  }
+
   return (
     <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
@@ -181,6 +192,19 @@ export default function InventoryScreen({ onClose }) {
           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-900/50 text-red-400 shrink-0">
             {alertCount} alert{alertCount !== 1 ? "s" : ""}
           </span>
+        )}
+        {can(FEATURES.EDIT_PRODUCTS) && (
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold shrink-0"
+            title="Export CSV"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export
+          </button>
         )}
         {can(FEATURES.EDIT_PRODUCTS) && (
           <button
