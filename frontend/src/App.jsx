@@ -451,19 +451,7 @@ function App() {
   // 401s (harmless — retried next cycle — but noisy and delays the retry).
   useEffect(() => {
     if (isOnline && apiKeyLoaded) {
-      syncService.pushUnsynced().catch(() => {});
-      syncService.pushUnsyncedReceipts().catch(() => {});
-      syncService.resumePendingStkChecks().catch(() => {});
-      syncService.reconcileSmsCodes().catch(() => {});
-      syncService.pushUnsyncedProducts().catch(() => {});
-      syncService.pushUnsyncedStaff().catch(() => {});
-      syncService.pushUnsyncedSuppliers().catch(() => {});
-      syncService.pullProducts().catch(() => {});
-      syncService.pullStaff().catch(() => {});
-      syncService.pullSettings().catch(() => {});
-      syncService.pullTransactions().catch(() => {});
-      syncService.pullSuppliers().catch(() => {});
-      syncService.pullReceipts().catch(() => {});
+      syncService.runFullSync().catch(() => {});
     }
   }, [isOnline, apiKeyLoaded]);
 
@@ -471,15 +459,15 @@ function App() {
   // newly-added cashier or another till's stock/catalog change — the above
   // effect only fires on the reconnect edge. This is the one new trigger not
   // copied from an existing call site.
+  //
+  // runFullSync/runPullSync share a single in-flight guard (sync.js), so if
+  // this tick lands while a previous cycle (from either effect) is still
+  // running, it's a safe no-op rather than an overlapping second pull that
+  // could race the first and insert a duplicate row.
   useEffect(() => {
     if (!isOnline || !apiKeyLoaded) return;
     const id = setInterval(() => {
-      syncService.pullProducts().catch(() => {});
-      syncService.pullStaff().catch(() => {});
-      syncService.pullSettings().catch(() => {});
-      syncService.pullTransactions().catch(() => {});
-      syncService.pullSuppliers().catch(() => {});
-      syncService.pullReceipts().catch(() => {});
+      syncService.runPullSync().catch(() => {});
     }, 45_000);
     return () => clearInterval(id);
   }, [isOnline, apiKeyLoaded]);

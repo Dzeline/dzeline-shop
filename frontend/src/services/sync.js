@@ -5,6 +5,27 @@ import { useSettingsStore } from "../store/settingsStore";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
+// Guards against overlapping sync cycles. Every pull function snapshots
+// local state near its start and writes new rows near its end — if two
+// invocations of the same pull (or a reconnect-triggered cycle overlapping
+// an in-progress interval cycle) run concurrently, both can decide the same
+// cloud row "isn't local yet" before either has finished inserting it,
+// producing a duplicate — a double-counted, double-pushed phantom sale for
+// pullTransactions specifically. Shared across runFullSync/runPullSync so
+// a running reconnect cycle also blocks a concurrent interval tick and vice
+// versa, since both touch the same tables.
+let _syncInFlight = false;
+
+async function _withSyncGuard(fn) {
+  if (_syncInFlight) return { skipped: true };
+  _syncInFlight = true;
+  try {
+    return await fn();
+  } finally {
+    _syncInFlight = false;
+  }
+}
+
 export const syncService = {
   /**
    * Re-query Daraja for any STK Push payments that were in-flight while offline.
@@ -342,7 +363,18 @@ export const syncService = {
           await db.staff.update(existing.id, {
             name: r.name, pin: r.pin_hash, role: r.role, permissions, active: r.active, synced: true,
           });
-          if (currentStaff?.id === existing.id && !r.active) useStaffStore.getState().logout();
+          if (currentStaff?.id === existing.id) {
+            if (!r.active) {
+              useStaffStore.getState().logout();
+            } else if (currentStaff.role !== r.role) {
+              // A role change alone (not deactivation) refreshes the live
+              // session in place rather than forcing a full logout — a
+              // demoted admin's UI updates immediately instead of staying
+              // stale (with the old permissions) until they happen to log
+              // out manually, which was the previously-known gap.
+              useStaffStore.getState().setStaff({ ...currentStaff, role: r.role, permissions });
+            }
+          }
         } else {
           await db.staff.add({
             name: r.name, pin: r.pin_hash, role: r.role, permissions, active: r.active,
@@ -769,6 +801,50 @@ export const syncService = {
         }
       }
     } catch { /* offline — try again next reconnect */ }
+  },
+
+  // ── Guarded orchestration ────────────────────────────────────────────────
+  // App.jsx calls these instead of firing each push/pull individually, so a
+  // slow cycle (e.g. a large first-ever pullTransactions on a poor
+  // connection) can't overlap with the next reconnect edge or interval tick.
+  // Individual push*/pull* functions stay directly callable and unguarded —
+  // components that push immediately after a local mutation (StaffManagement,
+  // SuppliersScreen, StockReceiving, etc.) must stay responsive to that one
+  // user action regardless of whether a background cycle happens to be running.
+
+  async runFullSync() {
+    return _withSyncGuard(async () => {
+      await Promise.allSettled([
+        this.pushUnsynced(),
+        this.pushUnsyncedReceipts(),
+        this.resumePendingStkChecks(),
+        this.reconcileSmsCodes(),
+        this.pushUnsyncedProducts(),
+        this.pushUnsyncedStaff(),
+        this.pushUnsyncedSuppliers(),
+      ]);
+      await Promise.allSettled([
+        this.pullProducts(),
+        this.pullStaff(),
+        this.pullSettings(),
+        this.pullTransactions(),
+        this.pullSuppliers(),
+        this.pullReceipts(),
+      ]);
+    });
+  },
+
+  async runPullSync() {
+    return _withSyncGuard(async () => {
+      await Promise.allSettled([
+        this.pullProducts(),
+        this.pullStaff(),
+        this.pullSettings(),
+        this.pullTransactions(),
+        this.pullSuppliers(),
+        this.pullReceipts(),
+      ]);
+    });
   },
 
 };
