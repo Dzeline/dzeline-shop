@@ -93,6 +93,11 @@ def _apply_migrations():
         # per-device-ambiguous local_txn_id, so any device can safely submit
         # any of the tenant's pending transactions to KRA
         ("etims_invoices", "transaction_id", "INTEGER REFERENCES transactions(id)"),
+        # stock_receipt_items — cross-device product id remapping. Was added
+        # to the model but missed here — GET /stock-receipts 500s the moment
+        # any tenant has a receipt with items, since the ORM SELECTs this
+        # column unconditionally regardless of which rows match.
+        ("stock_receipt_items", "cloud_product_id", "INTEGER"),
     ]
     with engine.connect() as conn:
         for table, col, typ in pending:
