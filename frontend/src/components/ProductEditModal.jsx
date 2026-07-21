@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
+import { mergeCategories } from "../utils/categories";
 import BarcodeScanner from "./BarcodeScanner";
-import { CATEGORIES } from "./ProductAddModal";
 
 const LABEL = "text-sm font-semibold text-gray-700 mb-1.5 block";
 const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary";
@@ -15,11 +15,21 @@ export default function ProductEditModal({ product, onSave, onClose }) {
   const [costPrice, setCostPrice] = useState(product.cost_price ? String(product.cost_price) : "");
   const [reorderLevel, setReorderLevel] = useState(String(product.reorder_level ?? 10));
   const [barcode, setBarcode] = useState(product.barcode ?? "");
+  // Seed with the product's own category included so it's always a valid
+  // <option> on the very first render, even if it's a custom value not in
+  // the defaults — avoids a flash of the wrong category being shown while
+  // the full catalogue list is still being fetched below.
+  const [categories, setCategories] = useState(() => mergeCategories([product.category]));
   const [category, setCategory] = useState(product.category ?? "Other");
+  const [customCategory, setCustomCategory] = useState("");
   const [imageBlob, setImageBlob] = useState(null);
   const [imagePreview, setImagePreview] = useState(product.image_blob ?? null);
   const [saving, setSaving] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+
+  useEffect(() => {
+    dbHelpers.getCategories().then((existing) => setCategories(mergeCategories(existing)));
+  }, []);
 
   function handlePhotoCapture(e) {
     const file = e.target.files?.[0];
@@ -36,12 +46,16 @@ export default function ProductEditModal({ product, onSave, onClose }) {
     if (!parsedPrice || parsedPrice <= 0) { showToast("Enter a valid price"); return; }
     setSaving(true);
     try {
+      const finalCategory = category === "__custom__"
+        ? (customCategory.trim() || product.category)
+        : category;
+
       const updates = {
         name: name.trim(),
         price: parsedPrice,
         cost_price: parseFloat(costPrice) || null,
         reorder_level: Math.max(1, parseInt(reorderLevel) || 10),
-        category,
+        category: finalCategory,
         barcode: barcode.trim() || product.barcode,
       };
       if (imageBlob) updates.image_blob = imageBlob;
@@ -143,8 +157,19 @@ export default function ProductEditModal({ product, onSave, onClose }) {
               onChange={(e) => setCategory(e.target.value)}
               className={`${INPUT} bg-white`}
             >
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              <option value="__custom__">Custom category…</option>
             </select>
+            {category === "__custom__" && (
+              <input
+                type="text"
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                placeholder="Enter category name (e.g. Frozen Foods)"
+                className={`${INPUT} mt-2`}
+                autoFocus
+              />
+            )}
           </div>
 
           {/* Selling Price + Cost Price */}

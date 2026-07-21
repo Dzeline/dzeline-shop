@@ -1,20 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
+import { DEFAULT_CATEGORIES, mergeCategories } from "../utils/categories";
 import BarcodeScanner from "./BarcodeScanner";
-
-export const CATEGORIES = [
-  "Grains", "Sugar", "Dairy", "Oils", "Bakery",
-  "Beverages", "Spices", "Household", "Produce", "Other",
-];
 
 const LABEL = "text-sm font-semibold text-gray-700 mb-1.5 block";
 const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary";
 
 export default function ProductAddModal({ onSave, onClose }) {
   const [name, setName] = useState("");
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [category, setCategory] = useState("Grains");
   const [customCategory, setCustomCategory] = useState("");
   const [price, setPrice] = useState("");
@@ -26,6 +23,10 @@ export default function ProductAddModal({ onSave, onClose }) {
   const [imagePreview, setImagePreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+
+  useEffect(() => {
+    dbHelpers.getCategories().then((existing) => setCategories(mergeCategories(existing)));
+  }, []);
 
   function handlePhotoCapture(e) {
     const file = e.target.files?.[0];
@@ -151,7 +152,7 @@ export default function ProductAddModal({ onSave, onClose }) {
               onChange={(e) => setCategory(e.target.value)}
               className={`${INPUT} bg-white`}
             >
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
               <option value="__custom__">Custom category…</option>
             </select>
             {category === "__custom__" && (

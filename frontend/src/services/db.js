@@ -191,6 +191,18 @@ export const dbHelpers = {
     return await db.products.toArray();
   },
 
+  // Distinct, non-empty category strings already in use — feeds the
+  // category picker so a custom category typed once is selectable again.
+  async getCategories() {
+    const products = await db.products.toArray();
+    const set = new Set();
+    for (const p of products) {
+      const c = (p.category || "").trim();
+      if (c) set.add(c);
+    }
+    return [...set];
+  },
+
   // Search products by name or barcode
   async searchProducts(query) {
     const lowerQuery = query.toLowerCase();
