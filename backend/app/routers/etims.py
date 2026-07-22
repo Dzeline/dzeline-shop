@@ -47,6 +47,10 @@ def _load_config(db: Session, tenant_id: int) -> dict:
         "dvc_srl_no":  (cfg.dvc_srl_no if cfg and cfg.dvc_srl_no else os.getenv("ETIMS_DEVICE_SERIAL", "")),
         "env":         (cfg.env        if cfg                    else os.getenv("ETIMS_ENV", "sandbox")),
         "initialized": (cfg.initialized if cfg                   else False),
+        # activation_key holds the real KRA-issued Communication Key
+        # (cmcKey) since device init — required on every OSCU call after
+        # initialization, per the OSCU spec.
+        "cmc_key":     (cfg.activation_key if cfg and cfg.activation_key else ""),
     }
 
 
@@ -133,7 +137,7 @@ def _build_kra_payload(txn: EtimsTransactionIn, invc_no: int, vat_rate: float, t
     now       = _now_dt()
 
     return {
-        "tin": tin, "bhfId": bhf_id, "invcNo": invc_no,
+        "tin": tin, "bhfId": bhf_id, "cmcKey": config.get("cmc_key", ""), "invcNo": invc_no,
         "orgInvcNo": txn.org_invc_no or 0,
         "trdInvcNo": f"TXN{txn.local_id:06d}",
         "rcptTyCd": rcpt_typ, "pmtTyCd": pmt_cd,
@@ -168,9 +172,9 @@ def etims_status(
     config = _load_config(db, tenant.id)
     env  = config.get("env", "sandbox")
     base = (
-        "https://etims-sbx.kra.go.ke/etims-api"
+        "https://etims-api-sbx.kra.go.ke/etims-api"
         if env == "sandbox"
-        else "https://etims.kra.go.ke/etims-api"
+        else "https://etims-api.kra.go.ke/etims-api"
     )
     return {
         "env":         env,
@@ -279,12 +283,15 @@ def init_device(
     if result_cd == "000":
         now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
         data   = result.get("data") or {}
-        activation_key = data.get("activationKey") or data.get("ackYn") or ""
+        # The Communication Key (cmcKey) is what every subsequent OSCU call
+        # requires — it lives under data.info per the spec, not a top-level
+        # activationKey/ackYn field (neither of which the real API returns).
+        cmc_key = (data.get("info") or {}).get("cmcKey") or ""
 
         cfg = db.query(EtimsConfig).filter(EtimsConfig.tenant_id == tenant.id).first()
         if cfg:
             cfg.initialized    = True
-            cfg.activation_key = str(activation_key)
+            cfg.activation_key = str(cmc_key)
             cfg.initialized_at = now_ms
             cfg.updated_at     = now_ms
             db.commit()
@@ -308,26 +315,35 @@ def register_items(
     if not config.get("tin"):
         raise HTTPException(status_code=503, detail="ETIMS_TIN not configured")
 
-    tin  = config["tin"]
-    now  = _now_dt()
-    item_list = []
-    for seq, item in enumerate(payload.items, start=1):
+    tin = config["tin"]
+
+    # The OSCU spec's /saveItem takes one item per call, not a batch list —
+    # register each item individually and report per-item outcomes.
+    results = []
+    registered = 0
+    for item in payload.items:
         item_cd = item.etims_item_cd or _auto_item_cd(item.cloud_product_id or item.product_id)
-        item_list.append({
-            "itemSeq": seq, "itemCd": item_cd,
+        item_body = {
+            "itemCd": item_cd,
             "itemClsCd": item.item_cls_cd or "10000000",
+            "itemTyCd": "2",  # Finished Product — see §4.3 Product Type
             "itemNm": item.name, "itemStdNm": None, "orgnNatCd": "KE",
             "pkgUnitCd": item.pkg_unit_cd or "NT", "qtyUnitCd": item.qty_unit_cd or "U",
             "taxTyCd": item.tax_typ_cd or "A", "btchNo": None,
             "bcd": item.barcode or "", "dftPrc": item.price, "addInfo": None,
             "sftyQty": 0, "isrcAplcbYn": "N", "useYn": "Y",
             "regrId": tin, "regrNm": tin, "modrId": tin, "modrNm": tin,
+        }
+        result = etims_client.save_item(item_body, config)
+        success = result.get("resultCd") in ("000", None)
+        if success:
+            registered += 1
+        results.append({
+            "itemCd": item_cd, "success": success,
+            "resultMsg": result.get("resultMsg"),
         })
 
-    result = etims_client.save_items(item_list, config)
-    if result.get("resultCd") not in ("000", None):
-        raise HTTPException(status_code=502, detail=result.get("resultMsg", "KRA error"))
-    return {"registered": len(item_list), "kra_result": result}
+    return {"registered": registered, "total": len(payload.items), "results": results}
 
 
 @router.post("/submit-batch", response_model=EtimsBatchResponse)
@@ -378,10 +394,10 @@ def submit_batch(
         invc_no     = _next_invc_no(db, tenant.id)
         kra_payload = _build_kra_payload(txn, invc_no, vat_rate, taxpayer_name, config)
 
-        if txn.voided or txn.rcpt_typ == "R":
-            kra_resp = etims_client.save_refund_transaction(kra_payload, config)
-        else:
-            kra_resp = etims_client.save_sales_transaction(kra_payload, config)
+        # Refunds/credit-notes go through the same OSCU endpoint as sales —
+        # _build_kra_payload already sets rcptTyCd to "R" vs "S" above, and
+        # there is no separate refund endpoint in the OSCU spec.
+        kra_resp = etims_client.save_sales_transaction(kra_payload, config)
 
         # TEMPORARY — logging the raw response so we can confirm the real
         # KRA field names/format for the CU invoice number before wiring a
@@ -401,12 +417,15 @@ def submit_batch(
             invc_no      = invc_no,
             rcpt_typ     = txn.rcpt_typ or "S",
             status       = "submitted" if success else "failed",
-            cu_invc_no   = data.get("rcptNo"),
+            # saveTrnsSalesOsdc's real response only contains curRcptNo,
+            # totRcptNo, intrlData, rcptSign, sdcDateTime (§3.3.6.1) — sdcId/
+            # mrcNo live in the device-init response instead, not here.
+            cu_invc_no   = data.get("curRcptNo"),
             rcpt_sign    = data.get("rcptSign"),
             intr_data    = data.get("intrlData"),
-            sdc_id       = data.get("sdcId"),
-            mrc_no       = data.get("mrcNo"),
-            vsdc_rcpt_pbct_date = data.get("vsdcRcptPbctDate"),
+            sdc_id       = None,
+            mrc_no       = None,
+            vsdc_rcpt_pbct_date = data.get("sdcDateTime"),
             error_msg    = None if success else kra_resp.get("resultMsg", "Unknown error"),
             attempts     = 1,
             submitted_at = now_ms if success else None,

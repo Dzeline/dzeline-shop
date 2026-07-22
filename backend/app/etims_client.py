@@ -9,8 +9,8 @@ config dict keys:
   dvc_srl_no — Device serial number
   env        — "sandbox" | "production"
 
-Sandbox base URL:    https://etims-sbx.kra.go.ke/etims-api
-Production base URL: https://etims.kra.go.ke/etims-api
+Sandbox base URL:    https://etims-api-sbx.kra.go.ke/etims-api
+Production base URL: https://etims-api.kra.go.ke/etims-api
 
 KRA eTIMS result codes:
   000 = Success
@@ -27,9 +27,9 @@ def _post(path: str, body: dict, config: dict) -> dict:
     """Make a POST call to KRA eTIMS and return the parsed JSON response."""
     env = config.get("env", "sandbox")
     base = (
-        "https://etims-sbx.kra.go.ke/etims-api"
+        "https://etims-api-sbx.kra.go.ke/etims-api"
         if env == "sandbox"
-        else "https://etims.kra.go.ke/etims-api"
+        else "https://etims-api.kra.go.ke/etims-api"
     )
     url = f"{base}{path}"
     headers = {
@@ -55,11 +55,13 @@ def _post(path: str, body: dict, config: dict) -> dict:
 
 def init_device(config: dict) -> dict:
     """
-    POST /initializer/selectInitInfo
-    Called once per device to activate it with KRA.
+    POST /selectInitOsdcInfo
+    Called once per device to activate it with KRA. The response's
+    data.info.cmcKey is the Communication Key every other endpoint requires —
+    callers must persist it and pass it back in as config["cmc_key"].
     """
     return _post(
-        "/initializer/selectInitInfo",
+        "/selectInitOsdcInfo",
         {
             "tin": config.get("tin", ""),
             "bhfId": config.get("bhf_id", "00"),
@@ -71,32 +73,35 @@ def init_device(config: dict) -> dict:
 
 def get_branches(config: dict) -> dict:
     """
-    POST /branches/selectBhfList
+    POST /selectBhfList
     Retrieve the list of branches registered under the TIN.
     """
     return _post(
-        "/branches/selectBhfList",
+        "/selectBhfList",
         {
             "tin": config.get("tin", ""),
             "bhfId": "00",
+            "cmcKey": config.get("cmc_key", ""),
             "lastReqDt": "20190101000000",
         },
         config,
     )
 
 
-def save_items(item_list: list, config: dict) -> dict:
+def save_item(item: dict, config: dict) -> dict:
     """
-    POST /items/saveItems
-    Register or update stock items in KRA's system.
-    Each item must have itemCd, itemClsCd, itemNm, taxTyCd etc.
+    POST /saveItem
+    Register or update a single stock item in KRA's system — the OSCU spec
+    takes one item per call, not a batch list. item must have itemCd,
+    itemClsCd, itemNm, taxTyCd etc.
     """
     return _post(
-        "/items/saveItems",
+        "/saveItem",
         {
             "tin": config.get("tin", ""),
             "bhfId": config.get("bhf_id", "00"),
-            "itemList": item_list,
+            "cmcKey": config.get("cmc_key", ""),
+            **item,
         },
         config,
     )
@@ -104,16 +109,10 @@ def save_items(item_list: list, config: dict) -> dict:
 
 def save_sales_transaction(payload: dict, config: dict) -> dict:
     """
-    POST /trnsSales/saveTrns
-    Submit a completed sale transaction.
+    POST /saveTrnsSalesOsdc
+    Submit a completed sale transaction — also used for refunds/credit notes,
+    distinguished only by payload["rcptTyCd"] ("S" vs "R"); there is no
+    separate refund endpoint in the OSCU spec.
     payload must already be a fully-formed KRA transaction body.
     """
-    return _post("/trnsSales/saveTrns", payload, config)
-
-
-def save_refund_transaction(payload: dict, config: dict) -> dict:
-    """
-    POST /trnsRefunds/saveTrns
-    Submit a refund/void transaction (credit note).
-    """
-    return _post("/trnsRefunds/saveTrns", payload, config)
+    return _post("/saveTrnsSalesOsdc", payload, config)
