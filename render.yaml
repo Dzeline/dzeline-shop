@@ -26,7 +26,7 @@ services:
       - key: ALLOWED_ORIGINS
         sync: false
       - key: ETIMS_ENV
-        value: production
+        value: sandbox
       - key: ETIMS_TIN
         sync: false
       - key: ETIMS_BHF_ID
