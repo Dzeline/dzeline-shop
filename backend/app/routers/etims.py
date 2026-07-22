@@ -10,6 +10,7 @@ Endpoints:
   POST /etims/device/init          — initialize the eTIMS device with KRA
   POST /etims/submit-batch         — submit one or more transactions to KRA
 """
+import logging
 import os
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
@@ -32,6 +33,7 @@ from ..schemas import (
 from .. import etims_client
 
 router = APIRouter(prefix="/etims", tags=["etims"])
+logger = logging.getLogger(__name__)
 
 PMT_TYPE = {"CASH": "01", "MPESA": "05", "POCHI": "05"}
 
@@ -380,6 +382,13 @@ def submit_batch(
             kra_resp = etims_client.save_refund_transaction(kra_payload, config)
         else:
             kra_resp = etims_client.save_sales_transaction(kra_payload, config)
+
+        # TEMPORARY — logging the raw response so we can confirm the real
+        # KRA field names/format for the CU invoice number before wiring a
+        # receipt QR code to it. cu_invc_no below is currently a guess
+        # (data.get("rcptNo")) that was never verified against a live
+        # response. Remove this log line once that's confirmed.
+        logger.info("etims raw response tenant=%s txn=%s: %s", tenant.id, txn.transaction_id, kra_resp)
 
         result_cd = kra_resp.get("resultCd", "ERR")
         success   = result_cd == "000"
