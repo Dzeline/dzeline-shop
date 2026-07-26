@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
@@ -114,7 +114,6 @@ function SupplierModal({ supplier, onSave, onClose }) {
 function OrderModal({ supplier, onClose }) {
   const [products, setProducts] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
-  const [tab, setTab] = useState("low"); // "low" | "custom"
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
 
@@ -122,20 +121,18 @@ function OrderModal({ supplier, onClose }) {
     async function init() {
       const all = await dbHelpers.getAllProducts();
       setProducts(all);
-      // Pre-populate with low-stock products
-      const low = all.filter((p) => p.stock <= (p.reorder_level ?? 10));
-      setOrderItems(
-        low.map((p) => ({
-          product_id: p.id,
-          name: p.name,
-          current_stock: p.stock,
-          reorder_level: p.reorder_level ?? 10,
-          qty: Math.max(1, (p.reorder_level ?? 10) - p.stock + 5),
-        }))
-      );
     }
     init();
   }, []);
+
+  // Suggestions only — never auto-added. There's no per-supplier product
+  // link in the data model, so this is shop-wide low stock shown as a
+  // reminder, not a guess at what this specific supplier carries.
+  const lowStockSuggestions = useMemo(() => {
+    return products
+      .filter((p) => p.stock <= (p.reorder_level ?? 10))
+      .filter((p) => !orderItems.find((i) => i.product_id === p.id));
+  }, [products, orderItems]);
 
   useEffect(() => {
     if (!search.trim()) { setSearchResults([]); return; }
@@ -150,9 +147,14 @@ function OrderModal({ supplier, onClose }) {
       showToast(`${p.name} already in order`);
       return;
     }
+    // Low-stock items still get a sensible default order quantity (enough
+    // to clear the reorder level plus a small buffer) — the item just has
+    // to be tapped in rather than showing up pre-added to every order.
+    const reorderLevel = p.reorder_level ?? 10;
+    const qty = p.stock <= reorderLevel ? Math.max(1, reorderLevel - p.stock + 5) : 1;
     setOrderItems((prev) => [
       ...prev,
-      { product_id: p.id, name: p.name, current_stock: p.stock, reorder_level: p.reorder_level ?? 10, qty: 1 },
+      { product_id: p.id, name: p.name, current_stock: p.stock, reorder_level: reorderLevel, qty },
     ]);
     setSearch("");
   }
@@ -203,64 +205,36 @@ function OrderModal({ supplier, onClose }) {
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 shrink-0">×</button>
         </div>
 
-        {/* Tabs */}
-        <div className="px-5 pt-3 pb-2 shrink-0">
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-            <button
-              onClick={() => setTab("low")}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${tab === "low" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}
-            >
-              Low Stock
-            </button>
-            <button
-              onClick={() => setTab("custom")}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${tab === "custom" ? "bg-white text-primary shadow-sm" : "text-gray-500"}`}
-            >
-              Custom
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-3">
-          {/* Custom tab — product search */}
-          {tab === "custom" && (
-            <div className="space-y-2">
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search and add products…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                />
+        <div className="flex-1 overflow-y-auto px-5 pt-3 pb-4 space-y-3">
+          {/* Product search — always available, order starts empty */}
+          <div className="space-y-2">
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search and add products…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            {searchResults.length > 0 && (
+              <div className="border border-gray-100 rounded-xl divide-y divide-gray-50 overflow-hidden">
+                {searchResults.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => addProduct(p)}
+                    className="w-full text-left px-3 py-2.5 flex justify-between items-center hover:bg-blue-50 transition"
+                  >
+                    <span className="font-medium text-sm text-gray-800">{p.name}</span>
+                    <span className="text-xs text-gray-400 shrink-0 ml-2">Stock: {p.stock}</span>
+                  </button>
+                ))}
               </div>
-              {searchResults.length > 0 && (
-                <div className="border border-gray-100 rounded-xl divide-y divide-gray-50 overflow-hidden">
-                  {searchResults.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => addProduct(p)}
-                      className="w-full text-left px-3 py-2.5 flex justify-between items-center hover:bg-blue-50 transition"
-                    >
-                      <span className="font-medium text-sm text-gray-800">{p.name}</span>
-                      <span className="text-xs text-gray-400 shrink-0 ml-2">Stock: {p.stock}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Low stock info banner */}
-          {tab === "low" && orderItems.length === 0 && (
-            <div className="bg-green-50 rounded-xl p-4 text-center">
-              <p className="font-semibold text-green-700 text-sm">All products well-stocked</p>
-              <p className="text-xs text-green-500 mt-1">No reorders needed right now</p>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Order line items */}
           {orderItems.length > 0 && (
@@ -298,6 +272,29 @@ function OrderModal({ supplier, onClose }) {
                   >×</button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Low-stock suggestions — informational, tap to add, never auto-added */}
+          {lowStockSuggestions.length > 0 && (
+            <div className="space-y-2 pt-1">
+              <p className="text-xs font-semibold text-orange-500 uppercase tracking-wide">
+                {lowStockSuggestions.length} low stock — tap to add
+              </p>
+              <div className="border border-orange-100 rounded-xl divide-y divide-orange-50 overflow-hidden">
+                {lowStockSuggestions.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => addProduct(p)}
+                    className="w-full text-left px-3 py-2.5 flex justify-between items-center bg-orange-50/40 hover:bg-orange-50 transition"
+                  >
+                    <span className="font-medium text-sm text-gray-800">{p.name}</span>
+                    <span className="text-xs text-orange-500 font-semibold shrink-0 ml-2">
+                      {p.stock === 0 ? "Out of stock" : `Stock: ${p.stock}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
