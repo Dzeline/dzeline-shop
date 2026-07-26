@@ -7,6 +7,7 @@ import { useDebounce } from "../utils/useDebounce";
 import { apiHeaders } from "../utils/apiHeaders";
 import { useOnline } from "../utils/useOnline";
 import ProductAddModal from "./ProductAddModal";
+import BarcodeScanner from "./BarcodeScanner";
 
 // ── Image compression ────────────────────────────────────────────────────────
 // A raw phone-camera capture can be several MB — fine sitting alone in local
@@ -175,6 +176,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
+  const [showLineScanner, setShowLineScanner] = useState(false);
 
   const [scanning, setScanning] = useState(false);
   const [scanResults, setScanResults] = useState(null);
@@ -317,6 +319,17 @@ export default function StockReceiving({ currentStaffId, onClose }) {
       },
     ]);
     setSearch("");
+  }
+
+  async function handleLineScan(barcode) {
+    setShowLineScanner(false);
+    const product = await dbHelpers.getProductByBarcode(barcode);
+    if (product) {
+      handleAddProduct(product);
+    } else {
+      setSearch(barcode);
+      showToast(`Barcode ${barcode} — not found`);
+    }
   }
 
   // Clamping on every keystroke made the field impossible to clear-and-retype:
@@ -685,17 +698,30 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                   </button>
                 </div>
 
-                <div className="relative">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    type="text"
-                    placeholder="Search existing products to add..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search existing products to add..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowLineScanner(true)}
+                    className="shrink-0 w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+                    title="Scan product barcode"
+                  >
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M12 4H4v8M20 4h-4v4m4 4v8h-8M4 20h4v-4M3 3h4M17 3h4M3 21h4M17 21h4" />
+                    </svg>
+                  </button>
                 </div>
 
                 {filteredProducts.length > 0 && (
@@ -890,6 +916,10 @@ export default function StockReceiving({ currentStaffId, onClose }) {
           )}
         </div>
       </div>
+
+      {showLineScanner && (
+        <BarcodeScanner onScan={handleLineScan} onClose={() => setShowLineScanner(false)} />
+      )}
     </>
   );
 }
