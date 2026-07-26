@@ -433,7 +433,7 @@ export default function StaffManagement({ currentStaffId, onClose }) {
         {!showAdd ? (
           <button
             onClick={() => setShowAdd(true)}
-            className="w-full py-3 border-2 border-dashed border-gray-700 rounded-2xl text-sm font-semibold text-gray-500 hover:border-primary hover:text-primary transition"
+            className="w-full py-3 border-2 border-dashed border-gray-700 rounded-2xl text-sm font-semibold text-gray-400 hover:border-primary hover:text-primary transition"
           >
             + Add Staff Member
           </button>

@@ -296,7 +296,7 @@ export default function InventoryScreen({ onClose }) {
                 className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
                   viewMode === "category"
                     ? "bg-white text-primary shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
+                    : "text-gray-400 hover:text-gray-300"
                 }`}
               >
                 By Category
@@ -306,7 +306,7 @@ export default function InventoryScreen({ onClose }) {
                 className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                   viewMode === "alerts"
                     ? "bg-white text-red-500 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
+                    : "text-gray-400 hover:text-gray-300"
                 }`}
               >
                 Alerts

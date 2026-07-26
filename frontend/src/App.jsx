@@ -66,7 +66,7 @@ function SubTabBar({ options, labels, active, onChange }) {
             className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all btn-press ${
               active === opt
                 ? "bg-white text-primary shadow-sm"
-                : "text-gray-500 hover:text-gray-300"
+                : "text-gray-400 hover:text-gray-300"
             }`}
           >
             {labels[i]}
@@ -227,11 +227,11 @@ function StaffPill({ staff, onLogout }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-bold text-white text-sm truncate">{staff.name}</p>
-            <p className="text-xs text-gray-500">{roleLabel}{isAdmin ? " ★" : ""}</p>
+            <p className="text-xs text-gray-400">{roleLabel}{isAdmin ? " ★" : ""}</p>
           </div>
           <button
             onClick={() => setOpen(false)}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 text-gray-500 transition btn-press shrink-0"
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-800 text-gray-400 transition btn-press shrink-0"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -242,20 +242,20 @@ function StaffPill({ staff, onLogout }) {
         {/* Notifications */}
         <div className="flex-1 overflow-y-auto">
           <div className="px-4 pt-4 pb-2">
-            <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Notifications</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Notifications</p>
           </div>
 
           {notifs === null ? (
-            <p className="text-xs text-gray-600 text-center py-10">Loading…</p>
+            <p className="text-xs text-gray-400 text-center py-10">Loading…</p>
           ) : notifs.outOfStock.length === 0 && notifs.lowStock.length === 0 && notifs.todayReceipts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
               <div className="w-10 h-10 rounded-2xl bg-gray-800 flex items-center justify-center mb-3">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-xs font-semibold text-gray-500">All clear</p>
-              <p className="text-[11px] text-gray-700 mt-0.5">No stock alerts today</p>
+              <p className="text-xs font-semibold text-gray-400">All clear</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">No stock alerts today</p>
             </div>
           ) : (
             <div className="px-3 space-y-2 pb-3">
@@ -336,7 +336,7 @@ function NavTab({ label, icon, active, badge, onClick }) {
       {active && (
         <span className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-0.5 rounded-full bg-primary" />
       )}
-      <div className={`relative transition-all duration-200 ${active ? "text-primary scale-110" : "text-gray-500"}`}>
+      <div className={`relative transition-all duration-200 ${active ? "text-primary scale-110" : "text-gray-400"}`}>
         {icon}
         {badge ? (
           <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-4 h-4 flex items-center justify-center px-1 leading-none">
@@ -344,7 +344,7 @@ function NavTab({ label, icon, active, badge, onClick }) {
           </span>
         ) : null}
       </div>
-      <span className={`text-[11px] transition-all duration-200 ${active ? "font-bold text-primary" : "font-normal text-gray-500"}`}>
+      <span className={`text-[11px] transition-all duration-200 ${active ? "font-bold text-primary" : "font-normal text-gray-400"}`}>
         {label}
       </span>
     </button>

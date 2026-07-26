@@ -874,10 +874,10 @@ export default function StockReceiving({ currentStaffId, onClose }) {
               <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-3xl text-blue-600">
                 ✓
               </div>
-              <h3 className="font-bold text-xl text-gray-800">Submitted!</h3>
+              <h3 className="font-bold text-xl text-white">Submitted!</h3>
               <p className="text-gray-400 text-sm text-center px-6">
                 {lineItems.length} product{lineItems.length !== 1 ? "s" : ""} from{" "}
-                <span className="font-semibold text-gray-600">{supplier}</span> are pending manager pricing.
+                <span className="font-semibold text-gray-300">{supplier}</span> are pending manager pricing.
                 Stock will be added once a manager reviews and activates.
               </p>
               <button
