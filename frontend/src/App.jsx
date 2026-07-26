@@ -331,20 +331,23 @@ function NavTab({ label, icon, active, badge, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="flex-1 py-3 flex flex-col items-center gap-1 relative transition-colors duration-150"
+      className="flex-1 py-2 flex flex-col items-center gap-1 transition-colors duration-150"
     >
-      {active && (
-        <span className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-0.5 rounded-full bg-primary" />
-      )}
-      <div className={`relative transition-all duration-200 ${active ? "text-primary scale-110" : "text-gray-400"}`}>
-        {icon}
-        {badge ? (
-          <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-4 h-4 flex items-center justify-center px-1 leading-none">
-            {badge > 99 ? "99+" : String(badge)}
-          </span>
-        ) : null}
+      <div
+        className={`flex items-center justify-center w-12 h-7 rounded-full transition-colors duration-200 ease-out ${
+          active ? "bg-primary/15" : "bg-transparent"
+        }`}
+      >
+        <div className={`relative ${active ? "text-primary" : "text-gray-400"}`}>
+          {icon}
+          {badge ? (
+            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-4 h-4 flex items-center justify-center px-1 leading-none">
+              {badge > 99 ? "99+" : String(badge)}
+            </span>
+          ) : null}
+        </div>
       </div>
-      <span className={`text-[11px] transition-all duration-200 ${active ? "font-bold text-primary" : "font-normal text-gray-400"}`}>
+      <span className={`text-[11px] transition-colors duration-200 ${active ? "font-bold text-primary" : "font-normal text-gray-400"}`}>
         {label}
       </span>
     </button>
@@ -675,7 +678,7 @@ function App() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="shrink-0 bg-gray-950/95 backdrop-blur-md border-t border-white/5 flex shadow-2xl pb-safe">
+      <nav className="shrink-0 bg-gray-950/95 backdrop-blur-md border-t border-white/5 divide-x divide-white/5 flex shadow-2xl pb-safe">
         {tabs.map((tab) => (
           <NavTab
             key={tab.id}
