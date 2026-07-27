@@ -131,7 +131,10 @@ export const syncService = {
       body: JSON.stringify({ transaction_id: transactionId ?? null, phone_number: phoneNumber, amount }),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!res.ok) throw new Error("STK Push failed");
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.detail || "STK Push failed");
+    }
     return res.json();
   },
 

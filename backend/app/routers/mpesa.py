@@ -121,7 +121,9 @@ def stk_push(
         response.raise_for_status()
         data = response.json()
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"STK Push failed: {e.response.status_code}")
+        body = e.response.text[:500]
+        logger.warning("stk_push rejected tenant=%s status=%s body=%s", tenant.id, e.response.status_code, body)
+        raise HTTPException(status_code=502, detail=f"STK Push failed: {e.response.status_code} — {body}")
     except httpx.RequestError as e:
         raise HTTPException(status_code=503, detail=f"Daraja unreachable: {e}")
 

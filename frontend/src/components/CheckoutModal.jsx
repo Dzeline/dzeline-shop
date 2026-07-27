@@ -229,9 +229,9 @@ function MpesaTab({ grandTotal, onComplete }) {
       const result = await syncService.initiateMpesaStk(null, phone, grandTotal);
       setCheckoutId(result.checkout_request_id);
       setPhase("waiting");
-    } catch {
+    } catch (err) {
       setPhase("failed");
-      setErrorMsg("Could not send payment request. Check connection or enter the code manually.");
+      setErrorMsg(err.message || "Could not send payment request. Check connection or enter the code manually.");
     }
   }
 
