@@ -84,6 +84,7 @@ class StockReceiptOut(BaseModel):
     created_at:     Optional[int] = None
     activated_at:   Optional[int] = None
     photo_blob:     Optional[str] = None
+    updated_at:     Optional[int] = None
     items:          list[StockReceiptItemOut] = []
 
     class Config:
@@ -111,6 +112,7 @@ def create_receipt(
         logger.info("stock_receipt duplicate tenant=%s device=%s local_id=%s", tenant.id, payload.device_id, payload.local_id)
         return {"id": existing.id}
 
+    now_ms = int(datetime.utcnow().timestamp() * 1000)
     receipt = StockReceipt(
         tenant_id      = tenant.id,
         device_id      = payload.device_id,
@@ -120,9 +122,10 @@ def create_receipt(
         supplier_id    = payload.supplier_id,
         invoice_number = payload.invoice_number,
         staff_id       = payload.staff_id,
-        created_at     = payload.created_at or int(datetime.utcnow().timestamp() * 1000),
+        created_at     = payload.created_at or now_ms,
         activated_at   = payload.activated_at,
         photo_blob     = payload.photo_blob,
+        updated_at     = payload.created_at or now_ms,
     )
     db.add(receipt)
     db.flush()
@@ -171,6 +174,7 @@ def update_receipt(
         receipt.status = payload.status
     if payload.activated_at is not None:
         receipt.activated_at = payload.activated_at
+    receipt.updated_at = int(datetime.utcnow().timestamp() * 1000)
 
     unmatched = []
     if payload.items:
@@ -201,17 +205,21 @@ def update_receipt(
 
 @router.get("", response_model=list[StockReceiptOut])
 def list_receipts(
+    since:  int     = 0,
     limit:  int     = 50,
     db:     Session = Depends(get_db),
     tenant: Tenant  = Depends(get_tenant),
 ):
-    # joinedload avoids one lazy-load SELECT per receipt for .items — this
-    # endpoint is polled every 45s per device with no since-filtering, same
-    # fix already applied to the sibling /sync/transactions endpoint.
+    # since-filtered like /sync/transactions — this endpoint is polled every
+    # 45s per device, and every receipt includes its (compressed but still
+    # substantial) photo_blob. Re-sending every receipt's photo on every poll
+    # forever, with no since-filtering, is what actually burned through the
+    # Neon data-transfer quota. joinedload still avoids one lazy-load SELECT
+    # per receipt for .items.
     return (
         db.query(StockReceipt)
-        .filter(StockReceipt.tenant_id == tenant.id)
-        .order_by(StockReceipt.created_at.desc())
+        .filter(StockReceipt.tenant_id == tenant.id, StockReceipt.updated_at > since)
+        .order_by(StockReceipt.updated_at.asc())
         .limit(limit)
         .options(joinedload(StockReceipt.items))
         .all()

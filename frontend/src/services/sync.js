@@ -747,12 +747,16 @@ export const syncService = {
   async pullReceipts() {
     if (!API_BASE) return;
     try {
-      const res = await fetch(`${API_BASE}/stock-receipts`, {
+      const sinceRaw = await dbHelpers.getSetting("last_receipt_pull_at");
+      const since = sinceRaw ? Number(sinceRaw) : 0;
+
+      const res = await fetch(`${API_BASE}/stock-receipts?since=${since}`, {
         headers: apiGetHeaders(),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return;
       const rows = await res.json();
+      if (rows.length === 0) return;
 
       const local = await db.stock_receipts.toArray();
       const byCloudId = new Map(local.filter((r) => r.cloud_id != null).map((r) => [r.cloud_id, r]));
@@ -760,7 +764,9 @@ export const syncService = {
       const products = await db.products.toArray();
       const productByCloudId = new Map(products.filter((p) => p.cloud_id != null).map((p) => [p.cloud_id, p]));
 
+      let maxUpdatedAt = since;
       for (const r of rows) {
+        maxUpdatedAt = Math.max(maxUpdatedAt, r.updated_at ?? 0);
         const existing = byCloudId.get(r.id);
 
         if (existing) {
@@ -804,6 +810,8 @@ export const syncService = {
           });
         }
       }
+
+      await dbHelpers.updateSetting("last_receipt_pull_at", String(maxUpdatedAt));
     } catch { /* offline — try again next reconnect */ }
   },
 

@@ -101,6 +101,12 @@ def _apply_migrations():
         # owner can review it during approval regardless of which device
         # they're on. Create-only (never resent on activation).
         ("stock_receipts", "photo_blob", "TEXT"),
+        # stock_receipts — bumped on create + activation. Without this,
+        # /stock-receipts had no way to be pulled incrementally: every
+        # device re-fetched every receipt (photo included) on every 45s
+        # poll forever, which is what actually burned through the Neon
+        # data-transfer quota.
+        ("stock_receipts", "updated_at", "BIGINT"),
     ]
     with engine.connect() as conn:
         for table, col, typ in pending:
@@ -130,6 +136,29 @@ def _apply_migrations():
             conn.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_transactions_tenant_updated "
                 "ON transactions (tenant_id, updated_at)"
+            ))
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            logger.warning("Index creation skipped: %s", exc)
+
+        # Same backfill reasoning as transactions.updated_at above — existing
+        # receipts get NULL from the bare ADD COLUMN and would otherwise
+        # vanish from the new since-based pull forever.
+        try:
+            conn.execute(text(
+                "UPDATE stock_receipts SET updated_at = COALESCE(activated_at, created_at) "
+                "WHERE updated_at IS NULL"
+            ))
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            logger.warning("stock_receipts updated_at backfill skipped: %s", exc)
+
+        try:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_stock_receipts_tenant_updated "
+                "ON stock_receipts (tenant_id, updated_at)"
             ))
             conn.commit()
         except Exception as exc:

@@ -187,6 +187,7 @@ class StockReceipt(Base):
     created_at     = Column(BigInteger, nullable=True)
     activated_at   = Column(BigInteger, nullable=True)
     photo_blob     = Column(Text, nullable=True)  # compressed base64 data URL — set once at create, never on activation
+    updated_at     = Column(BigInteger, nullable=True)  # bumped on create + activation — lets /stock-receipts be pulled incrementally instead of resending every receipt (incl. its photo) on every poll
 
     items = relationship("StockReceiptItem", back_populates="receipt", cascade="all, delete-orphan")
 
