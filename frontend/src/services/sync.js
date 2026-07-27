@@ -406,6 +406,7 @@ export const syncService = {
           barcode: p.barcode ?? null,
           name: p.name,
           price: p.price,
+          cost_price: p.cost_price ?? null,
           stock: p.stock,
           category: p.category ?? null,
           reorder_level: p.reorder_level ?? 10,
@@ -468,7 +469,7 @@ export const syncService = {
         if (existing) {
           if (!existing.synced) continue; // pending local edit — don't clobber
           const update = {
-            barcode: r.barcode, name: r.name, price: r.price,
+            barcode: r.barcode, name: r.name, price: r.price, cost_price: r.cost_price ?? null,
             category: r.category, reorder_level: r.reorder_level,
             synced: true, updated_at: r.updated_at,
           };
@@ -476,7 +477,7 @@ export const syncService = {
           await db.products.update(existing.id, update);
         } else {
           await db.products.add({
-            barcode: r.barcode, name: r.name, price: r.price, stock: r.stock,
+            barcode: r.barcode, name: r.name, price: r.price, cost_price: r.cost_price ?? null, stock: r.stock,
             category: r.category, reorder_level: r.reorder_level, tags: [],
             cloud_id: r.id, synced: true, updated_at: r.updated_at,
           });
