@@ -3,6 +3,7 @@ import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
+import { useSettingsStore } from "../store/settingsStore";
 
 // ── Add/Edit supplier modal ────────────────────────────────────────────────
 
@@ -112,6 +113,7 @@ function SupplierModal({ supplier, onSave, onClose }) {
 // ── Order builder modal ────────────────────────────────────────────────────
 
 function OrderModal({ supplier, onClose }) {
+  const shopName = useSettingsStore((s) => s.shopName);
   const [products, setProducts] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
   const [search, setSearch] = useState("");
@@ -168,7 +170,7 @@ function OrderModal({ supplier, onClose }) {
     setOrderItems((prev) => prev.filter((i) => i.product_id !== product_id));
   }
 
-  function buildOrderText(shopName = "Dzeline Supermarket") {
+  function buildOrderText() {
     const date = new Date().toLocaleDateString("en-KE", { day: "numeric", month: "long", year: "numeric" });
     const lines = orderItems
       .map((i) => `• ${i.name} — Qty: ${i.qty}  (current stock: ${i.current_stock})`)
