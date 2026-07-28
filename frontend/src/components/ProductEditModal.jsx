@@ -4,12 +4,15 @@ import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import { mergeCategories } from "../utils/categories";
+import { usePermissions } from "../hooks/usePermissions";
+import { FEATURES } from "../utils/permissions";
 import BarcodeScanner from "./BarcodeScanner";
 
 const LABEL = "text-sm font-semibold text-gray-700 mb-1.5 block";
 const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary";
 
-export default function ProductEditModal({ product, onSave, onClose }) {
+export default function ProductEditModal({ product, onSave, onDelete, onClose }) {
+  const { can } = usePermissions();
   const [name, setName] = useState(product.name);
   const [price, setPrice] = useState(String(product.price));
   const [costPrice, setCostPrice] = useState(product.cost_price ? String(product.cost_price) : "");
@@ -26,6 +29,8 @@ export default function ProductEditModal({ product, onSave, onClose }) {
   const [imagePreview, setImagePreview] = useState(product.image_blob ?? null);
   const [saving, setSaving] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     dbHelpers.getCategories().then((existing) => setCategories(mergeCategories(existing)));
@@ -68,6 +73,20 @@ export default function ProductEditModal({ product, onSave, onClose }) {
       showToast("Failed to save — try again");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await dbHelpers.deleteProduct(product.id);
+      showToast(`${product.name} removed`);
+      onDelete(product.id);
+      syncService.pushUnsyncedProducts().catch(() => {});
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to remove — try again");
+      setDeleting(false);
     }
   }
 
@@ -271,8 +290,43 @@ export default function ProductEditModal({ product, onSave, onClose }) {
           >
             Cancel
           </button>
+          {can(FEATURES.STOCK) && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="w-full py-3 rounded-xl font-semibold text-sm text-red-500 hover:text-red-600 hover:bg-red-50 transition"
+            >
+              Delete Product
+            </button>
+          )}
         </div>
       </div>
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-60 bg-black/50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white w-full sm:max-w-sm rounded-2xl shadow-2xl p-5 space-y-4">
+            <h3 className="font-bold text-gray-800">Delete Product?</h3>
+            <p className="text-sm text-gray-600">
+              Remove <span className="font-semibold">{product.name}</span> from your inventory? This can't be undone from here.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 disabled:opacity-50"
+              >
+                {deleting ? "Removing..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

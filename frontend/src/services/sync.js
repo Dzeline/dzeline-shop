@@ -410,6 +410,7 @@ export const syncService = {
           stock: p.stock,
           category: p.category ?? null,
           reorder_level: p.reorder_level ?? 10,
+          active: p.active !== false,
         };
         const url = p.cloud_id ? `${API_BASE}/products/${p.cloud_id}` : `${API_BASE}/products/`;
         const res = await fetch(url, {
@@ -470,12 +471,15 @@ export const syncService = {
           if (!existing.synced) continue; // pending local edit — don't clobber
           const update = {
             barcode: r.barcode, name: r.name, price: r.price, cost_price: r.cost_price ?? null,
-            category: r.category, reorder_level: r.reorder_level,
+            category: r.category, reorder_level: r.reorder_level, active: r.active,
             synced: true, updated_at: r.updated_at,
           };
           if (!protectedIds.has(existing.id)) update.stock = r.stock;
           await db.products.update(existing.id, update);
-        } else {
+        } else if (r.active !== false) {
+          // A cloud row this device has never seen locally that's already
+          // deleted has nothing worth creating — skip it rather than
+          // inserting an already-dead product.
           await db.products.add({
             barcode: r.barcode, name: r.name, price: r.price, cost_price: r.cost_price ?? null, stock: r.stock,
             category: r.category, reorder_level: r.reorder_level, tags: [],

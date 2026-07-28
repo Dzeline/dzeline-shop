@@ -14,9 +14,12 @@ def list_products(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_tenant),
 ):
+    # Includes soft-deleted (active=False) rows — pulling devices need to see
+    # a deletion, not just have it filtered out server-side, or it never
+    # reaches other devices. Same pattern as list_staff.
     return (
         db.query(Product)
-        .filter(Product.tenant_id == tenant.id, Product.active == True)
+        .filter(Product.tenant_id == tenant.id)
         .order_by(Product.name)
         .all()
     )

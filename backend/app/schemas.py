@@ -183,6 +183,7 @@ class ProductIn(BaseModel):
     stock: int = 0
     category: Optional[str] = None
     reorder_level: int = 10
+    active: bool = True
 
 
 class ProductOut(ProductIn):

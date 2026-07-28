@@ -186,15 +186,16 @@ db.on("populate", async () => {
 
 // Helper functions for common operations
 export const dbHelpers = {
-  // Get all products
+  // Get all products — excludes soft-deleted rows (active: false)
   async getAllProducts() {
-    return await db.products.toArray();
+    return await db.products.filter((p) => p.active !== false).toArray();
   },
 
   // Distinct, non-empty category strings already in use — feeds the
   // category picker so a custom category typed once is selectable again.
+  // Deleted products don't contribute categories.
   async getCategories() {
-    const products = await db.products.toArray();
+    const products = await db.products.filter((p) => p.active !== false).toArray();
     const set = new Set();
     for (const p of products) {
       const c = (p.category || "").trim();
@@ -203,22 +204,23 @@ export const dbHelpers = {
     return [...set];
   },
 
-  // Search products by name or barcode
+  // Search products by name or barcode — excludes soft-deleted rows
   async searchProducts(query) {
     const lowerQuery = query.toLowerCase();
     return await db.products
       .filter(
         (p) =>
-          p.name.toLowerCase().includes(lowerQuery) ||
-          p.barcode.includes(query) ||
-          p.tags.some((tag) => tag.includes(lowerQuery)),
+          p.active !== false &&
+          (p.name.toLowerCase().includes(lowerQuery) ||
+            p.barcode.includes(query) ||
+            p.tags.some((tag) => tag.includes(lowerQuery))),
       )
       .toArray();
   },
 
-  // Get product by barcode
+  // Get product by barcode — a deleted product's old barcode is free to reuse
   async getProductByBarcode(barcode) {
-    return await db.products.where("barcode").equals(barcode).first();
+    return await db.products.where("barcode").equals(barcode).filter((p) => p.active !== false).first();
   },
 
   // Update product stock
@@ -241,10 +243,18 @@ export const dbHelpers = {
     });
   },
 
-  // Get products at or below their reorder level
+  // Soft delete — reuses the existing `active` column (no separate
+  // deleted_at field for products). An unsynced delete must not be silently
+  // undone by a pull that lands before the delete has pushed, same reasoning
+  // as deleteStaff/deleteSupplier.
+  async deleteProduct(productId) {
+    return await db.products.update(productId, { active: false, synced: false, updated_at: Date.now() });
+  },
+
+  // Get products at or below their reorder level — excludes soft-deleted rows
   async getLowStockProducts(threshold = 10) {
     return await db.products
-      .filter((p) => p.stock <= (p.reorder_level ?? threshold) && p.stock >= 0)
+      .filter((p) => p.active !== false && p.stock <= (p.reorder_level ?? threshold) && p.stock >= 0)
       .toArray();
   },
 

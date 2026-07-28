@@ -7,6 +7,7 @@ import { formatPrice } from "../utils/formatters";
 import ProductEditModal from "./ProductEditModal";
 import ProductAddModal from "./ProductAddModal";
 import BarcodeScanner from "./BarcodeScanner";
+import CsvImport from "./CsvImport";
 import { usePermissions } from "../hooks/usePermissions";
 import { FEATURES } from "../utils/permissions";
 
@@ -58,12 +59,14 @@ export default function ProductList() {
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [editMode, setEditMode] = useState(false);
 
   const addItem = useCartStore((state) => state.addItem);
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
   const canEdit = can(FEATURES.EDIT_PRODUCTS);
+  const isAdmin = role === "admin";
   const debouncedSearch = useDebounce(search, 300);
 
   const loadProducts = useCallback(async () => {
@@ -211,10 +214,39 @@ export default function ProductList() {
 
       {/* Product Grid */}
       {products.length === 0 ? (
-        <div className="text-center text-gray-500 mt-20">
-          <p className="text-lg font-semibold text-gray-400">No products found</p>
-          <p className="text-sm mt-1 text-gray-600">Try a different search term</p>
-        </div>
+        search.trim() ? (
+          <div className="text-center text-gray-500 mt-20">
+            <p className="text-lg font-semibold text-gray-400">No products found</p>
+            <p className="text-sm mt-1 text-gray-600">Try a different search term</p>
+          </div>
+        ) : isAdmin ? (
+          <div className="text-center mt-16 px-6">
+            <p className="text-lg font-semibold text-gray-400 mb-1">No products yet</p>
+            <p className="text-sm text-gray-600 mb-5">Import your inventory to get started</p>
+            <button
+              onClick={() => setShowImport(true)}
+              className="px-6 py-3 bg-primary text-white rounded-xl font-bold text-sm hover:bg-blue-600 active:scale-95 transition"
+            >
+              Import Inventory
+            </button>
+          </div>
+        ) : canEdit ? (
+          <div className="text-center mt-16 px-6">
+            <p className="text-lg font-semibold text-gray-400 mb-1">No products yet</p>
+            <p className="text-sm text-gray-600 mb-5">Add your first product to get started</p>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-6 py-3 bg-primary text-white rounded-xl font-bold text-sm hover:bg-blue-600 active:scale-95 transition"
+            >
+              Add Your First Product
+            </button>
+          </div>
+        ) : (
+          <div className="text-center text-gray-500 mt-20">
+            <p className="text-lg font-semibold text-gray-400">No products yet</p>
+            <p className="text-sm mt-1 text-gray-600">Ask an admin to add your first product</p>
+          </div>
+        )
       ) : (
         <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
           {products.map((product, idx) => {
@@ -314,6 +346,10 @@ export default function ProductList() {
             setProducts((prev) => prev.map((p) => p.id === updated.id ? updated : p));
             setEditingProduct(null);
           }}
+          onDelete={(deletedId) => {
+            setProducts((prev) => prev.filter((p) => p.id !== deletedId));
+            setEditingProduct(null);
+          }}
           onClose={() => setEditingProduct(null)}
         />
       )}
@@ -325,6 +361,13 @@ export default function ProductList() {
             setShowAddModal(false);
           }}
           onClose={() => setShowAddModal(false)}
+        />
+      )}
+
+      {showImport && (
+        <CsvImport
+          onClose={() => setShowImport(false)}
+          onImported={() => { setShowImport(false); loadProducts(); }}
         />
       )}
 
