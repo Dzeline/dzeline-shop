@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { dbHelpers } from "../services/db";
 import { formatPrice } from "../utils/formatters";
 import { usePermissions } from "../hooks/usePermissions";
@@ -6,7 +6,9 @@ import { useSettingsStore } from "../store/settingsStore";
 import { showToast } from "../utils/toast";
 import { productsToCsv, downloadCsv } from "../utils/csvExport";
 import CsvImport from "./CsvImport";
-import BarcodeScanner from "./BarcodeScanner";
+
+// Lazy-loaded: pulls in the zxing decoder, only needed once the scanner opens.
+const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
 
 const CATEGORY_COLOR = {
   Grains:    "#f59e0b",
@@ -456,7 +458,9 @@ export default function InventoryScreen({ onClose }) {
       )}
 
       {showScanner && (
-        <BarcodeScanner onScan={handleScan} onClose={() => setShowScanner(false)} />
+        <Suspense fallback={null}>
+          <BarcodeScanner onScan={handleScan} onClose={() => setShowScanner(false)} />
+        </Suspense>
       )}
     </div>
   );

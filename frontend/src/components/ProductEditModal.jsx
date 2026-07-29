@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
@@ -6,7 +6,9 @@ import { formatPrice } from "../utils/formatters";
 import { mergeCategories } from "../utils/categories";
 import { usePermissions } from "../hooks/usePermissions";
 import { FEATURES } from "../utils/permissions";
-import BarcodeScanner from "./BarcodeScanner";
+
+// Lazy-loaded: pulls in the zxing decoder, only needed once the scanner opens.
+const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
 
 const LABEL = "text-sm font-semibold text-gray-700 mb-1.5 block";
 const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary";
@@ -92,10 +94,12 @@ export default function ProductEditModal({ product, onSave, onDelete, onClose })
 
   if (showScanner) {
     return (
-      <BarcodeScanner
-        onScan={(code) => { setBarcode(code); setShowScanner(false); }}
-        onClose={() => setShowScanner(false)}
-      />
+      <Suspense fallback={null}>
+        <BarcodeScanner
+          onScan={(code) => { setBarcode(code); setShowScanner(false); }}
+          onClose={() => setShowScanner(false)}
+        />
+      </Suspense>
     );
   }
 

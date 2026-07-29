@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { dbHelpers } from "../services/db";
 import { useCartStore } from "../store/cartStore";
 import { useDebounce } from "../utils/useDebounce";
@@ -6,8 +6,10 @@ import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import ProductEditModal from "./ProductEditModal";
 import ProductAddModal from "./ProductAddModal";
-import BarcodeScanner from "./BarcodeScanner";
 import CsvImport from "./CsvImport";
+
+// Lazy-loaded: pulls in the zxing decoder, only needed once the scanner opens.
+const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
 import { usePermissions } from "../hooks/usePermissions";
 import { FEATURES } from "../utils/permissions";
 
@@ -372,10 +374,12 @@ export default function ProductList() {
       )}
 
       {showScanner && (
-        <BarcodeScanner
-          onScan={handleScan}
-          onClose={() => setShowScanner(false)}
-        />
+        <Suspense fallback={null}>
+          <BarcodeScanner
+            onScan={handleScan}
+            onClose={() => setShowScanner(false)}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
@@ -7,7 +7,9 @@ import { useDebounce } from "../utils/useDebounce";
 import { apiHeaders } from "../utils/apiHeaders";
 import { useOnline } from "../utils/useOnline";
 import ProductAddModal from "./ProductAddModal";
-import BarcodeScanner from "./BarcodeScanner";
+
+// Lazy-loaded: pulls in the zxing decoder, only needed once the scanner opens.
+const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
 
 // ── Image compression ────────────────────────────────────────────────────────
 // A raw phone-camera capture can be several MB — fine sitting alone in local
@@ -918,7 +920,9 @@ export default function StockReceiving({ currentStaffId, onClose }) {
       </div>
 
       {showLineScanner && (
-        <BarcodeScanner onScan={handleLineScan} onClose={() => setShowLineScanner(false)} />
+        <Suspense fallback={null}>
+          <BarcodeScanner onScan={handleLineScan} onClose={() => setShowLineScanner(false)} />
+        </Suspense>
       )}
     </>
   );

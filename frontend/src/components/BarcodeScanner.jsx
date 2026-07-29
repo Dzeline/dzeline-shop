@@ -1,46 +1,54 @@
 import { useEffect, useRef, useState } from "react";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+
+// Pure-JS decoder (works via getUserMedia + canvas frame sampling), unlike
+// the native BarcodeDetector API which Safari/iOS never implemented —
+// scanning silently failed for any iPhone user.
+const HINTS = new Map();
+HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.CODE_128,
+  BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_39,
+  BarcodeFormat.QR_CODE,
+]);
 
 export default function BarcodeScanner({ onScan, onClose }) {
   const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const timerRef = useRef(null);
-  const [status, setStatus] = useState("starting"); // starting | scanning | error | denied | unsupported
+  const controlsRef = useRef(null);
+  const [status, setStatus] = useState("starting"); // starting | scanning | denied | unsupported
 
   useEffect(() => {
-    if (!("BarcodeDetector" in window)) {
+    if (!navigator.mediaDevices?.getUserMedia) {
       setStatus("unsupported");
       return;
     }
-    const detector = new window.BarcodeDetector({
-      formats: ["ean_13", "ean_8", "code_128", "upc_a", "upc_e", "code_39", "qr_code"],
-    });
 
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: "environment" } })
-      .then((stream) => {
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-          setStatus("scanning");
-          timerRef.current = setInterval(async () => {
-            if (!videoRef.current) return;
-            try {
-              const barcodes = await detector.detect(videoRef.current);
-              if (barcodes.length > 0) {
-                clearInterval(timerRef.current);
-                navigator.vibrate?.(40);
-                onScan(barcodes[0].rawValue);
-              }
-            } catch {}
-          }, 250);
-        }
+    let cancelled = false;
+    const reader = new BrowserMultiFormatReader(HINTS);
+
+    reader
+      .decodeFromConstraints(
+        { video: { facingMode: "environment" } },
+        videoRef.current,
+        (result) => {
+          if (cancelled || !result) return; // no barcode in frame yet — expected, not an error
+          controlsRef.current?.stop();
+          navigator.vibrate?.(40);
+          onScan(result.getText());
+        },
+      )
+      .then((controls) => {
+        if (cancelled) { controls.stop(); return; }
+        controlsRef.current = controls;
+        setStatus("scanning");
       })
-      .catch(() => setStatus("denied"));
+      .catch(() => {
+        if (!cancelled) setStatus("denied");
+      });
 
     return () => {
-      clearInterval(timerRef.current);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      cancelled = true;
+      controlsRef.current?.stop();
     };
   }, [onScan]);
 
@@ -54,7 +62,7 @@ export default function BarcodeScanner({ onScan, onClose }) {
         >×</button>
       </div>
 
-      {(status === "error" || status === "denied" || status === "unsupported") ? (
+      {(status === "denied" || status === "unsupported") ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4">
           <p className="text-white font-semibold">
             {status === "unsupported"
