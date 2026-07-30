@@ -99,6 +99,9 @@ export default function SettingsScreen({ onClose }) {
   // wired to a printer, not to the shop as a whole (every other device would
   // otherwise also try to auto-print with nothing attached).
   const [autoPrint, setAutoPrint] = useState(false);
+  // Same device-local reasoning — marks this device as the shared-printer
+  // hub for the shop's print-job queue (see sync.js pollPrintJobs).
+  const [isPrintHub, setIsPrintHub] = useState(false);
 
   useEffect(() => {
     dbHelpers.getShopSettings().then((s) => {
@@ -117,6 +120,7 @@ export default function SettingsScreen({ onClose }) {
 
       dbHelpers.getApiKey().then((k) => { if (k) setApiKeyInput(k); });
       dbHelpers.getSetting("auto_print_receipts").then((v) => setAutoPrint(v === "true"));
+      dbHelpers.getSetting("is_print_hub").then((v) => setIsPrintHub(v === "true"));
 
       // Pre-fill eTIMS TIN from KRA PIN
       if (registered && pin) setEtimsTin(pin);
@@ -486,6 +490,28 @@ export default function SettingsScreen({ onClose }) {
                 className={`shrink-0 w-12 h-7 rounded-full transition relative ${autoPrint ? "bg-primary" : "bg-gray-200"}`}
               >
                 <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${autoPrint ? "translate-x-5" : ""}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+              <div className="pr-3">
+                <p className="text-sm font-bold text-gray-800">Print every sale made in this shop</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  This device becomes the shared printer for all tills. Needs a printer connected
+                  here (Bluetooth or USB).
+                </p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={isPrintHub}
+                onClick={() => {
+                  const next = !isPrintHub;
+                  setIsPrintHub(next);
+                  dbHelpers.updateSetting("is_print_hub", String(next));
+                }}
+                className={`shrink-0 w-12 h-7 rounded-full transition relative ${isPrintHub ? "bg-primary" : "bg-gray-200"}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${isPrintHub ? "translate-x-5" : ""}`} />
               </button>
             </div>
           </SectionCard>

@@ -5,6 +5,7 @@ import { formatPrice } from "../utils/formatters";
 import { dbHelpers } from "../services/db";
 import { showToast } from "../utils/toast";
 import { useSettingsStore } from "../store/settingsStore";
+import { syncService } from "../services/sync";
 import CheckoutModal from "./CheckoutModal";
 import Receipt from "./Receipt";
 
@@ -37,7 +38,12 @@ export default function Cart({ onNewSale }) {
         { ...payment, subtotal, vat, total: grandTotal },
         staffId
       );
-      setCompletedSale({ ...sale, staff_name: currentStaff?.name });
+      const saleWithStaff = { ...sale, staff_name: currentStaff?.name };
+      setCompletedSale(saleWithStaff);
+      try {
+        await dbHelpers.enqueuePrintJob(saleWithStaff);
+        syncService.pushUnsyncedPrintJobs().catch(() => {});
+      } catch { /* best-effort — the sale itself already succeeded */ }
       clearCart();
       setView("receipt");
     } catch (err) {

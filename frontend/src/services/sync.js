@@ -2,6 +2,7 @@ import { db, dbHelpers } from "./db";
 import { apiHeaders, apiGetHeaders } from "../utils/apiHeaders";
 import { useStaffStore } from "../store/staffStore";
 import { useSettingsStore } from "../store/settingsStore";
+import { thermalPrinter } from "./thermalPrinter";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -222,6 +223,99 @@ export const syncService = {
       }
     }
     return { pushed };
+  },
+
+  /**
+   * Push the shared-printer outbox. Unlike every other push* function, a
+   * successfully-pushed row is deleted rather than marked synced — print_jobs
+   * is a pure outbox, nothing ever reads a row back locally once it's on the
+   * server.
+   */
+  async pushUnsyncedPrintJobs() {
+    if (!API_BASE) return { pushed: 0 };
+    const jobs = await db.print_jobs.toArray();
+    if (jobs.length === 0) return { pushed: 0 };
+
+    let pushed = 0;
+    for (const job of jobs) {
+      try {
+        const res = await fetch(`${API_BASE}/print-jobs`, {
+          method: "POST",
+          headers: apiHeaders(),
+          body: JSON.stringify({
+            device_id: job.device_id,
+            local_id: job.id,
+            sale_json: job.sale_json,
+            created_at: job.created_at,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (res.ok) {
+          await db.print_jobs.delete(job.id);
+          pushed++;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return { pushed };
+  },
+
+  /**
+   * Hub-only: devices with Settings > Receipt Printer > "Print every sale
+   * made in this shop" enabled poll for pending print jobs and print them
+   * locally — the single-shared-printer flow. Every other device's poll is a
+   * same-tick no-op (one extra getSetting read). Skips (but still acks) jobs
+   * this same device created — it already prints its own sales through the
+   * normal Receipt.jsx flow, so the queue shouldn't double-print them here.
+   */
+  async pollPrintJobs() {
+    if (!API_BASE) return { printed: 0 };
+    const isHub = (await dbHelpers.getSetting("is_print_hub")) === "true";
+    if (!isHub) return { printed: 0 };
+
+    try {
+      const res = await fetch(`${API_BASE}/print-jobs?status=pending`, {
+        headers: apiGetHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return { printed: 0 };
+      const jobs = await res.json();
+      if (jobs.length === 0) return { printed: 0 };
+
+      const myDeviceId = await dbHelpers.getDeviceId();
+      const s = useSettingsStore.getState();
+      const printerSettings = {
+        shopName: s.shopName, kraPin: s.kraPin, kraRegistered: s.kraRegistered,
+        vatRate: s.vatRate, currency: s.currency,
+      };
+
+      let printed = 0;
+      for (const job of jobs) {
+        try {
+          if (job.device_id !== myDeviceId) {
+            const sale = JSON.parse(job.sale_json);
+            if (thermalPrinter.isConnected) {
+              await thermalPrinter.printBluetooth(sale, printerSettings);
+            } else {
+              thermalPrinter.printBrowser(sale, printerSettings);
+            }
+          }
+          await fetch(`${API_BASE}/print-jobs/${job.id}`, {
+            method: "PUT",
+            headers: apiHeaders(),
+            body: JSON.stringify({ status: "done" }),
+            signal: AbortSignal.timeout(10_000),
+          });
+          printed++;
+        } catch {
+          continue; // leave pending — retried next poll
+        }
+      }
+      return { printed };
+    } catch {
+      return { printed: 0 }; // offline — retried next poll
+    }
   },
 
   /**
@@ -833,6 +927,7 @@ export const syncService = {
       await Promise.allSettled([
         this.pushUnsynced(),
         this.pushUnsyncedReceipts(),
+        this.pushUnsyncedPrintJobs(),
         this.resumePendingStkChecks(),
         this.reconcileSmsCodes(),
         this.pushUnsyncedProducts(),
@@ -846,6 +941,7 @@ export const syncService = {
         this.pullTransactions(),
         this.pullSuppliers(),
         this.pullReceipts(),
+        this.pollPrintJobs(),
       ]);
     });
   },
@@ -859,6 +955,7 @@ export const syncService = {
         this.pullTransactions(),
         this.pullSuppliers(),
         this.pullReceipts(),
+        this.pollPrintJobs(),
       ]);
     });
   },

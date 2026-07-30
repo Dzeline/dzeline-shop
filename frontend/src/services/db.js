@@ -157,6 +157,16 @@ db.version(13).stores({
   await tx.table("stock_receipts").toCollection().modify({ cloud_id: null, device_id: deviceId });
 });
 
+// Version 14: shared-printer print-job queue — a device without a physical
+// printer attached enqueues a job per completed sale; a designated "hub"
+// device (Settings toggle) polls the backend and prints it locally. Purely
+// an outbox: a row exists only until it's successfully pushed, then it's
+// deleted — nothing ever reads it back locally, so no synced/cloud_id
+// fields like the other synced tables need.
+db.version(14).stores({
+  print_jobs: "++id, device_id, created_at",
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -317,6 +327,18 @@ export const dbHelpers = {
     const id = crypto.randomUUID();
     await db.settings.put({ key: "device_id", value: id });
     return id;
+  },
+
+  // Enqueue a print job for the shared-printer flow — the hub device (see
+  // Settings > Receipt Printer) picks this up and prints it, independent of
+  // whatever this device does with its own receipt.
+  async enqueuePrintJob(sale) {
+    const deviceId = await this.getDeviceId();
+    return await db.print_jobs.add({
+      device_id: deviceId,
+      sale_json: JSON.stringify(sale),
+      created_at: Date.now(),
+    });
   },
 
   // Get today's sales

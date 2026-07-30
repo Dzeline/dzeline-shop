@@ -266,3 +266,21 @@ class EtimsConfig(Base):
     activation_key = Column(String(500), nullable=True)
     initialized_at = Column(BigInteger,  nullable=True)
     updated_at     = Column(BigInteger,  nullable=True)
+
+
+class PrintJob(Base):
+    """
+    Shared-printer queue: a device without a physical printer enqueues one of
+    these per completed sale; the shop's designated hub device (Settings >
+    Receipt Printer) polls for pending jobs and prints them locally.
+    """
+    __tablename__ = "print_jobs"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    device_id  = Column(String(64), nullable=True, index=True)
+    local_id   = Column(Integer, nullable=True)
+    sale_json  = Column(Text, nullable=False)
+    status     = Column(String(20), default="pending", nullable=False, index=True)
+    created_at = Column(BigInteger, nullable=True)
+    updated_at = Column(BigInteger, nullable=True)
