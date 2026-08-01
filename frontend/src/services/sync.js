@@ -505,6 +505,7 @@ export const syncService = {
           category: p.category ?? null,
           reorder_level: p.reorder_level ?? 10,
           active: p.active !== false,
+          image_blob: p.image_blob ?? null,
         };
         const url = p.cloud_id ? `${API_BASE}/products/${p.cloud_id}` : `${API_BASE}/products/`;
         const res = await fetch(url, {
@@ -532,16 +533,25 @@ export const syncService = {
    * changes reach the cloud via /sync/transactions' server-side decrement,
    * not this path, and a stale snapshot landing mid-flight must not revert
    * a till's own in-progress decrement.
+   *
+   * since-filtered exactly like pullReceipts() — now that products carry a
+   * (compressed) image_blob, re-fetching the whole catalog on every 45s poll
+   * forever would repeat the Neon data-transfer problem stock receipts hit
+   * earlier, at a much higher, chronic rate.
    */
   async pullProducts() {
     if (!API_BASE) return;
     try {
-      const res = await fetch(`${API_BASE}/products/`, {
+      const sinceRaw = await dbHelpers.getSetting("last_product_pull_at");
+      const since = sinceRaw ? Number(sinceRaw) : 0;
+
+      const res = await fetch(`${API_BASE}/products/?since=${since}`, {
         headers: apiGetHeaders(),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return;
       const rows = await res.json();
+      if (rows.length === 0) return;
 
       const [unsyncedTxns, unsyncedReceipts] = await Promise.all([
         dbHelpers.getUnsyncedTransactions(),
@@ -559,13 +569,16 @@ export const syncService = {
       const local = await db.products.toArray();
       const byCloudId = new Map(local.filter((p) => p.cloud_id != null).map((p) => [p.cloud_id, p]));
 
+      let maxUpdatedAt = since;
       for (const r of rows) {
+        maxUpdatedAt = Math.max(maxUpdatedAt, r.updated_at ?? 0);
         const existing = byCloudId.get(r.id);
         if (existing) {
           if (!existing.synced) continue; // pending local edit — don't clobber
           const update = {
             barcode: r.barcode, name: r.name, price: r.price, cost_price: r.cost_price ?? null,
             category: r.category, reorder_level: r.reorder_level, active: r.active,
+            image_blob: r.image_blob ?? null,
             synced: true, updated_at: r.updated_at,
           };
           if (!protectedIds.has(existing.id)) update.stock = r.stock;
@@ -576,11 +589,12 @@ export const syncService = {
           // inserting an already-dead product.
           await db.products.add({
             barcode: r.barcode, name: r.name, price: r.price, cost_price: r.cost_price ?? null, stock: r.stock,
-            category: r.category, reorder_level: r.reorder_level, tags: [],
+            category: r.category, reorder_level: r.reorder_level, image_blob: r.image_blob ?? null, tags: [],
             cloud_id: r.id, synced: true, updated_at: r.updated_at,
           });
         }
       }
+      await dbHelpers.updateSetting("last_product_pull_at", String(maxUpdatedAt));
     } catch { /* offline — try again next reconnect */ }
   },
 

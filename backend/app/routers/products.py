@@ -11,16 +11,24 @@ router = APIRouter(prefix="/products", tags=["products"])
 
 @router.get("/", response_model=list[ProductOut])
 def list_products(
+    since: int = 0,
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_tenant),
 ):
     # Includes soft-deleted (active=False) rows — pulling devices need to see
     # a deletion, not just have it filtered out server-side, or it never
     # reaches other devices. Same pattern as list_staff.
+    #
+    # since-filtered like /stock-receipts — this endpoint is polled every 45s
+    # per device, and now carries a (compressed but still real) image_blob.
+    # Re-sending every product's photo on every poll forever, with no
+    # since-filtering, is exactly what burned through the Neon data-transfer
+    # quota with stock receipt photos earlier. since=0 (the default) still
+    # returns everything — used by SetupWizard/JoinShop for a fresh catalog.
     return (
         db.query(Product)
-        .filter(Product.tenant_id == tenant.id)
-        .order_by(Product.name)
+        .filter(Product.tenant_id == tenant.id, Product.updated_at > since)
+        .order_by(Product.updated_at.asc())
         .all()
     )
 

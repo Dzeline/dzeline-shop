@@ -107,6 +107,13 @@ def _apply_migrations():
         # poll forever, which is what actually burned through the Neon
         # data-transfer quota.
         ("stock_receipts", "updated_at", "BIGINT"),
+        # products — compressed product photo, synced cross-device. Added
+        # only once /products was made since-filtered below (see the
+        # ix_products_tenant_updated index) — without that, this would
+        # repeat the exact stock_receipts data-transfer problem above, but
+        # worse: the whole catalog's photos on every 45s poll instead of
+        # just newly-created receipts.
+        ("products", "image_blob", "TEXT"),
     ]
     with engine.connect() as conn:
         for table, col, typ in pending:
@@ -159,6 +166,29 @@ def _apply_migrations():
             conn.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_stock_receipts_tenant_updated "
                 "ON stock_receipts (tenant_id, updated_at)"
+            ))
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            logger.warning("Index creation skipped: %s", exc)
+
+        # Defensive, same reasoning as above — products.updated_at has been on
+        # the model since before since-filtering existed on this endpoint, so
+        # this is expected to be a no-op, but a single unbackfilled row would
+        # otherwise silently vanish from every device's catalog pull forever.
+        try:
+            from datetime import datetime as _dt
+            now_ms = int(_dt.utcnow().timestamp() * 1000)
+            conn.execute(text(f"UPDATE products SET updated_at = {now_ms} WHERE updated_at IS NULL"))
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            logger.warning("products updated_at backfill skipped: %s", exc)
+
+        try:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_products_tenant_updated "
+                "ON products (tenant_id, updated_at)"
             ))
             conn.commit()
         except Exception as exc:

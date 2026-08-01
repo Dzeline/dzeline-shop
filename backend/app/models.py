@@ -120,6 +120,7 @@ class Product(Base):
     category      = Column(String(100), nullable=True)
     reorder_level = Column(Integer, default=10)
     active        = Column(Boolean, default=True)
+    image_blob    = Column(Text, nullable=True)
     updated_at    = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
 
 

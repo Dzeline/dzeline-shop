@@ -4,6 +4,7 @@ import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import { DEFAULT_CATEGORIES, mergeCategories } from "../utils/categories";
+import { compressImage } from "../utils/imageCompression";
 
 // Lazy-loaded: pulls in the zxing decoder, only needed once the scanner opens.
 const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
@@ -35,7 +36,12 @@ export default function ProductAddModal({ onSave, onClose }) {
     if (!file) return;
     setImagePreview(URL.createObjectURL(file));
     const reader = new FileReader();
-    reader.onload = (ev) => setImageBlob(ev.target.result);
+    reader.onload = async (ev) => {
+      // 800/0.75 vs. StockReceiving's 1600/0.8 — this is a catalog thumbnail,
+      // not a document that needs to stay legible for AI OCR scanning.
+      const compressed = await compressImage(ev.target.result, 800, 0.75).catch(() => ev.target.result);
+      setImageBlob(compressed);
+    };
     reader.readAsDataURL(file);
   }
 

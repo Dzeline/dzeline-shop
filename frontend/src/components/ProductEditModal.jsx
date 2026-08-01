@@ -4,6 +4,7 @@ import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
 import { mergeCategories } from "../utils/categories";
+import { compressImage } from "../utils/imageCompression";
 import { usePermissions } from "../hooks/usePermissions";
 import { FEATURES } from "../utils/permissions";
 
@@ -43,7 +44,12 @@ export default function ProductEditModal({ product, onSave, onDelete, onClose })
     if (!file) return;
     setImagePreview(URL.createObjectURL(file));
     const reader = new FileReader();
-    reader.onload = (ev) => setImageBlob(ev.target.result);
+    reader.onload = async (ev) => {
+      // 800/0.75 vs. StockReceiving's 1600/0.8 — this is a catalog thumbnail,
+      // not a document that needs to stay legible for AI OCR scanning.
+      const compressed = await compressImage(ev.target.result, 800, 0.75).catch(() => ev.target.result);
+      setImageBlob(compressed);
+    };
     reader.readAsDataURL(file);
   }
 

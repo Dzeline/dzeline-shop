@@ -184,6 +184,7 @@ class ProductIn(BaseModel):
     category: Optional[str] = None
     reorder_level: int = 10
     active: bool = True
+    image_blob: Optional[str] = None
 
 
 class ProductOut(ProductIn):
