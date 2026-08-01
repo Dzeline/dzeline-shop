@@ -19,6 +19,11 @@ const POS = {
   BOLD_OFF:     [ESC, 0x45, 0x00],
   SIZE_2X:      [ESC, 0x21, 0x11],
   SIZE_NORMAL:  [ESC, 0x21, 0x00],
+  // Double-height only (no width change) — bit4 of ESC ! per the standard
+  // Epson command set every cheap clone copies. Unlike SIZE_2X this never
+  // widens glyphs, so it's safe to use on full-width rows: CHARS_PER_LINE's
+  // padding math is column-count based and stays correct either way.
+  SIZE_TALL:    [ESC, 0x21, 0x10],
   FEED:         (n) => [ESC, 0x64, n],
   CUT:          [GS, 0x56, 0x42, 0x00],
 };
@@ -166,17 +171,25 @@ function _buildEscPos(sale, settings) {
     ...POS.SIZE_2X,
     ..._line(shopName.toUpperCase().slice(0, 14)),
     ...POS.SIZE_NORMAL,
-    ...POS.BOLD_OFF,
+    // Bold stays on for the rest of the receipt — testing showed plain
+    // single-weight text prints too faint to read on cheap thermal print
+    // heads, while bold prints reliably dark. SIZE_TALL (double-height,
+    // same width) makes body text bigger without breaking CHARS_PER_LINE's
+    // column math; dropped back to SIZE_NORMAL only around the dashed
+    // separators so they don't render as an oversized solid bar.
   ];
 
   if (kraRegistered && kraPin) b.push(..._line(`KRA PIN: ${kraPin}`));
 
   b.push(
+    ...POS.SIZE_TALL,
     ..._line(`Receipt #${String(sale.id).padStart(6, "0")}`),
     ..._line(date),
     ..._line(`Cashier: ${sale.staff_name ?? "—"}`),
     ...POS.ALIGN_LEFT,
+    ...POS.SIZE_NORMAL,
     ..._line(dashes),
+    ...POS.SIZE_TALL,
   );
 
   for (const item of sale.items) {
@@ -187,11 +200,11 @@ function _buildEscPos(sale, settings) {
     b.push(..._line(`  ${item.quantity} x ${fmt(item.price)}`));
   }
 
-  b.push(..._line(dashes));
+  b.push(...POS.SIZE_NORMAL, ..._line(dashes), ...POS.SIZE_TALL);
   b.push(..._row("Subtotal", fmt(sale.subtotal)));
   if (vatRate > 0) b.push(..._row(`VAT ${Math.round(vatRate * 100)}%`, fmt(sale.vat)));
-  b.push(...POS.BOLD_ON, ..._row("TOTAL", fmt(sale.total)), ...POS.BOLD_OFF);
-  b.push(..._line(dashes));
+  b.push(..._row("TOTAL", fmt(sale.total)));
+  b.push(...POS.SIZE_NORMAL, ..._line(dashes), ...POS.SIZE_TALL);
 
   if (isMpesa) {
     b.push(..._row("M-Pesa", ""), ..._row("Code", sale.mpesaCode ?? "—"));
@@ -202,6 +215,7 @@ function _buildEscPos(sale, settings) {
   }
 
   b.push(
+    ...POS.SIZE_NORMAL,
     ..._line(dashes),
     ...POS.ALIGN_CENTER,
     ..._line("Thank you for shopping!"),
@@ -249,16 +263,16 @@ function _buildReceiptHtml(sale, settings) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:monospace;font-size:11px;width:58mm;padding:4px 3px}
-h1{font-size:13px;text-align:center;margin-bottom:2px}
-.c{text-align:center}.s{font-size:10px;color:#444}
+body{font-family:monospace;font-size:13px;font-weight:600;color:#000;width:58mm;padding:4px 3px}
+h1{font-size:15px;text-align:center;margin-bottom:2px}
+.c{text-align:center}.s{font-size:12px;color:#000}
 hr{border:none;border-top:1px dashed #000;margin:3px 0}
 table{width:100%;border-collapse:collapse}
-td{padding:1px 0;vertical-align:top}
-.qty{color:#555;font-size:10px}
+td{padding:2px 0;vertical-align:top}
+.qty{color:#000;font-size:12px}
 .amt{text-align:right;white-space:nowrap}
 .name{max-width:28mm;word-break:break-word}
-.tot td{font-size:12px;font-weight:bold;border-top:1px dashed #000;padding-top:3px}
+.tot td{font-size:15px;font-weight:800;border-top:1px dashed #000;padding-top:3px}
 @media print{@page{margin:0;size:58mm auto}}
 </style></head><body>
 <h1>${_esc(shopName)}</h1>
