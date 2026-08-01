@@ -902,6 +902,23 @@ export const dbHelpers = {
     };
   },
 
+  // Revenue + sale count per calendar month for the given year — feeds the
+  // Finance "This Year" monthly breakdown table. Index 0 = January.
+  async getMonthlyRevenue(year) {
+    const start = new Date(year, 0, 1).getTime();
+    const end = new Date(year + 1, 0, 1).getTime();
+    const txns = (await db.transactions.where("timestamp").between(start, end, true, false).toArray())
+      .filter((t) => !t.voided);
+
+    const months = Array.from({ length: 12 }, () => ({ revenue: 0, transactionCount: 0 }));
+    for (const t of txns) {
+      const m = new Date(t.timestamp).getMonth();
+      months[m].revenue += t.total || 0;
+      months[m].transactionCount += 1;
+    }
+    return months;
+  },
+
   // ── eTIMS helpers ─────────────────────────────────────────────────────────
 
   async getEtimsQueue(limit = 200) {

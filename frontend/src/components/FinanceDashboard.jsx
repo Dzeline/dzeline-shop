@@ -9,6 +9,8 @@ const RANGES = [
   { key: "year",  label: "This Year" },
 ];
 
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 function getRangeStart(range) {
   const d = new Date();
   if (range === "week")  d.setDate(d.getDate() - d.getDay());
@@ -59,6 +61,8 @@ function Skeletons() {
 export default function FinanceDashboard() {
   const [range, setRange] = useState("today");
   const [data, setData] = useState(null);
+  const [monthlyBreakdown, setMonthlyBreakdown] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -68,6 +72,13 @@ export default function FinanceDashboard() {
     try {
       const summary = await dbHelpers.getFinancialSummary(getRangeStart(range));
       setData(summary);
+      if (range === "year") {
+        const monthly = await dbHelpers.getMonthlyRevenue(new Date().getFullYear());
+        setMonthlyBreakdown(monthly);
+      } else {
+        setMonthlyBreakdown(null);
+        setSelectedMonth(null);
+      }
     } catch (err) {
       console.error(err);
       setError("Failed to load financial data");
@@ -136,6 +147,44 @@ export default function FinanceDashboard() {
 
         {!loading && !error && data && (
           <>
+            {/* Monthly breakdown — This Year only */}
+            {range === "year" && monthlyBreakdown && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <p className="font-bold text-gray-700 text-sm mb-3">Monthly Revenue</p>
+                <div className="space-y-1">
+                  {monthlyBreakdown.map((m, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedMonth(selectedMonth === i ? null : i)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition ${
+                        selectedMonth === i ? "bg-primary/10" : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <span className={`text-sm font-semibold ${selectedMonth === i ? "text-primary" : "text-gray-700"}`}>
+                        {MONTH_LABELS[i]}
+                      </span>
+                      <span className="flex items-center gap-3">
+                        {selectedMonth === i && (
+                          <span className="text-xs text-gray-400">
+                            {m.transactionCount} sale{m.transactionCount !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        <span className={`text-sm font-bold ${selectedMonth === i ? "text-primary" : "text-gray-800"}`}>
+                          {formatPrice(m.revenue)}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between px-3 pt-3 mt-2 border-t border-gray-100">
+                  <span className="text-sm font-bold text-gray-800">Total</span>
+                  <span className="text-base font-extrabold text-primary">
+                    {formatPrice(monthlyBreakdown.reduce((s, m) => s + m.revenue, 0))}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Hero: Gross Profit + Margin */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Gross Profit</p>
