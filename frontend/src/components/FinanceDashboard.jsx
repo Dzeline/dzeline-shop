@@ -6,12 +6,14 @@ const RANGES = [
   { key: "today", label: "Today" },
   { key: "week",  label: "This Week" },
   { key: "month", label: "This Month" },
+  { key: "year",  label: "This Year" },
 ];
 
 function getRangeStart(range) {
   const d = new Date();
   if (range === "week")  d.setDate(d.getDate() - d.getDay());
   if (range === "month") d.setDate(1);
+  if (range === "year")  d.setMonth(0, 1);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }

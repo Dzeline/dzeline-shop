@@ -661,6 +661,34 @@ export const syncService = {
   // txn.origin === "remote". Do not add any other write path that could
   // touch a foreign row's `synced` flag without preserving this guarantee.
 
+  /**
+   * Pages GET /sync/transactions to exhaustion and returns the full tenant-
+   * wide result — unlike pullTransactions() below, this never touches local
+   * Dexie and never stops after one page. Built for the Sales Export screen,
+   * which needs every transaction across a whole month/year regardless of
+   * this device's own sync history (pullTransactions()'s 35-day first-pull
+   * backfill window is not enough for that).
+   */
+  async fetchAllTransactions() {
+    if (!API_BASE) throw new Error("Not connected to the cloud");
+    let since = 0;
+    let all = [];
+    for (;;) {
+      const res = await fetch(`${API_BASE}/sync/transactions?since=${since}&limit=500`, {
+        headers: apiGetHeaders(),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const rows = await res.json();
+      if (rows.length === 0) break;
+      all = all.concat(rows);
+      const maxUpdated = Math.max(...rows.map((r) => r.updated_at ?? 0));
+      if (rows.length < 500 || maxUpdated <= since) break;
+      since = maxUpdated;
+    }
+    return all;
+  },
+
   async pullTransactions() {
     if (!API_BASE) return;
     try {

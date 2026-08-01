@@ -7,6 +7,7 @@ const RANGES = [
   { key: "today", label: "Today" },
   { key: "week",  label: "This Week" },
   { key: "month", label: "This Month" },
+  { key: "year",  label: "This Year" },
 ];
 
 function getRangeStart(range) {
@@ -15,6 +16,8 @@ function getRangeStart(range) {
     d.setDate(d.getDate() - d.getDay());
   } else if (range === "month") {
     d.setDate(1);
+  } else if (range === "year") {
+    d.setMonth(0, 1);
   }
   d.setHours(0, 0, 0, 0);
   return d.getTime();
@@ -65,7 +68,8 @@ export default function DailySummary({ onClose }) {
 
   const rangeLabel = range === "today"
     ? new Date().toLocaleDateString("en-KE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
-    : range === "week" ? "This Week" : "This Month";
+    : range === "week" ? "This Week"
+    : range === "month" ? "This Month" : "This Year";
 
   return (
     <div className="flex flex-col h-full bg-gray-900">

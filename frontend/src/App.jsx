@@ -14,6 +14,7 @@ import InventoryScreen from "./components/InventoryScreen";
 import SuppliersScreen from "./components/SuppliersScreen";
 import EtimsModal from "./components/EtimsModal";
 import FinanceDashboard from "./components/FinanceDashboard";
+import SalesExport from "./components/SalesExport";
 import { useOnline } from "./utils/useOnline";
 import { useCartStore } from "./store/cartStore";
 import { useStaffStore } from "./store/staffStore";
@@ -116,12 +117,19 @@ function StockPanel({ sub, navigateSub, currentStaffId }) {
 }
 
 function ReportsPanel({ sub, navigateSub }) {
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
+  // Export pulls the complete, tenant-wide sales record for handing to an
+  // accountant — deliberately narrower than FEATURES.REPORTS (which every
+  // role sees the other three tabs under) to match "Owner and sales manager"
+  // specifically.
+  const canExport = role === "admin" || role === "sales_manager";
+  const subTabs = canExport ? ["summary", "history", "finance", "export"] : ["summary", "history", "finance"];
+  const subLabels = canExport ? ["Summary", "History", "Finance", "Export"] : ["Summary", "History", "Finance"];
   return (
     <div className="flex flex-col h-full">
       <SubTabBar
-        options={["summary", "history", "finance"]}
-        labels={["Summary", "History", "Finance"]}
+        options={subTabs}
+        labels={subLabels}
         active={sub}
         onChange={navigateSub}
       />
@@ -129,6 +137,7 @@ function ReportsPanel({ sub, navigateSub }) {
         {sub === "summary" && <DailySummary />}
         {sub === "history" && <TransactionHistory canVoid={can(FEATURES.VOID_SALES)} />}
         {sub === "finance" && <FinanceDashboard />}
+        {sub === "export" && canExport && <SalesExport />}
       </div>
     </div>
   );
