@@ -11,6 +11,10 @@ HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
   BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_39,
   BarcodeFormat.QR_CODE,
 ]);
+// Trades a little per-frame decode time for meaningfully better accuracy on
+// small, skewed, or partially-focused barcodes — the exact symptom reported
+// during testing (misreads, slow to lock on, worse on small barcodes).
+HINTS.set(DecodeHintType.TRY_HARDER, true);
 
 export default function BarcodeScanner({ onScan, onClose }) {
   const videoRef = useRef(null);
@@ -28,7 +32,23 @@ export default function BarcodeScanner({ onScan, onClose }) {
 
     reader
       .decodeFromConstraints(
-        { video: { facingMode: "environment" } },
+        {
+          video: {
+            facingMode: "environment",
+            // The default getUserMedia profile is often a low-res video-call
+            // stream — not enough raw pixel detail to resolve a small
+            // barcode's bars. Requesting a higher ideal resolution (the
+            // browser picks the closest the camera actually supports) gives
+            // the decoder far more to work with. `advanced: focusMode
+            // continuous` asks the camera to keep refocusing as the phone
+            // moves instead of focusing once at stream start and going
+            // stale — an unrecognized constraint is just ignored by
+            // browsers/devices that don't support it, not fatal.
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            advanced: [{ focusMode: "continuous" }],
+          },
+        },
         videoRef.current,
         (result) => {
           if (cancelled || !result) return; // no barcode in frame yet — expected, not an error
