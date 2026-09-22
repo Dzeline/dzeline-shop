@@ -148,8 +148,8 @@ a role change does not take effect until the next explicit login — see Known I
 One codebase serves a phone in the hand and a desktop till. The split is at Tailwind's
 `lg` (1024px):
 
-| | below `lg` | `lg` and up |
-|---|---|---|
+| Concern | below `lg` | `lg` and up |
+| --- | --- | --- |
 | Navigation | bottom tab bar | `SideNav` rail |
 | Cart | a panel you navigate to, with `CartBar` showing the running total | permanent rail beside the product grid |
 | Barcode input | camera (`BarcodeScanner`) | camera **and** USB/Bluetooth wedge scanner (`useWedgeScanner`) |
@@ -170,7 +170,7 @@ needed; none drop user data except `sync_queue`, which was replaced by per-row `
 flags in v5.
 
 | Version | Change |
-|---|---|
+| --- | --- |
 | v1 | Base: products, transactions, transaction_items, pending_mpesa, sync_queue, staff, settings |
 | v2 | stock_receipts (flat) |
 | v3 | reorder_level index on products |
@@ -187,7 +187,7 @@ flags in v5.
 | v14 | print_jobs outbox for the shared-printer queue |
 
 | Table | Key | Indexed | Notable unindexed |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `products` | `++id` | `barcode, name, price, cost_price, stock, category, etims_item_cd, reorder_level, cloud_id, updated_at, synced, *tags` | `image_blob` (base64) |
 | `transactions` | `++id` | `timestamp, total, payment_method, synced, staff_id, etims_status, cloud_id, device_id` | `subtotal, vat, change_given, voided` |
 | `transaction_items` | `++id` | `transaction_id, product_id` | `quantity, price, subtotal` |
@@ -205,7 +205,7 @@ directly; that is what keeps migrations and invariants in one auditable place.
 ## Backend database (PostgreSQL)
 
 | Table | Purpose |
-|---|---|
+| --- | --- |
 | `tenants` | One row per shop — owns every other table via `tenant_id` |
 | `transactions` / `transaction_items` | Synced sales |
 | `products` | Cloud catalogue |
@@ -226,13 +226,14 @@ checks the tenant is active and inside its billing window.
 Defined in `frontend/src/utils/permissions.js`, evaluated at runtime via `usePermissions()`.
 
 | Role | POS | Stock | Reports | eTIMS | Settings | Edit products | Void sales |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
 | `admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `sub_admin` | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ |
 | `stock_keeper` | ✅ | ✅ | ✅ | — | — | — | — |
 | `sales_manager` | ✅ | — | ✅ | ✅ | — | — | — |
 | `cashier` | ✅ | — | ✅ | — | — | — | — |
-| `custom` | any combination | | | | | | |
+
+A sixth role, `custom`, is granted any combination of the columns above.
 
 `EDIT_PRODUCTS` additionally gates the manager pricing panel. The accountant-ready sales
 export is narrower still — `admin` and `sales_manager` only.

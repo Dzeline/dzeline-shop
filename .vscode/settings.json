@@ -1,0 +1,22 @@
+{
+  // The Red Hat Java extension tries to import every Gradle project it finds,
+  // including android-sms-listener/. It cannot configure an Android project —
+  // it resolves the Android Gradle Plugin with its own JVM, which reports
+  // "No matching variant of com.android.tools.build:gradle ... compatible with
+  // Java 8" — and the failed import is reported as a workspace error even
+  // though the project builds correctly in CI.
+  //
+  // Android work belongs in Android Studio; excluding the folder here stops
+  // the phantom errors without changing anything about the build.
+  "java.import.exclusions": [
+    "**/node_modules/**",
+    "**/.metadata/**",
+    "**/archetype-resources/**",
+    "**/META-INF/maven/**",
+    "**/android-sms-listener/**"
+  ],
+
+  "[markdown]": {
+    "editor.formatOnSave": false
+  }
+}

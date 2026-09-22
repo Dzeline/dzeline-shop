@@ -27,12 +27,20 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Build release APK (unsigned)
-        run: ./gradlew assembleRelease --no-daemon
+      # Debug first: it is signed with the standard debug key, so this is the
+      # artifact that can actually be installed on a shop phone. The release
+      # APK below is unsigned and needs apksigner before it will install.
+      - name: Build debug APK (installable)
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Build release APK (unsigned)
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
           name: dzeline-sms-listener-${{ github.run_number }}
-          path: android-sms-listener/app/build/outputs/apk/release/*.apk
+          path: |
+            android-sms-listener/app/build/outputs/apk/debug/*.apk
+            android-sms-listener/app/build/outputs/apk/release/*.apk
           retention-days: 30

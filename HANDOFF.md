@@ -7,7 +7,7 @@ This document is **what state the project is in**. The durable reference materia
 next to it, one fact in one place:
 
 | For | Read |
-|---|---|
+| --- | --- |
 | How it works and why | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Endpoints, auth, call sites | [docs/API.md](docs/API.md) |
 | Running it, env vars, deploying | [docs/SETUP.md](docs/SETUP.md) |
@@ -18,7 +18,7 @@ next to it, one fact in one place:
 ## Status: field-ready, with a caveat
 
 | Phase | Theme | Status |
-|---|---|---|
+| --- | --- | --- |
 | 1 | Core POS — products, cart, IndexedDB | done |
 | 2 | Payments + receipts — Cash, M-Pesa, Pochi | done |
 | 3 | Staff / PIN login | done |
@@ -119,7 +119,7 @@ backend/app/
 ## Known issues
 
 | Severity | Where | Issue |
-|---|---|---|
+| --- | --- | --- |
 | Security | `staffStore.js` | The persisted session carries the staff role until an explicit logout, so a role demotion does not take effect on a till that stays logged in. |
 | Design | `App.jsx` | Permission guards are duplicated between the tab array and the render block and must be kept in sync by hand. Adding a panel means editing both. |
 | UX | `PinLogin.jsx` | A wrong 4-digit PIN gives no feedback — deliberate, since 4-digit entry has to stay open for a 6-digit PIN to be typed. |
@@ -129,7 +129,8 @@ backend/app/
 | Privacy | `MpesaListenerService.kt` | Logs the first 50 characters of each M-Pesa message — code and amount — to logcat. |
 | Security | `AndroidManifest.xml` | `allowBackup="true"` with the webhook secret and API key in plain `SharedPreferences`; both are extractable via `adb backup`. |
 | Risk | `AndroidManifest.xml` | `default_filter_types="conversations,alerting"` (API 33+) may drop M-Pesa notifications if the SMS app posts them silently. Untested on Android 13+. |
-| Build | `android-sms-listener` | No `gradlew.bat`, so the project cannot be built from Windows. Generate one with `gradle wrapper` on a machine with a JDK that Gradle 8.2 supports (≤ 20; this machine has 25). |
+| Build | `android-sms-listener` | No `gradlew.bat`, so the project cannot be built from Windows. Generate one with `gradle wrapper` on a machine running **JDK 17** — Gradle 8.2 rejects JDK 21+, and AGP 8.2 rejects anything below 11. |
+| Untested | `android-sms-listener` | Nothing in this module has ever been compiled — the wrapper jar was missing and `gradle.properties` did not exist, so both the APK workflow and any local build failed before reaching the Kotlin. CI is the first real build; expect it to surface more. |
 
 ---
 
@@ -151,7 +152,7 @@ Done since the last handoff: 512×512 PWA icon shipped; Render moved off the fre
 ## Planned work
 
 | Feature | Notes |
-|---|---|
+| --- | --- |
 | Real-time multi-device sync | WebSocket hub — Phase B. Today's sync is a 45s pull plus reconnect-edge push, which is adequate but not live. |
 | Category icon set | Categories render as a coloured block with an initial; real icons for Grains, Sugar, Dairy, Oils, Bakery, Beverages, Spices, Household, Produce. |
 | Selling price history | Track price changes per product over time. |

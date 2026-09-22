@@ -39,7 +39,7 @@ thermal printing with a shared-printer queue for multi-till shops.
 ## Tech
 
 | Layer | Stack |
-|---|---|
+| --- | --- |
 | Frontend | React 19 · Vite 8 · Tailwind CSS 4 (CSS-first `@theme`) · Dexie 4 · Zustand 5 · vite-plugin-pwa |
 | Backend | FastAPI · Pydantic v2 · SQLAlchemy 2 · PostgreSQL |
 | Hosting | Vercel (frontend) · Render (API) · Neon (database) |
@@ -58,7 +58,7 @@ Backend setup, environment variables and deployment are in [docs/SETUP.md](docs/
 ## Documentation
 
 | Document | Covers |
-|---|---|
+| --- | --- |
 | [HANDOFF.md](HANDOFF.md) | Current state, what shipped, known issues, what's next |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it works: sync model, schemas, RBAC, VAT, code standards |
 | [docs/API.md](docs/API.md) | Backend endpoints, auth, client call sites |

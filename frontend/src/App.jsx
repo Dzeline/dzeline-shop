@@ -714,7 +714,7 @@ function App() {
         {/* Main Content — capped so rows don't stretch edge-to-edge on a wide
             monitor, which left the eye travelling across empty space. */}
         <main className="flex-1 min-h-0 overflow-hidden flex">
-          <div className="flex-1 min-w-0 h-full max-w-[1400px] mx-auto">
+          <div className="flex-1 min-w-0 h-full max-w-350 mx-auto">
             {activePanel === "products" && (
               <div className="h-full overflow-y-auto">
                 <ProductList />
@@ -741,7 +741,7 @@ function App() {
               component the phone shows full-screen, so checkout, receipt and
               sale completion have exactly one implementation. */}
           {showCartRail && (
-            <aside className="w-[380px] shrink-0 border-l border-white/5 bg-gray-900 overflow-y-auto">
+            <aside className="w-95 shrink-0 border-l border-white/5 bg-gray-900 overflow-y-auto">
               <Cart onNewSale={() => navigate("products")} />
             </aside>
           )}

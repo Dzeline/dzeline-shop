@@ -26,7 +26,7 @@ No user-visible change. Removes things that will actively mislead edits during t
 phases.
 
 | File | Change |
-|---|---|
+| --- | --- |
 | `frontend/tailwind.config.js` | **Delete.** It is a Tailwind v3 config in a v4 project (`@tailwindcss/vite`); it is not read. The live theme is the `@theme` block in `src/index.css:3`, which duplicates the same four colours. |
 | `frontend/src/index.css:96` | `.animate-pulse` is overridden with a light gradient (`#ececee`→`#dddde0`). Every skeleton renders as white blocks inside the `gray-900` shell. Change to dark stops (`#1f2937`→`#374151`) or scope the light version to the cards that are actually white. |
 | `dzeline-shop/` (nested dir) | **Not done — needs your call.** It is not stray clutter but a *gitlink* (mode 160000) pointing at this same GitHub repo at its "Initial commit", with no `.gitmodules` and a one-line uncommitted edit to its README. Removing it discards that edit and rewrites the parent index — unrelated to UI work, so it was left alone. |
@@ -96,14 +96,14 @@ Breakpoint convention for the project (write it down once, use it everywhere):
 ### New files
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `src/components/SideNav.jsx` | The `≥ lg` left rail: logo, shop name, the same tab list, staff pill at the bottom. Takes the existing `tabs` array as a prop. |
 | `src/components/AppShell.jsx` | Optional if `App.jsx` gets crowded: the grid wrapper (sidebar / main / cart rail). Can also stay inline in `App.jsx`. |
 
 ### Changed files
 
 | File | Change |
-|---|---|
+| --- | --- |
 | `App.jsx:560–625` | Lift the `tabs` array out of the render body so both `SideNav` and the bottom nav consume it. No logic change — permissions filtering stays. |
 | `App.jsx:628` | Root becomes a responsive grid: `lg:grid lg:grid-cols-[auto_1fr]` with `SideNav` in column 1. |
 | `App.jsx:690` | Bottom `<nav>` gets `lg:hidden`. |
@@ -139,7 +139,7 @@ Fixes sketch 3's third point ("the customer can't see the running total"). Depen
 phase 2's shell.
 
 | File | Change |
-|---|---|
+| --- | --- |
 | `src/components/Cart.jsx` | Split it. Extract the item list + totals (lines 82–166) into `CartPanel.jsx` so it can render in three places: the desktop rail, the mobile panel, and the expanded mobile sheet. `Cart.jsx` keeps the `cart / checkout / receipt` view switching and the sale-completion logic (32–61) — that stays in one place. |
 | `src/components/CartPanel.jsx` (new) | Presentational: items, qty steppers, VAT breakdown, total, Checkout button. Props: none it can't read from `cartStore`. |
 | `App.jsx` (main region) | On `lg`, Products renders as `grid-cols-[1fr_360px]` — product grid left, `CartPanel` right, permanently mounted. The cart nav tab hides on `lg` since the cart is always on screen. |
@@ -168,7 +168,7 @@ single code to fill a field and **must keep one-shot behaviour**. So continuous 
 opt-in via prop, not a behaviour change to the component's default.
 
 | File | Change |
-|---|---|
+| --- | --- |
 | `BarcodeScanner.jsx:19` | New prop `continuous = false`. When false, behaviour is exactly as today. |
 | `BarcodeScanner.jsx:53–58` | In continuous mode: do **not** call `controls.stop()`; instead keep a `lastCode`/`lastAt` ref and ignore the same code within ~1200ms (zxing fires many times per second on a held barcode). Keep the `navigator.vibrate?.(40)` per accepted scan. |
 | `BarcodeScanner.jsx` (overlay) | In continuous mode show a running tally — "3 items · KSh 450" — fed by a `summary` prop, plus a prominent **Done** button. Flash the frame green on an accepted read, red + a message on an unknown barcode, so the cashier gets feedback without leaving the camera. |
@@ -187,7 +187,7 @@ phone that is invisible; on a desktop till it is the difference between a usable
 unusable POS.
 
 | File | Change |
-|---|---|
+| --- | --- |
 | `src/hooks/useWedgeScanner.js` (new) | Global `keydown` listener detecting a fast burst of digits terminated by `Enter` (USB/Bluetooth scanners are keyboard-wedge devices: they *type*). Heuristic: ≥8 chars, inter-key gap < 35ms, ends on Enter. Ignore while focus is in an `input`/`textarea` unless the burst is unambiguous. Calls back with the code. **This is the single highest-value functional win for a desktop till** — wedge scanners are cheaper and far more reliable than a webcam. |
 | `App.jsx` | Mount `useWedgeScanner`, routing codes through the same `getProductByBarcode` → `addItem` path as `handleScan`, so camera and wedge share one code path. |
 | `src/hooks/useEscapeKey.js` (new) | `Esc` closes the topmost modal. Apply across the modal files (or bake it into `Sheet.jsx` from phase 2 — better, one place). |
@@ -207,7 +207,7 @@ clicking an account already swaps the tile grid for the keypad in place
 (`PinLogin.jsx:247`).
 
 | File | Change |
-|---|---|
+| --- | --- |
 | `PinLogin.jsx:97` | `min-h-screen` → `min-h-dvh` (matches the rest of the app; fixes mobile browser chrome). |
 | `PinLogin.jsx:116` | `max-w-sm` card on a 1920px screen is the "dead space" in sketch 1. On `lg`, widen the card and lay the staff grid out beside the branding rather than under it. |
 | `PinLogin.jsx:126,132` | `grid-cols-2` is fixed; with 4+ staff on desktop it stays a narrow two-column stack. `grid-cols-2 lg:grid-cols-3` or auto-fit. |
@@ -242,7 +242,7 @@ and 6 are what make the desktop stop looking like a stretched phone.
 New files:
 
 | File | Role |
-|---|---|
+| --- | --- |
 | `src/components/SideNav.jsx` | Desktop navigation rail (≥ lg) |
 | `src/components/CartBar.jsx` | Phone running-total bar above the bottom nav |
 | `src/utils/useMediaQuery.js` | `useSyncExternalStore` media-query hook + `DESKTOP_QUERY` |

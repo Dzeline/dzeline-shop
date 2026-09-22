@@ -14,7 +14,7 @@ npm run dev                 # → http://localhost:5173
 ```
 
 | Script | Does |
-|---|---|
+| --- | --- |
 | `dev` | Vite dev server with HMR |
 | `build` | Production build → `dist/` |
 | `preview` | Serve the built bundle |

@@ -16,7 +16,7 @@ On first run the setup wizard creates the shop and an admin. In development the 
 is `1234`.
 
 | Script | Does |
-|---|---|
+| --- | --- |
 | `npm run dev` | Vite dev server with HMR |
 | `npm run build` | Production build → `dist/` |
 | `npm run preview` | Serve the built bundle |
@@ -62,7 +62,7 @@ scanner properly on a real device.
 ### Backend (`backend/.env`)
 
 | Variable | Example | Required |
-|---|---|---|
+| --- | --- | --- |
 | `DATABASE_URL` | `postgresql://user:pass@host/db` | yes |
 | `ADMIN_SECRET` | 64-char random hex | yes |
 | `ALLOWED_ORIGINS` | `https://dzeline.online` | yes |
@@ -88,7 +88,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 ### Frontend (`frontend/.env.local`)
 
 | Variable | Example |
-|---|---|
+| --- | --- |
 | `VITE_API_URL` | `https://dzeline-api.onrender.com` |
 
 Anything prefixed `VITE_` is compiled into the client bundle and is **public**. Never put a
@@ -97,7 +97,7 @@ secret behind that prefix.
 ## Deployment
 
 | Layer | Platform | Config |
-|---|---|---|
+| --- | --- | --- |
 | Frontend | Vercel | `frontend/vercel.json`; auto-deploys on push to `main` |
 | Backend | Render | `render.yaml` at the repo root; `rootDir: backend` |
 | Database | Neon (PostgreSQL) | `DATABASE_URL`, set manually in the Render dashboard |
@@ -127,7 +127,17 @@ curl -X POST https://dzeline-api.onrender.com/admin/tenants \
 The response contains the raw API key **once** — it is stored hashed and cannot be read
 back. Lost keys are rotated, not recovered.
 
-## Android APK
+## Android apps
+
+There are two, and they are unrelated builds.
+
+### SMS listener (`android-sms-listener/`)
+
+The companion app that forwards M-Pesa confirmations. Needs **JDK 17** specifically — AGP
+8.2 publishes no Java 8 variant and Gradle 8.2 does not support JDK 21+. Build and setup
+instructions are in [../android-sms-listener/README.md](../android-sms-listener/README.md).
+
+### POS APK (TWA)
 
 The PWA is wrapped as an Android APK with Google's bubblewrap — a TWA shell around the
 hosted site, so there is no second codebase and no separate release to keep in step.

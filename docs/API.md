@@ -19,7 +19,7 @@ tenant is active and within its billing window. A device holding the key acts fo
 shop — there is no per-user API auth; staff PINs gate the UI only.
 
 | Route | Auth instead |
-|---|---|
+| --- | --- |
 | `/health` | public |
 | `/admin/*` | `X-Admin-Secret` header |
 | `/sms/webhook` | `?key=` tenant API key in the URL, plus `X-SMS-Secret` when the server has one configured |
@@ -39,7 +39,7 @@ endpoint: the client retries freely and assumes it is safe.
 ## Products
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/products/` | List the tenant's catalogue |
 | POST | `/products/` | Create a product |
 | PUT | `/products/{id}` | Update a product |
@@ -52,7 +52,7 @@ Cloud roster behind the multi-device staff sync. Deletes are soft (tombstoned) s
 offline delete is not resurrected by a pull.
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/staff` | List staff |
 | POST | `/staff` | Create staff member |
 | PUT | `/staff/{id}` | Update staff member |
@@ -61,7 +61,7 @@ offline delete is not resurrected by a pull.
 ## Suppliers
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/suppliers` | List suppliers |
 | POST | `/suppliers` | Create supplier |
 | PUT | `/suppliers/{id}` | Update supplier |
@@ -73,14 +73,14 @@ Cloud mirror of per-shop settings, so a second till adopts the shop's configurat
 of being set up from scratch.
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/settings` | Read shop settings |
 | PUT | `/settings` | Replace shop settings |
 
 ## Sync — transactions
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/sync/transactions` | Upload a completed sale with line items (idempotent by `local_id`) |
 | GET | `/sync/transactions` | List synced transactions (`skip`, `limit`) |
 | GET | `/sync/status` | `{ synced_transactions: int }` |
@@ -88,7 +88,7 @@ of being set up from scratch.
 ## Stock receipts
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/stock-receipts` | Upload a receipt and its items (idempotent by `local_id`) |
 | PUT | `/stock-receipts/{id}` | Update a receipt — how a manager activates a draft recorded on another device |
 | GET | `/stock-receipts` | List receipts (most recent first) |
@@ -102,7 +102,7 @@ Shared-printer queue. A till with no printer enqueues a job per sale; the device
 the hub in Settings polls and prints.
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/print-jobs` | Enqueue a receipt for the hub to print |
 | GET | `/print-jobs` | Hub polls for pending jobs |
 | PUT | `/print-jobs/{id}` | Mark a job printed or failed |
@@ -110,7 +110,7 @@ the hub in Settings polls and prints.
 ## M-Pesa
 
 | Method | Path | Auth | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | POST | `/mpesa/stk-push` | `X-API-Key` | Initiate STK Push against the customer's phone |
 | POST | `/mpesa/callback` | Safaricom IPs | Daraja posts the result here |
 | GET | `/mpesa/status/{id}` | `X-API-Key` | Poll the tracked `StkRequest` |
@@ -122,7 +122,7 @@ Fallback for when the Daraja callback never arrives: the shop's Android SMS list
 forwards M-Pesa confirmation texts, and tills reconcile against them.
 
 | Method | Path | Auth | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | POST | `/sms/webhook?key=<api-key>` | `?key=` + `X-SMS-Secret` | Receive an M-Pesa SMS from the shop device |
 | GET | `/sms/verified-codes?since=` | `X-API-Key` | Pull this tenant's codes since a timestamp |
 
@@ -139,7 +139,7 @@ alone would clear a sale of any size.
 ## eTIMS / KRA
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/etims/status` | Device status and environment |
 | GET / POST | `/etims/config` | Read / write KRA credentials |
 | POST | `/etims/branches` | Query the KRA branch registry |
@@ -153,7 +153,7 @@ Rate limited to **6 requests per minute per tenant**. Needs `ANTHROPIC_API_KEY` 
 backend.
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/scan/invoice` | Base64 invoice photo → `{ supplier, invoice_number, items[] }` |
 
 ## Admin
@@ -161,7 +161,7 @@ backend.
 All require `X-Admin-Secret`. These manage tenants, not shop data.
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/admin/tenants` | Create a tenant — returns the raw API key **once** |
 | GET | `/admin/tenants` | List tenants |
 | GET | `/admin/tenants/{id}` | Get one tenant |
@@ -184,7 +184,7 @@ Public, and the endpoint uptime checks should hit.
 Where each endpoint is actually called from, for tracing a change through the frontend:
 
 | File | Endpoint | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | `sync.js` | `/sync/transactions` | Reconnect, and after each sale |
 | `sync.js` | `/stock-receipts` (POST, PUT, GET) | Reconnect; manager activation |
 | `sync.js` | `/products` (push, pull) | Reconnect; 45s pull interval |
