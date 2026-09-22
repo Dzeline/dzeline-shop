@@ -155,10 +155,18 @@ export default function TransactionHistory({ onClose, canVoid = false }) {
                     )}
                     {txn.sms_mismatch && !isVoided && (
                       <span
-                        className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700"
-                        title="No matching SMS confirmation was found for this code — verify with the customer or M-Pesa statement"
+                        className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                          txn.sms_mismatch_reason === "amount"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                        title={
+                          txn.sms_mismatch_reason === "amount"
+                            ? `The M-Pesa SMS for this code was for ${formatPrice(txn.sms_amount ?? 0)}, not ${formatPrice(txn.total)} — check the customer's payment against this sale`
+                            : "No matching SMS confirmation was found for this code — verify with the customer or M-Pesa statement"
+                        }
                       >
-                        ⚠ Unverified
+                        {txn.sms_mismatch_reason === "amount" ? "⚠ Amount mismatch" : "⚠ Unverified"}
                       </span>
                     )}
                   </div>

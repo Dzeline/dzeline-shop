@@ -73,6 +73,37 @@
             android:singleLine="true"
             android:layout_marginBottom="18dp" />
 
+        <!-- ── Shop API key ── -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Shop API Key"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="#374151"
+            android:letterSpacing="0.08"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Identifies which shop a payment belongs to. Without it the backend rejects the webhook."
+            android:textSize="11sp"
+            android:textColor="#6B7280"
+            android:layout_marginBottom="6dp" />
+
+        <EditText
+            android:id="@+id/etApiKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Paste the shop's API key"
+            android:inputType="textPassword"
+            android:textSize="13sp"
+            android:padding="14dp"
+            android:background="#FFFFFF"
+            android:singleLine="true"
+            android:layout_marginBottom="18dp" />
+
         <!-- ── Secret ── -->
         <TextView
             android:layout_width="wrap_content"

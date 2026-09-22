@@ -468,11 +468,17 @@ export const dbHelpers = {
       .where("transaction_id").anyOf(txnIds).toArray();
     const mpesaMap = new Map(mpesaRecs.map((r) => [r.transaction_id, r.code]));
     const mismatchMap = new Map(mpesaRecs.map((r) => [r.transaction_id, !!r.sms_mismatch]));
+    // Why it was flagged, so the badge can say whether the SMS never arrived
+    // or arrived for a different amount — and what that amount was.
+    const mismatchReasonMap = new Map(mpesaRecs.map((r) => [r.transaction_id, r.sms_mismatch_reason ?? null]));
+    const smsAmountMap = new Map(mpesaRecs.map((r) => [r.transaction_id, r.sms_amount ?? null]));
 
     return txns.map((txn, i) => ({
       ...txn,
       mpesa_code: mpesaMap.get(txn.id) ?? txn.mpesa_code ?? null,
       sms_mismatch: mismatchMap.get(txn.id) ?? false,
+      sms_mismatch_reason: mismatchReasonMap.get(txn.id) ?? null,
+      sms_amount: smsAmountMap.get(txn.id) ?? null,
       origin: (txn.device_id && txn.device_id !== myDeviceId) ? "remote" : "local",
       items: allItems[i].map((item) => ({
         ...item,

@@ -258,8 +258,13 @@ What is actually true today, so nobody assumes more:
 - **Local data is not encrypted.** IndexedDB holds the catalogue, sales and hashed PINs in
   the clear; device-level security is the control. Do not store anything there you would
   not accept losing with the phone.
-- **Admin routes** need a separate `X-Admin-Secret`; the SMS webhook needs `X-SMS-Secret`;
-  the Daraja callback is restricted to Safaricom's IP ranges.
+- **Admin routes** need a separate `X-Admin-Secret`; the SMS webhook needs the shop's API
+  key as `?key=` plus `X-SMS-Secret` when configured; the Daraja callback is restricted to
+  Safaricom's IP ranges.
+- **An SMS confirmation is evidence, not proof.** The listener cannot verify a notification
+  really came from Safaricom — any app that posts a notification titled "MPESA" is
+  forwarded. Reconciliation therefore requires the code *and* the amount to agree, and
+  anything else is flagged for a person rather than auto-cleared.
 - **Secrets live in environment variables** only — never in the repo, never in the client
   bundle. Anything in `VITE_*` is public by definition.
 - HTTPS everywhere in production; invoice scanning is rate-limited to 6 req/min per tenant.

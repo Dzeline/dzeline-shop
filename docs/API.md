@@ -22,7 +22,7 @@ shop — there is no per-user API auth; staff PINs gate the UI only.
 |---|---|
 | `/health` | public |
 | `/admin/*` | `X-Admin-Secret` header |
-| `/sms/webhook` | `X-SMS-Secret` header |
+| `/sms/webhook` | `?key=` tenant API key in the URL, plus `X-SMS-Secret` when the server has one configured |
 | `/mpesa/callback` | restricted to Safaricom IP ranges |
 
 Clients must build headers with `apiHeaders()` / `apiGetHeaders()` from
@@ -123,8 +123,18 @@ forwards M-Pesa confirmation texts, and tills reconcile against them.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/sms/webhook` | `X-SMS-Secret` | Receive an M-Pesa SMS from the shop device |
-| GET | `/sms/verified-codes?since=` | `X-API-Key` | Pull codes since a timestamp |
+| POST | `/sms/webhook?key=<api-key>` | `?key=` + `X-SMS-Secret` | Receive an M-Pesa SMS from the shop device |
+| GET | `/sms/verified-codes?since=` | `X-API-Key` | Pull this tenant's codes since a timestamp |
+
+The `?key=` parameter is **required** — it says which shop the payment belongs
+to. It used to be optional, and a webhook authenticated by the shared secret
+alone stored its codes with `tenant_id = NULL`, which `verified-codes` then
+returned to *every* tenant: one shop could read another's confirmation codes,
+amounts and customer names, and reconcile its own sales against them. Unscoped
+writes are now rejected and reads are scoped strictly to the caller.
+
+Codes are matched on **both code and amount** during reconciliation. A code
+alone would clear a sale of any size.
 
 ## eTIMS / KRA
 

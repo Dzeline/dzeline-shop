@@ -73,7 +73,7 @@ scanner properly on a real device.
 | `MPESA_PASSKEY` | from the Daraja portal | for M-Pesa |
 | `MPESA_SHORTCODE_TYPE` | `paybill` or `till` | for M-Pesa |
 | `MPESA_CALLBACK_URL` | `https://dzeline-api.onrender.com/mpesa/callback` | for M-Pesa |
-| `SMS_WEBHOOK_SECRET` | 32-char random hex | for SMS reconciliation |
+| `SMS_WEBHOOK_SECRET` | 32-char random hex | optional second factor on the SMS webhook |
 | `ETIMS_ENV` | `sandbox` or `production` | for eTIMS |
 | `ETIMS_TIN` · `ETIMS_BHF_ID` · `ETIMS_DEVICE_SERIAL` | from KRA | for eTIMS |
 | `ANTHROPIC_API_KEY` | from console.anthropic.com | for invoice scanning |

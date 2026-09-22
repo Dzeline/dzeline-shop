@@ -124,6 +124,12 @@ backend/app/
 | Design | `App.jsx` | Permission guards are duplicated between the tab array and the render block and must be kept in sync by hand. Adding a panel means editing both. |
 | UX | `PinLogin.jsx` | A wrong 4-digit PIN gives no feedback — deliberate, since 4-digit entry has to stay open for a 6-digit PIN to be typed. |
 | Cleanup | `utils/constants.js` | `DB_VERSION = 8` is stale and unused; the real schema version is the migration chain in `db.js`, now at v14. Delete the constant rather than updating it. |
+| Security | `MpesaListenerService.kt` | The listener cannot tell a real Safaricom notification from one any installed app posts with the title "MPESA". Checking `sbn.packageName` against the device's SMS app would close most of this. Amount-matching in reconciliation limits the damage but does not remove it. |
+| Reliability | `MpesaListenerService.kt` | A failed webhook POST is not retried, and the notification fires once. For Pochi and manual till payments the SMS is the *only* confirmation that exists, so a delivery failure loses it permanently. Wants a small on-device queue. |
+| Privacy | `MpesaListenerService.kt` | Logs the first 50 characters of each M-Pesa message — code and amount — to logcat. |
+| Security | `AndroidManifest.xml` | `allowBackup="true"` with the webhook secret and API key in plain `SharedPreferences`; both are extractable via `adb backup`. |
+| Risk | `AndroidManifest.xml` | `default_filter_types="conversations,alerting"` (API 33+) may drop M-Pesa notifications if the SMS app posts them silently. Untested on Android 13+. |
+| Build | `android-sms-listener` | No `gradlew.bat`, so the project cannot be built from Windows. Generate one with `gradle wrapper` on a machine with a JDK that Gradle 8.2 supports (≤ 20; this machine has 25). |
 
 ---
 

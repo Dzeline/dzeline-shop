@@ -1,13 +1,9 @@
 package ke.dzeline.smslistener
 
 import android.app.Notification
-import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 class MpesaListenerService : NotificationListenerService() {
 
@@ -49,35 +45,16 @@ class MpesaListenerService : NotificationListenerService() {
     }
 
     private fun postWebhook(smsBody: String) {
-        val prefs      = getSharedPreferences("dzeline_sms", Context.MODE_PRIVATE)
-        val webhookUrl = prefs.getString("webhook_url", "").orEmpty()
-        val secret     = prefs.getString("webhook_secret", "").orEmpty()
+        val prefs = Webhook.prefs(this)
 
-        if (webhookUrl.isBlank()) {
-            Log.w(TAG, "Webhook URL not configured — notification discarded")
+        if (Webhook.endpoint(prefs) == null) {
+            Log.w(TAG, "Webhook URL or API key not configured — notification discarded")
             return
         }
 
         Thread {
             try {
-                val conn = URL(webhookUrl).openConnection() as HttpURLConnection
-                conn.requestMethod  = "POST"
-                conn.connectTimeout = 15_000
-                conn.readTimeout    = 15_000
-                conn.doOutput       = true
-                conn.setRequestProperty("Content-Type", "application/json")
-                if (secret.isNotBlank()) conn.setRequestProperty("X-SMS-Secret", secret)
-
-                val payload = JSONObject().apply {
-                    put("address", "MPESA")
-                    put("body",    smsBody)
-                    put("date",    System.currentTimeMillis())
-                }.toString().toByteArray()
-
-                conn.outputStream.use { it.write(payload) }
-                val code = conn.responseCode
-                conn.disconnect()
-
+                val code = Webhook.post(prefs, smsBody)
                 Log.i(TAG, "Webhook delivered — HTTP $code")
             } catch (e: Exception) {
                 Log.e(TAG, "Webhook failed: ${e.message}")

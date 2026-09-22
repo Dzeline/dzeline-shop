@@ -7,20 +7,30 @@ Endpoints:
   POST /sms/webhook          — receive SMS from Android notification listener
   GET  /sms/verified-codes   — frontend polls to reconcile pending codes
 
-Configure the Android app (android-sms-gateway or SMS Forwarder) with:
+Configure the Android listener with:
   URL:    https://<render-host>/sms/webhook?key=<your-api-key>
-  Header: X-SMS-Secret: <value of SMS_WEBHOOK_SECRET env var>
+  Header: X-SMS-Secret: <value of SMS_WEBHOOK_SECRET env var>   (optional second factor)
 
-The ?key= param scopes codes to that tenant. Without it the endpoint
-falls back to the shared SMS_WEBHOOK_SECRET and stores with tenant_id=NULL
-(single-shop backwards-compat — visible to all tenants via verified-codes).
+The ?key= param is REQUIRED — it identifies the shop, and every stored code is
+scoped to that tenant.
+
+Previously a webhook could authenticate with the shared SMS_WEBHOOK_SECRET
+alone and its codes were stored with tenant_id = NULL, which verified-codes
+then handed to *every* tenant. That leaked confirmation codes, amounts and
+customer names between shops, and let one shop's sale be reconciled against
+another shop's payment. Unscoped writes are now rejected, and reads are scoped
+strictly to the calling tenant.
+
+Migrating an existing deployment: point the listener at a ?key= URL (the
+Android app builds it from the API key field), then adopt any orphaned rows:
+
+    UPDATE sms_verified_codes SET tenant_id = <id> WHERE tenant_id IS NULL;
 """
 import hashlib
 import os
 import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -29,16 +39,24 @@ from ..models import SmsVerifiedCode, Tenant
 
 router = APIRouter(prefix="/sms", tags=["sms"])
 
+# Safaricom writes the amount as "Ksh1,000.00" or "KES 1,000.00" depending on
+# the message and the era, with the space optional. The two patterns below used
+# to disagree with each other about this — _RECEIVED demanded "KES" plus
+# whitespace, which never matches the "Ksh250.00" form, so real traffic could
+# be rejected as unrecognised_format while the app's own test message (written
+# in the "KES " spelling) passed. Accept both, space optional.
+_AMOUNT = r"(?:KES|Ksh)\s*([\d,]+\.?\d*)"
+
 # M-Pesa "you received" SMS (till / paybill / pochi incoming)
 _RECEIVED = re.compile(
-    r"^([A-Z0-9]{10})\s+confirmed\.\s+You have received\s+KES\s+([\d,]+\.?\d*)"
+    r"^([A-Z0-9]{10})\s+confirmed\.\s+You have received\s+" + _AMOUNT +
     r"\s+from\s+(.+?)\s+(0\d{2}[\*\d]+\d{3}|\d{9,12})\s+on",
     re.IGNORECASE,
 )
 
 # M-Pesa "paid to" SMS (customer's own outgoing confirmation)
 _PAID_TO = re.compile(
-    r"^([A-Z0-9]{10})\s+confirmed\.\s+Ksh([\d,]+\.?\d*)\s+paid to\s+(.+?)\s+on",
+    r"^([A-Z0-9]{10})\s+confirmed\.\s+" + _AMOUNT + r"\s+paid to\s+(.+?)\s+on",
     re.IGNORECASE,
 )
 
@@ -74,29 +92,33 @@ async def sms_webhook(
     """
     Receive SMS webhook from the Android device that holds the M-Pesa SIM.
 
-    Authentication — one of:
-      • ?key=<tenant-api-key>  in the URL  (preferred: scopes codes to that tenant)
-      • X-SMS-Secret header matching SMS_WEBHOOK_SECRET env var  (legacy single-shop)
+    Authentication:
+      • ?key=<tenant-api-key> in the URL — required; identifies the shop
+      • X-SMS-Secret header — additionally required when the server has
+        SMS_WEBHOOK_SECRET configured
     """
-    tenant_id = None
+    if not key:
+        # Refused rather than stored unscoped: a code with no tenant used to be
+        # readable by every shop on the deployment.
+        raise HTTPException(
+            status_code=401,
+            detail="Missing ?key= — the webhook URL must carry the shop's API key",
+        )
 
-    if key:
-        # Preferred: tenant identified by their API key — properly scoped
-        key_hash = hashlib.sha256(key.encode()).hexdigest()
-        tenant = db.query(Tenant).filter(
-            Tenant.api_key_hash == key_hash,
-            Tenant.active == True,  # noqa: E712
-        ).first()
-        if not tenant:
-            raise HTTPException(status_code=401, detail="Invalid API key in webhook URL")
-        tenant_id = tenant.id
-    else:
-        # Legacy: shared secret, stores with tenant_id=NULL
-        secret = os.getenv("SMS_WEBHOOK_SECRET", "")
-        if not secret:
-            raise HTTPException(status_code=503, detail="Webhook secret not configured on server")
-        if x_sms_secret != secret:
-            raise HTTPException(status_code=401, detail="Invalid SMS webhook secret")
+    key_hash = hashlib.sha256(key.encode()).hexdigest()
+    tenant = db.query(Tenant).filter(
+        Tenant.api_key_hash == key_hash,
+        Tenant.active == True,  # noqa: E712
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=401, detail="Invalid API key in webhook URL")
+    tenant_id = tenant.id
+
+    # Second factor when configured — the key sits in a URL, which is the more
+    # leakable half of the pair (logs, proxies, screenshots of the app).
+    secret = os.getenv("SMS_WEBHOOK_SECRET", "")
+    if secret and x_sms_secret != secret:
+        raise HTTPException(status_code=401, detail="Invalid SMS webhook secret")
 
     payload = await request.json()
     msg     = payload.get("message") or payload
@@ -137,17 +159,18 @@ def verified_codes(
     tenant: Tenant = Depends(get_tenant),
 ):
     """
-    Return codes received via SMS since the given ms-epoch timestamp.
-    Includes both tenant-scoped codes (webhook with ?key=) and unscoped
-    codes stored before multi-tenant support was added (tenant_id = NULL).
+    Return this tenant's codes received via SMS since the given ms-epoch
+    timestamp.
+
+    Scoped strictly to the calling tenant. Rows with tenant_id = NULL — written
+    by the old unscoped webhook path — are deliberately NOT returned: handing
+    them to every tenant is what leaked payment data between shops. Adopt any
+    such rows with the UPDATE in this module's docstring.
     """
     rows = (
         db.query(SmsVerifiedCode)
         .filter(
-            or_(
-                SmsVerifiedCode.tenant_id == tenant.id,
-                SmsVerifiedCode.tenant_id.is_(None),
-            ),
+            SmsVerifiedCode.tenant_id == tenant.id,
             SmsVerifiedCode.created_at > since,
         )
         .order_by(SmsVerifiedCode.created_at.asc())

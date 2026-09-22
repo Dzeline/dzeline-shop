@@ -17,6 +17,49 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "";
 // versa, since both touch the same tables.
 let _syncInFlight = false;
 
+// Grace period for the SMS gateway to catch up before a still-unmatched code
+// is treated as a problem rather than a delay.
+const SMS_STALE_MS = 6 * 60 * 60 * 1000;
+
+// Cash amounts, so a cent of float drift must not fail a match.
+const AMOUNT_EPSILON = 0.01;
+
+/**
+ * Decide what a pending M-Pesa/Pochi code's SMS evidence means.
+ *
+ * Pulled out of the reconcile loop and exported so it can be tested directly:
+ * this is the check that decides whether a sale counts as paid, and it is the
+ * one place a mistake turns into money.
+ *
+ * @param pending  the pending_mpesa row  ({ amount, timestamp })
+ * @param sms      the matching SMS code from the backend, or null/undefined
+ * @returns { action: "verify" | "flag" | "wait", reason?, smsAmount? }
+ */
+export function classifySmsMatch(pending, sms, now = Date.now()) {
+  if (!sms) {
+    // Not seen yet. Only a problem once the gateway has had time to deliver.
+    return now - pending.timestamp > SMS_STALE_MS
+      ? { action: "flag", reason: "not_found" }
+      : { action: "wait" };
+  }
+
+  const expected = typeof pending.amount === "number" ? pending.amount : null;
+  const paid = typeof sms.amount === "number" ? sms.amount : null;
+
+  // Legacy rows predate the amount field, and an SMS may parse without one.
+  // Nothing to compare, so fall back to code-only rather than flagging a
+  // shop's entire history.
+  if (expected === null || paid === null) return { action: "verify" };
+
+  if (Math.abs(paid - expected) < AMOUNT_EPSILON) {
+    return { action: "verify", smsAmount: paid };
+  }
+
+  // Right code, wrong money — under- or overpayment, or a code borrowed from
+  // another transaction. A person needs to look at it.
+  return { action: "flag", reason: "amount", smsAmount: paid };
+}
+
 async function _withSyncGuard(fn) {
   if (_syncInFlight) return { skipped: true };
   _syncInFlight = true;
@@ -323,14 +366,18 @@ export const syncService = {
    * offline or when STK Push wasn't used) against codes actually seen by the
    * SMS gateway on the shop's till phone.
    *
-   * Matches are marked verified. A code that's been pending for longer than
-   * STALE_MS with no matching SMS gets flagged (sms_mismatch) for admin
-   * review in Transaction History — the sale itself is never auto-voided,
-   * since the goods have already left the shop.
+   * A match must agree on BOTH the code and the amount. Matching the code
+   * alone meant any real confirmation code cleared a sale of any size — a
+   * KES 50 code verified a KES 5,000 sale — so a cashier who had seen any
+   * M-Pesa message could clear a sale with it.
+   *
+   * Anything else is flagged (sms_mismatch) for admin review in Transaction
+   * History: a code whose amount disagrees, or a code still unseen after
+   * SMS_STALE_MS. The sale is never auto-voided — the goods have already left
+   * the shop, so this is a human's decision.
    */
   async reconcileSmsCodes() {
     if (!API_BASE) return { verified: 0, flagged: 0 };
-    const STALE_MS = 6 * 60 * 60 * 1000; // 6h grace period for the SMS gateway to catch up
     const since = Date.now() - 24 * 60 * 60 * 1000; // look back 24h of SMS codes
 
     let verified = 0;
@@ -349,11 +396,21 @@ export const syncService = {
         .toArray();
 
       for (const p of unverified) {
-        if (smsByCode.has(String(p.code).toUpperCase())) {
-          await db.pending_mpesa.update(p.id, { verified: true });
+        const sms = smsByCode.get(String(p.code).toUpperCase());
+        const verdict = classifySmsMatch(p, sms);
+
+        if (verdict.action === "verify") {
+          await db.pending_mpesa.update(p.id, {
+            verified: true,
+            ...(verdict.smsAmount != null ? { sms_amount: verdict.smsAmount } : {}),
+          });
           verified++;
-        } else if (Date.now() - p.timestamp > STALE_MS) {
-          await db.pending_mpesa.update(p.id, { sms_mismatch: true });
+        } else if (verdict.action === "flag") {
+          await db.pending_mpesa.update(p.id, {
+            sms_mismatch: true,
+            sms_mismatch_reason: verdict.reason,
+            ...(verdict.smsAmount != null ? { sms_amount: verdict.smsAmount } : {}),
+          });
           flagged++;
         }
       }

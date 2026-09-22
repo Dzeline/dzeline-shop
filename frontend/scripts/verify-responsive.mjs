@@ -82,6 +82,24 @@ async function seed(page) {
   await page.waitForTimeout(1200);
 }
 
+/**
+ * Poll until `predicate(value)` holds, or give up.
+ *
+ * Used instead of a fixed sleep after the wedge-scanner keystrokes: on the
+ * first viewport the dev server is still compiling on demand, so a flat 500ms
+ * wait made the suite fail intermittently on a cold start — which is worse
+ * than no test, because it trains you to ignore the result.
+ */
+async function waitFor(read, predicate, timeoutMs = 10000, stepMs = 150) {
+  const deadline = Date.now() + timeoutMs;
+  let value = await read();
+  while (!predicate(value) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, stepMs));
+    value = await read();
+  }
+  return value;
+}
+
 // The cart is persisted by zustand, so this reads what the app actually holds
 // rather than what happens to be painted.
 async function cartItems(page) {
@@ -117,6 +135,18 @@ async function login(page, { keyboard }) {
 for (const vp of VIEWPORTS) {
   console.log(`\n── ${vp.name} (${vp.width}×${vp.height}) ──`);
   const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+
+  // Cut the app off from the network. On a cold start it fires a full sync,
+  // and against an unreachable backend (CORS failure, or the service simply
+  // suspended) that is dozens of retrying fetches competing with the
+  // IndexedDB reads this suite is actually measuring — which made the
+  // wedge-scanner check fail intermittently on the first viewport. These are
+  // offline UI tests; the app is built to work with no backend at all, so
+  // blocking is both realistic and deterministic.
+  await ctx.route("**/*", (route) =>
+    route.request().url().startsWith(BASE) ? route.continue() : route.abort(),
+  );
+
   const page = await ctx.newPage();
   await seed(page);
 
@@ -177,8 +207,10 @@ for (const vp of VIEWPORTS) {
   await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.type("6000000000000", { delay: 6 });
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(500);
-  const afterWedge = await cartItems(page);
+  const afterWedge = await waitFor(
+    () => cartItems(page),
+    (items) => items.length > cartBefore.length,
+  );
   check(
     "wedge scanner adds the scanned product to the cart",
     afterWedge.length > cartBefore.length,
@@ -189,7 +221,9 @@ for (const vp of VIEWPORTS) {
   await search.click();
   await page.keyboard.type("6000000000002", { delay: 6 });
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(500);
+  // Nothing should happen here, so there is no state change to wait on — a
+  // fixed pause is correct for a negative assertion.
+  await page.waitForTimeout(800);
   const afterTyping = await cartItems(page);
   check(
     "wedge scanner ignores keystrokes typed into a field",
