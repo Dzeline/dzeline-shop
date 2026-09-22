@@ -25,3 +25,6 @@ dist-ssr
 
 .vercel
 .env*
+
+# Output of npm run verify:responsive — regenerated on every run
+scripts/screenshots

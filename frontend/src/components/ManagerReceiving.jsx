@@ -221,7 +221,7 @@ export default function ManagerReceiving({ onCountChange }) {
   return (
     <div className="px-4 pt-4 pb-2 space-y-3">
       <div className="flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+        <span className="w-2 h-2 rounded-full bg-amber-400 animate-dot-pulse" />
         <p className="text-xs font-bold text-amber-600 uppercase tracking-wide">
           {receipts.length} pending review
         </p>

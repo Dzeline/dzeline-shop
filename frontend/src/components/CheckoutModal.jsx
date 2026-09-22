@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { formatPrice } from "../utils/formatters";
 import { useSettingsStore } from "../store/settingsStore";
 import { useOnline } from "../utils/useOnline";
@@ -419,6 +420,10 @@ function PochiTab({ grandTotal, onComplete }) {
 
 export default function CheckoutModal({ items, subtotal, vat, grandTotal, onComplete, onCancel }) {
   const [tab, setTab] = useState("cash");
+  // Escape backs out of cash checkout only. On the M-Pesa tab an STK push may
+  // be in flight against the customer's phone, and a stray keypress must not
+  // make the cashier lose sight of a payment that is still happening.
+  useEscapeKey(onCancel, tab === "cash");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const vatEnabled = useSettingsStore((s) => s.vatEnabled);

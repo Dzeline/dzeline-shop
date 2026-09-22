@@ -214,17 +214,24 @@ export const dbHelpers = {
     return [...set];
   },
 
-  // Search products by name or barcode — excludes soft-deleted rows
+  // Search products by name or barcode — excludes soft-deleted rows.
+  //
+  // Every field here is optional in practice: CSV import writes `barcode: null`
+  // and no `tags` key at all (CsvImport.rowToProduct), and sync pull writes
+  // `barcode: p.barcode ?? null`. Reaching straight for `.includes`/`.some`
+  // threw inside the Dexie filter for those rows, which rejected the whole
+  // query — so a catalog onboarded by CSV had search silently return nothing.
   async searchProducts(query) {
     const lowerQuery = query.toLowerCase();
     return await db.products
-      .filter(
-        (p) =>
-          p.active !== false &&
-          (p.name.toLowerCase().includes(lowerQuery) ||
-            p.barcode.includes(query) ||
-            p.tags.some((tag) => tag.includes(lowerQuery))),
-      )
+      .filter((p) => {
+        if (p.active === false) return false;
+        if ((p.name ?? "").toLowerCase().includes(lowerQuery)) return true;
+        if ((p.barcode ?? "").includes(query)) return true;
+        return (p.tags ?? []).some((tag) =>
+          (tag ?? "").toLowerCase().includes(lowerQuery),
+        );
+      })
       .toArray();
   },
 

@@ -17,7 +17,9 @@ export default defineConfig({
         theme_color: "#2563eb",
         background_color: "#1e1b4b",
         display: "standalone",
-        orientation: "portrait",
+        // "any", not "portrait" — an installed desktop till window is
+        // landscape, and locking the manifest to portrait fought that.
+        orientation: "any",
         start_url: "/",
         icons: [
           // SVG fallback for browsers that support it

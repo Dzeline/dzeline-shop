@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { dbHelpers } from "../services/db";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 const PAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "✓"];
 
@@ -12,6 +13,7 @@ function maskPhone(phone) {
 }
 
 export default function PinRecovery({ onClose }) {
+  useEscapeKey(onClose);
   const [step, setStep] = useState("verify"); // "verify" | "reset" | "done"
   const [storedPhone, setStoredPhone] = useState("");
   const [phoneHint, setPhoneHint] = useState("");

@@ -432,9 +432,9 @@ export default function StockReceiving({ currentStaffId, onClose }) {
 
       {/* Scan source chooser */}
       {showScanMenu && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowScanMenu(false)} />
-          <div className="relative w-full max-w-sm bg-white rounded-t-3xl p-5 pb-8 space-y-3 shadow-2xl">
+          <div className="relative w-full max-w-sm bg-white rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-5 space-y-3 shadow-2xl">
             <p className="text-sm font-bold text-gray-700 text-center mb-4">Add Invoice Photo</p>
             <label
               className="flex items-center gap-4 p-4 bg-violet-50 border-2 border-violet-200 rounded-2xl cursor-pointer hover:bg-violet-100 transition active:scale-[0.98]"

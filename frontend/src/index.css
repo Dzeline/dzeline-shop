@@ -35,14 +35,15 @@ body {
 }
 
 /* Toast animations */
+/* Opacity only — the toast is centred with -translate-x-1/2 on phones but
+   corner-anchored at lg, so a keyframe that sets `transform` itself would
+   fight the utility class at one width or the other. */
 @keyframes fade-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 20px);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, 0);
   }
 }
 
@@ -93,10 +94,29 @@ body {
   100% { background-position: 200% 0; }
 }
 
+/* Skeletons sit on the gray-900 shell, so the shimmer is dark by default.
+   Cards that are themselves white opt into the light shimmer instead. */
 .animate-pulse {
+  background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.animate-pulse-light {
   background: linear-gradient(90deg, #ececee 25%, #dddde0 50%, #ececee 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* Pulsing status dot. Distinct from .animate-pulse, whose shimmer gradient
+   would paint over the dot's own colour. */
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+.animate-dot-pulse {
+  animation: dot-pulse 1.6s ease-in-out infinite;
 }
 
 /* Login card — falls from above with a soft bounce */
@@ -110,6 +130,25 @@ body {
 
 .animate-drop-in {
   animation: drop-in 0.62s cubic-bezier(0.34, 1.2, 0.64, 1) both;
+}
+
+/* Login logo — swings in with a single rotation and settles. One-shot on
+   mount: a looping spin behind a PIN pad wears out by the tenth login. */
+@keyframes logo-in {
+  0%   { opacity: 0; transform: rotate(-190deg) scale(0.55); }
+  65%  { opacity: 1; transform: rotate(8deg)    scale(1.06); }
+  82%  {             transform: rotate(-3deg)   scale(0.985); }
+  100% { opacity: 1; transform: rotate(0deg)    scale(1); }
+}
+
+.animate-logo-in {
+  animation: logo-in 0.85s cubic-bezier(0.34, 1.12, 0.64, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-logo-in {
+    animation: fade-logo 0.3s ease-out both;
+  }
 }
 
 /* Login logo — fades in and rises gently */
@@ -160,6 +199,15 @@ body {
 }
 .btn-press:active {
   transform: scale(0.97);
+}
+
+/* Keyboard focus. Touch and mouse users never see this (:focus-visible only
+   fires for keyboard navigation), but on a desktop till it is the only way to
+   tell where you are without reaching for the mouse. */
+:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Safe area padding for bottom nav on iOS */

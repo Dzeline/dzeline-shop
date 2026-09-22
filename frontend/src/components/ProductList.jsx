@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { dbHelpers } from "../services/db";
 import { useCartStore } from "../store/cartStore";
 import { useDebounce } from "../utils/useDebounce";
@@ -28,6 +28,34 @@ const CATEGORY_ACCENT = {
 
 function accent(category) {
   return CATEGORY_ACCENT[category] ?? CATEGORY_ACCENT.Other;
+}
+
+// One definition so the skeleton and the real grid can never drift apart.
+//
+// Container queries, not viewport breakpoints: the grid shares its row with the
+// cart rail on a desktop till, so how many columns fit depends on the space
+// this list actually got, not on how wide the monitor is.
+const GRID_CLASS =
+  "grid grid-cols-3 gap-2 @2xl:grid-cols-4 @5xl:grid-cols-5 @6xl:grid-cols-6";
+
+function SkeletonGrid() {
+  return (
+    <div className={GRID_CLASS}>
+      {Array.from({ length: 9 }).map((_, i) => (
+        <div key={i} className="bg-gray-800 rounded-3xl overflow-hidden">
+          <div className="h-24 animate-pulse" />
+          <div className="p-2.5 space-y-2 pt-3">
+            <div className="h-2 bg-gray-700 rounded w-2/3" />
+            <div className="h-3 bg-gray-700 rounded w-full" />
+            <div className="h-3 bg-gray-700 rounded w-4/5" />
+            <div className="h-1 bg-gray-700 rounded-full mt-2" />
+            <div className="h-3.5 bg-gray-700 rounded w-1/2 mt-1" />
+            <div className="h-7 bg-gray-700 rounded-2xl mt-2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function StockBar({ stock, reorderLevel }) {
@@ -66,19 +94,25 @@ export default function ProductList() {
   const [editMode, setEditMode] = useState(false);
 
   const addItem = useCartStore((state) => state.addItem);
+  const cartCount = useCartStore((state) => state.getItemCount());
+  const cartTotal = useCartStore((state) => state.getTotal());
   const { can, role } = usePermissions();
   const canEdit = can(FEATURES.EDIT_PRODUCTS);
   const isAdmin = role === "admin";
   const debouncedSearch = useDebounce(search, 300);
 
-  const loadProducts = useCallback(async () => {
-    setLoading(true);
+  // `loading` drives the skeleton, which only ever replaces the grid — never
+  // the toolbar. Refetches (clearing the search box, finishing an import) pass
+  // silent:true so the search input is not torn down mid-typing.
+  const loadProducts = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       setProducts(await dbHelpers.getAllProducts());
     } catch (err) {
       console.error("Failed to load products:", err);
+      showToast("Couldn't load products");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -86,15 +120,22 @@ export default function ProductList() {
     try {
       setProducts(await dbHelpers.searchProducts(query));
     } catch (err) {
+      // Silent failure here used to leave the grid showing stale results with
+      // no sign anything had gone wrong.
       console.error("Search failed:", err);
+      showToast("Search failed");
     }
   }, []);
 
-  useEffect(() => { loadProducts(); }, [loadProducts]);
-
+  // One effect for both the first load and every query change — two effects
+  // meant every mount fetched the catalog twice.
+  const firstLoad = useRef(true);
   useEffect(() => {
-    if (debouncedSearch.trim() === "") loadProducts();
-    else searchProducts(debouncedSearch);
+    const silent = !firstLoad.current;
+    firstLoad.current = false;
+    const query = debouncedSearch.trim();
+    if (query === "") loadProducts({ silent });
+    else searchProducts(query);
   }, [debouncedSearch, loadProducts, searchProducts]);
 
   function handleAddToCart(product) {
@@ -102,42 +143,23 @@ export default function ProductList() {
     showToast(`${product.name} added`);
   }
 
+  // Continuous mode: the scanner stays open and reports the outcome in-camera,
+  // so a basket of twenty items is twenty scans rather than twenty trips
+  // through the open-camera / close-camera cycle.
   const handleScan = useCallback(async (barcode) => {
-    setShowScanner(false);
     const product = await dbHelpers.getProductByBarcode(barcode);
     if (product) {
       addItem({ ...product });
-      showToast(`${product.name} added`);
-    } else {
-      setSearch(barcode);
-      showToast(`Barcode ${barcode} — not found`);
+      return { ok: true, message: `${product.name} added` };
     }
+    // Remembered so closing the scanner leaves the unknown code in the search
+    // box, where it can be looked up or added as a new product.
+    setSearch(barcode);
+    return { ok: false, message: `${barcode} — not in catalog` };
   }, [addItem]);
 
-  if (loading) {
-    return (
-      <div className="bg-gray-900 px-2.5 pt-3">
-        <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-3xl overflow-hidden animate-pulse">
-              <div className="h-1.5 bg-gray-200" />
-              <div className="p-2.5 space-y-2 pt-3">
-                <div className="h-2 bg-gray-100 rounded w-2/3" />
-                <div className="h-3 bg-gray-100 rounded w-full" />
-                <div className="h-3 bg-gray-100 rounded w-4/5" />
-                <div className="h-1 bg-gray-100 rounded-full mt-2" />
-                <div className="h-3.5 bg-gray-100 rounded w-1/2 mt-1" />
-                <div className="h-7 bg-gray-100 rounded-2xl mt-2" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-gray-900 px-2.5 pt-3 pb-3">
+    <div className="@container bg-gray-900 px-2.5 pt-3 pb-3">
       {/* Search + Scan + Edit Mode + Add */}
       <div className="flex gap-2 mb-3">
         <div className="relative flex-1">
@@ -215,7 +237,9 @@ export default function ProductList() {
       )}
 
       {/* Product Grid */}
-      {products.length === 0 ? (
+      {loading ? (
+        <SkeletonGrid />
+      ) : products.length === 0 ? (
         search.trim() ? (
           <div className="text-center text-gray-500 mt-20">
             <p className="text-lg font-semibold text-gray-400">No products found</p>
@@ -250,7 +274,7 @@ export default function ProductList() {
           </div>
         )
       ) : (
-        <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
+        <div className={GRID_CLASS}>
           {products.map((product, idx) => {
             const col = accent(product.category);
             const outOfStock = product.stock === 0;
@@ -369,13 +393,15 @@ export default function ProductList() {
       {showImport && (
         <CsvImport
           onClose={() => setShowImport(false)}
-          onImported={() => { setShowImport(false); loadProducts(); }}
+          onImported={() => { setShowImport(false); loadProducts({ silent: true }); }}
         />
       )}
 
       {showScanner && (
         <Suspense fallback={null}>
           <BarcodeScanner
+            continuous
+            summary={{ count: cartCount, total: cartTotal }}
             onScan={handleScan}
             onClose={() => setShowScanner(false)}
           />

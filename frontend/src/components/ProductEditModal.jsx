@@ -7,6 +7,7 @@ import { mergeCategories } from "../utils/categories";
 import { compressImage } from "../utils/imageCompression";
 import { usePermissions } from "../hooks/usePermissions";
 import { FEATURES } from "../utils/permissions";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 // Lazy-loaded: pulls in the zxing decoder, only needed once the scanner opens.
 const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
@@ -15,6 +16,7 @@ const LABEL = "text-sm font-semibold text-gray-700 mb-1.5 block";
 const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary";
 
 export default function ProductEditModal({ product, onSave, onDelete, onClose }) {
+  useEscapeKey(onClose);
   const { can } = usePermissions();
   const [name, setName] = useState(product.name);
   const [price, setPrice] = useState(String(product.price));

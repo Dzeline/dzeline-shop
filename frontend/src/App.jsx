@@ -1,6 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import ProductList from "./components/ProductList";
 import Cart from "./components/Cart";
+import SideNav from "./components/SideNav";
+import CartBar from "./components/CartBar";
 import PinLogin from "./components/PinLogin";
 import SetupWizard from "./components/SetupWizard";
 import JoinShop from "./components/JoinShop";
@@ -16,11 +18,14 @@ import EtimsModal from "./components/EtimsModal";
 import FinanceDashboard from "./components/FinanceDashboard";
 import SalesExport from "./components/SalesExport";
 import { useOnline } from "./utils/useOnline";
+import { useMediaQuery, DESKTOP_QUERY } from "./utils/useMediaQuery";
 import { useCartStore } from "./store/cartStore";
 import { useStaffStore } from "./store/staffStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useNavStore } from "./store/navStore";
 import { usePermissions } from "./hooks/usePermissions";
+import { useWedgeScanner } from "./hooks/useWedgeScanner";
+import { showToast } from "./utils/toast";
 import { FEATURES, ROLE_LABELS } from "./utils/permissions";
 import { db, dbHelpers } from "./services/db";
 import { syncService } from "./services/sync";
@@ -437,10 +442,30 @@ function App() {
   const loadSettings = useSettingsStore((s) => s.load);
   const shopName = useSettingsStore((s) => s.shopName);
   const itemCount = useCartStore((state) => state.getItemCount());
+  const addItem = useCartStore((state) => state.addItem);
   const currentStaff = useStaffStore((s) => s.currentStaff);
   const logout = useStaffStore((s) => s.logout);
   const { panel, sub, navigate, navigateSub } = useNavStore();
   const { can } = usePermissions();
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
+
+  // A USB/Bluetooth barcode scanner types the code and hits Enter. Routed
+  // through the same lookup the camera scanner uses, so both paths behave
+  // identically. Only live on the selling screens, and only once someone is
+  // logged in — a stray burst shouldn't drop items into a cart nobody owns.
+  const handleWedgeScan = useCallback(async (code) => {
+    const product = await dbHelpers.getProductByBarcode(code);
+    if (product) {
+      addItem({ ...product });
+      showToast(`${product.name} added`);
+    } else {
+      showToast(`${code} — not in catalog`);
+    }
+  }, [addItem]);
+
+  useWedgeScanner(handleWedgeScan, {
+    enabled: Boolean(currentStaff) && (panel === "products" || panel === "cart"),
+  });
 
   useEffect(() => {
     dbHelpers.isSetupComplete().then(async (done) => {
@@ -509,7 +534,7 @@ function App() {
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="w-1.5 h-1.5 rounded-full bg-white/30 animate-pulse"
+              className="w-1.5 h-1.5 rounded-full bg-white/30 animate-dot-pulse"
               style={{ animationDelay: `${i * 0.2}s` }}
             />
           ))}
@@ -556,6 +581,12 @@ function App() {
   }
 
   const showInstallBanner = installPrompt && !isStandalone && !installDismissed;
+
+  // At lg the cart is a permanent rail beside the product grid, so it is not
+  // somewhere you navigate to. A resize while sitting on the cart panel would
+  // otherwise leave the cart rendered twice, side by side.
+  const activePanel = isDesktop && panel === "cart" ? "products" : panel;
+  const showCartRail = isDesktop && activePanel === "products";
 
   const tabs = [
     {
@@ -625,80 +656,114 @@ function App() {
   ];
 
   return (
-    <div className="h-dvh flex flex-col bg-gray-900 overflow-hidden">
+    <div className="h-dvh flex bg-gray-900 overflow-hidden">
       <UpdateBanner />
 
-      {/* Header */}
-      <header
-        className="sticky-header shrink-0 text-white px-4 py-3"
-        style={{ background: getHeaderGradient(currentStaff) }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold tracking-tight leading-tight">{shopName}</h1>
-            {panelTitle && (
-              <p className="text-white/50 text-xs">{panelTitle}</p>
+      {/* Desktop navigation rail — replaced by the bottom tab bar below lg.
+          The cart tab is dropped here: at this width the cart is always on
+          screen in the rail. */}
+      <SideNav
+        tabs={tabs.filter((t) => t.id !== "cart")}
+        panel={activePanel}
+        onNavigate={navigate}
+        shopName={shopName}
+        isOnline={isOnline}
+      />
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Header */}
+        <header
+          className="sticky-header shrink-0 text-white px-4 py-3"
+          style={{ background: getHeaderGradient(currentStaff) }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              {/* Below lg the shop name lives here; at lg it moves to the rail,
+                  so the header leads with the panel instead of repeating it. */}
+              <h1 className="text-lg font-bold tracking-tight leading-tight lg:hidden">{shopName}</h1>
+              {panelTitle && (
+                <p className="text-white/50 text-xs lg:hidden">{panelTitle}</p>
+              )}
+              <h1 className="hidden lg:block text-lg font-bold tracking-tight leading-tight">
+                {panelTitle || shopName}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <div
+                className={`w-2.5 h-2.5 rounded-full ring-2 ring-white/20 lg:hidden ${isOnline ? "bg-green-400" : "bg-red-400"}`}
+                title={isOnline ? "Online" : "Offline"}
+              />
+              <StaffPill staff={currentStaff} onLogout={logout} />
+            </div>
+          </div>
+        </header>
+
+        {!isOnline && (
+          <div className="shrink-0 bg-amber-500 text-amber-950 px-4 py-1.5 flex items-center gap-2 text-xs font-semibold">
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 12h.01M8.464 8.464a5 5 0 000 7.072M15.536 8.464a5 5 0 010 7.072" />
+            </svg>
+            Offline — sales save locally and sync automatically when reconnected
+          </div>
+        )}
+
+        {showInstallBanner && (
+          <InstallBanner onInstall={handleInstall} onDismiss={handleDismissInstall} />
+        )}
+
+        {/* Main Content — capped so rows don't stretch edge-to-edge on a wide
+            monitor, which left the eye travelling across empty space. */}
+        <main className="flex-1 min-h-0 overflow-hidden flex">
+          <div className="flex-1 min-w-0 h-full max-w-[1400px] mx-auto">
+            {activePanel === "products" && (
+              <div className="h-full overflow-y-auto">
+                <ProductList />
+              </div>
+            )}
+            {activePanel === "cart" && (
+              <div className="h-full overflow-y-auto">
+                <Cart onNewSale={() => navigate("products")} />
+              </div>
+            )}
+            {activePanel === "stock" && can(FEATURES.STOCK) && (
+              <StockPanel sub={sub} navigateSub={navigateSub} currentStaffId={currentStaff.id} />
+            )}
+            {activePanel === "reports" && can(FEATURES.REPORTS) && (
+              <ReportsPanel sub={sub} navigateSub={navigateSub} />
+            )}
+            {(activePanel === "settings") && (can(FEATURES.SETTINGS) || can(FEATURES.ETIMS)) && (
+              <SettingsPanel sub={sub} navigateSub={navigateSub} currentStaffId={currentStaff.id} />
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-2.5 h-2.5 rounded-full ring-2 ring-white/20 ${isOnline ? "bg-green-400" : "bg-red-400"}`}
-              title={isOnline ? "Online" : "Offline"}
+
+          {/* Cart rail — the running total stays in front of the cashier and
+              the customer instead of hiding behind a nav tab. Same <Cart>
+              component the phone shows full-screen, so checkout, receipt and
+              sale completion have exactly one implementation. */}
+          {showCartRail && (
+            <aside className="w-[380px] shrink-0 border-l border-white/5 bg-gray-900 overflow-y-auto">
+              <Cart onNewSale={() => navigate("products")} />
+            </aside>
+          )}
+        </main>
+
+        {/* Running total while shopping on a phone — the rail's stand-in */}
+        {activePanel === "products" && <CartBar onOpenCart={() => navigate("cart")} />}
+
+        {/* Bottom Navigation — the rail takes over at lg */}
+        <nav className="lg:hidden shrink-0 bg-gray-950/95 backdrop-blur-md border-t border-white/5 divide-x divide-white/5 flex shadow-2xl pb-safe">
+          {tabs.map((tab) => (
+            <NavTab
+              key={tab.id}
+              label={tab.label}
+              icon={tab.icon}
+              active={panel === tab.id}
+              badge={tab.badge}
+              onClick={() => navigate(tab.id)}
             />
-            <StaffPill staff={currentStaff} onLogout={logout} />
-          </div>
-        </div>
-      </header>
-
-      {!isOnline && (
-        <div className="shrink-0 bg-amber-500 text-amber-950 px-4 py-1.5 flex items-center gap-2 text-xs font-semibold">
-          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 12h.01M8.464 8.464a5 5 0 000 7.072M15.536 8.464a5 5 0 010 7.072" />
-          </svg>
-          Offline — sales save locally and sync automatically when reconnected
-        </div>
-      )}
-
-      {showInstallBanner && (
-        <InstallBanner onInstall={handleInstall} onDismiss={handleDismissInstall} />
-      )}
-
-      {/* Main Content */}
-      <main className="flex-1 min-h-0 overflow-hidden">
-        {panel === "products" && (
-          <div className="h-full overflow-y-auto">
-            <ProductList />
-          </div>
-        )}
-        {panel === "cart" && (
-          <div className="h-full overflow-y-auto">
-            <Cart onNewSale={() => navigate("products")} />
-          </div>
-        )}
-        {panel === "stock" && can(FEATURES.STOCK) && (
-          <StockPanel sub={sub} navigateSub={navigateSub} currentStaffId={currentStaff.id} />
-        )}
-        {panel === "reports" && can(FEATURES.REPORTS) && (
-          <ReportsPanel sub={sub} navigateSub={navigateSub} />
-        )}
-        {(panel === "settings") && (can(FEATURES.SETTINGS) || can(FEATURES.ETIMS)) && (
-          <SettingsPanel sub={sub} navigateSub={navigateSub} currentStaffId={currentStaff.id} />
-        )}
-      </main>
-
-      {/* Bottom Navigation */}
-      <nav className="shrink-0 bg-gray-950/95 backdrop-blur-md border-t border-white/5 divide-x divide-white/5 flex shadow-2xl pb-safe">
-        {tabs.map((tab) => (
-          <NavTab
-            key={tab.id}
-            label={tab.label}
-            icon={tab.icon}
-            active={panel === tab.id}
-            badge={tab.badge}
-            onClick={() => navigate(tab.id)}
-          />
-        ))}
-      </nav>
+          ))}
+        </nav>
+      </div>
     </div>
   );
 }

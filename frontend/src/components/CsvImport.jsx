@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { db } from "../services/db";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 // ── Column name aliases ───────────────────────────────────────────────────────
 // Lowercase keys map CSV headers to our product fields.
@@ -103,6 +104,7 @@ function rowToProduct(row, colMap) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function CsvImport({ onClose, onImported }) {
+  useEscapeKey(onClose);
   const fileRef = useRef(null);
   const [stage, setStage] = useState("pick");   // pick | preview | importing | done
   const [error, setError] = useState("");
