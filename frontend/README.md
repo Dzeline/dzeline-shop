@@ -1,113 +1,99 @@
-# Dzeline Shop — Frontend
+# Frontend
 
-React 19 + Vite 8 PWA for the Dzeline Shop POS. Runs fully offline via IndexedDB.
+React 19 + Vite 8 PWA for Dzeline Shop. Runs fully offline on IndexedDB; the backend is
+only needed for sync, payments and eTIMS.
 
-## Quick Start
+System design, schemas, RBAC and code standards live in
+[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) — this file is just how to work in here.
+
+## Scripts
 
 ```bash
 npm install
-npm run dev      # → http://localhost:5173
-npm run build    # production build → dist/
-npm run lint
+npm run dev                 # → http://localhost:5173
 ```
 
-First run auto-seeds IndexedDB. Log in as **Admin** with PIN `1234`.
+| Script | Does |
+|---|---|
+| `dev` | Vite dev server with HMR |
+| `build` | Production build → `dist/` |
+| `preview` | Serve the built bundle |
+| `lint` | ESLint over `src/` |
+| `verify:responsive` | Playwright layout + POS-flow checks at 4 viewports (needs `dev` running) |
+| `generate-icons` | Regenerate PWA icons from the source SVG |
 
-## Project Structure
+First run opens the setup wizard. In development the admin PIN is `1234`.
+
+## Layout
 
 ```text
 src/
-├── App.jsx                    # Root — setup gate, PIN gate, header, bottom nav
+├── App.jsx              Shell: setup gate → PIN gate → header, nav, panels, cart rail
 ├── components/
-│   ├── SetupWizard.jsx        # First-launch shop configuration
-│   ├── PinLogin.jsx           # Staff selection + PIN numpad
-│   ├── ProductList.jsx        # Product grid, search, barcode scanner, admin edit/add
-│   ├── ProductAddModal.jsx    # Add new product (admin)
-│   ├── ProductEditModal.jsx   # Edit price, photo, reorder level (admin)
-│   ├── Cart.jsx               # Cart → Checkout → Receipt flow
-│   ├── CheckoutModal.jsx      # Cash / M-Pesa / Pochi payment tabs
-│   ├── Receipt.jsx            # KRA-style receipt (VAT-inclusive breakdown)
-│   ├── StaffManagement.jsx    # Admin CRUD for cashiers
-│   ├── StockReceiving.jsx     # Record supplier deliveries with photo
-│   ├── SuppliersScreen.jsx    # Supplier directory + WhatsApp/email purchase orders
-│   ├── InventoryScreen.jsx    # Stock view grouped by category, Alerts tab (admin)
-│   ├── SettingsScreen.jsx     # Shop name, KRA PIN, M-Pesa/Pochi numbers, VAT
-│   ├── DailySummary.jsx       # Today/Week/Month analytics + cashier breakdown + low stock
-│   └── TransactionHistory.jsx # Last 50 sales with expandable line items, void (admin)
+│   ├── SideNav          Desktop navigation rail (lg and up)
+│   ├── CartBar          Phone running-total bar above the bottom nav
+│   ├── SetupWizard      First-launch shop configuration
+│   ├── PinLogin         Staff picker + PIN pad (also accepts a physical keyboard)
+│   ├── PinRecovery      Recovery flow when nobody can log in
+│   ├── JoinShop         Join an existing shop from an invite link
+│   ├── ProductList      Grid, live search, scanner entry point, edit mode
+│   ├── ProductAddModal · ProductEditModal · CsvImport
+│   ├── BarcodeScanner   zxing decoder; one-shot, or continuous for a whole basket
+│   ├── Cart · CheckoutModal · Receipt
+│   ├── InventoryScreen · StockReceiving · ManagerReceiving · SuppliersScreen
+│   ├── DailySummary · TransactionHistory · FinanceDashboard · SalesExport
+│   └── StaffManagement · SettingsScreen · EtimsModal
 ├── services/
-│   ├── db.js                  # Dexie schema (v5) + all dbHelpers
-│   └── sync.js                # Push unsynced transactions to backend on reconnect
-├── store/
-│   ├── cartStore.js           # Zustand cart (persisted)
-│   ├── staffStore.js          # Zustand staff session (persisted)
-│   └── settingsStore.js       # Zustand shop settings (loaded from IndexedDB)
-└── utils/
-    ├── constants.js           # DB_VERSION, PAYMENT_METHODS, SHOP_INFO defaults
-    ├── formatters.js          # formatPrice, formatDate
-    ├── toast.js               # DOM-injected toast notifications
-    ├── useDebounce.js         # Debounce hook
-    └── useOnline.js           # Browser online/offline event hook
+│   ├── db.js            Dexie schema (v14) + every dbHelpers accessor
+│   ├── sync.js          Push/pull for all synced tables
+│   ├── thermalPrinter.js  Web Bluetooth ESC/POS + browser print fallback
+│   └── etims.js         KRA VSCU client
+├── store/               cartStore · staffStore · navStore · settingsStore (Zustand)
+├── hooks/               usePermissions · useWedgeScanner · useEscapeKey
+├── utils/               apiHeaders · permissions · formatters · toast · useMediaQuery ·
+│                        useDebounce · useOnline · csvExport · imageCompression · categories
+└── index.css            Tailwind v4 @theme tokens + all keyframes
 ```
 
-## Key Flows
+## Conventions that matter here
 
-**Sale**: Products → Add to Cart → Proceed to Checkout → Cash / M-Pesa / Pochi → Receipt → New Sale.
+- **Never import `db` directly in a component.** Everything goes through `dbHelpers` so
+  migrations and invariants stay in one place.
+- **Never hand-build API headers.** Use `apiHeaders()` / `apiGetHeaders()`.
+- **There is no `tailwind.config.js`.** This is Tailwind v4: theme tokens are the `@theme`
+  block at the top of `index.css`. Use `bg-linear-to-br`, not `bg-gradient-to-br`.
+- **Anything on the sell path must work offline.** If a feature needs the network to
+  complete a sale, it is the wrong design.
+- **Breakpoints**: `lg` (1024px) is the phone/desktop divide. Prefer Tailwind prefixes;
+  `useMediaQuery` is only for when behaviour differs, not appearance. The product grid uses
+  **container** queries because it shares its row with the cart rail.
 
-**VAT**: Prices are VAT-inclusive. At checkout, VAT is *extracted* from the total (not added on top). `vat = total − total/(1+rate)`.
+## Testing
 
-**M-Pesa / Pochi**: Cashier enters the customer's SMS confirmation code. Stored to `pending_mpesa` for later verification. M-Pesa STK Push (server-triggered) requires Daraja credentials in `backend/.env`.
+```bash
+npm run dev                 # terminal 1
+npm run verify:responsive   # terminal 2
+```
 
-**Barcode scanner**: Tap the barcode icon in the search bar. Uses native `BarcodeDetector` API (Chrome/Edge on Android). On scan, adds the product to cart or pre-fills search if not found.
+Seeds a shop into IndexedDB, logs in, and runs 40 checks at 390 / 768 / 1440 / 1920 px —
+shell swap, overflow, search focus, null-barcode search, wedge scanner, PIN input.
+Screenshots land in `scripts/screenshots/` (gitignored).
 
-**Stock receiving**: Admin logs deliveries (supplier name, optional invoice + photo), selects products + quantities. Stock is incremented atomically.
+Not covered, and needing a real device: camera scanning, and a physical USB wedge scanner.
 
-**Suppliers**: Admin manages a supplier directory. The order builder pre-populates low-stock items; orders are sent via WhatsApp (`wa.me/`) or `mailto:` links.
+### Offline check
 
-**Sync**: On every online reconnect, `syncService.pushUnsynced()` POSTs unsynced transactions to `VITE_API_URL/sync/transactions`.
+DevTools → Network → Offline → reload. The app still works and the amber banner appears.
 
-## IndexedDB Schema (v5)
-
-| Table | Key fields |
-| --- | --- |
-| `products` | `++id, barcode, name, price, stock, category, reorder_level` — `image_blob` unindexed |
-| `transactions` | `++id, timestamp, total, payment_method, staff_id, synced` — `voided` unindexed |
-| `transaction_items` | `++id, transaction_id, product_id, quantity, price` |
-| `pending_mpesa` | `++id, transaction_id, code, verified` — stores codes for M-Pesa and Pochi |
-| `stock_receipts` | `++id, timestamp, supplier, supplier_id, staff_id` |
-| `suppliers` | `++id, name, created_at` — `phone, email, notes` unindexed |
-| `staff` | `++id, name, pin, role, active` — `pin` is SHA-256 hex |
-| `settings` | `key, value` |
-
-`sync_queue` was dropped in v5. M-Pesa/Pochi codes live in `pending_mpesa` only (not duplicated on the transaction row).
-
-## Staff Roles
-
-| Role | Field value | Access |
-| --- | --- | --- |
-| Admin | `staff.role === "admin"` | All features — Staff Mgmt, Settings, Inventory, Suppliers, product add/edit, void transactions |
-| Cashier | `staff.role === "cashier"` | POS only — Products, Cart, Daily Summary, Transaction History |
-
-PINs are hashed with SHA-256 (Web Crypto API) before storage. The v5 migration hashes any legacy plaintext PINs on first open.
-
-## Tech
-
-| Package | Purpose |
-| --- | --- |
-| React 19 + Vite 8 | UI + build |
-| Tailwind CSS 4 | Styling (CSS-first `@theme`) |
-| Dexie.js 4 | IndexedDB wrapper |
-| Zustand 5 | State (cart, staff, settings) |
-| vite-plugin-pwa | Service worker + offline caching |
-
-## Test Offline
-
-1. `npm run dev`
-2. DevTools → Network → Offline
-3. Refresh — app still works
-
-## Test on Phone
+### On a phone
 
 ```bash
 npm run dev -- --host
-# open http://YOUR_LOCAL_IP:5173 on phone (same WiFi)
+# http://YOUR_LOCAL_IP:5173 on the same Wi-Fi
 ```
+
+Camera scanning needs a secure context — fine on `localhost`, but over a LAN IP you will
+need a tunnel (ngrok, Cloudflare Tunnel) for the camera to start.
+
+`scripts/legacy/` holds one-off verification scripts from earlier phases, kept for
+reference. They are not maintained.
