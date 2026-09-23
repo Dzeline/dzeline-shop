@@ -3,6 +3,8 @@ import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
 import { formatPrice } from "../utils/formatters";
 import { showToast } from "../utils/toast";
+import { useSettingsStore } from "../store/settingsStore";
+import { suggestSellingPrice, describePrice, marginBand } from "../utils/pricing";
 
 const CONDITION_LABELS = {
   good:         { label: "Good",         color: "bg-green-100 text-green-700" },
@@ -10,19 +12,133 @@ const CONDITION_LABELS = {
   damaged:      { label: "Damaged",      color: "bg-red-100 text-red-700"     },
 };
 
+const BAND_STYLE = {
+  healthy: { text: "text-green-700", chip: "bg-green-100 text-green-700" },
+  ok:      { text: "text-yellow-700", chip: "bg-yellow-100 text-yellow-700" },
+  thin:    { text: "text-orange-700", chip: "bg-orange-100 text-orange-700" },
+  loss:    { text: "text-red-700", chip: "bg-red-100 text-red-700" },
+  unknown: { text: "text-gray-500", chip: "bg-gray-100 text-gray-500" },
+};
+
+/**
+ * Selling price for one delivered line.
+ *
+ * The field used to be an empty box with a placeholder, so the manager had to
+ * work out cost -> margin -> VAT in their head for every item on every
+ * delivery. It now opens on a suggestion and shows what any typed price
+ * actually earns, so the number can be judged instead of guessed.
+ */
+function PriceField({ item, value, onChange, vatRate, vatEnabled, defaultMargin, costIncludesVat }) {
+  const cost = item.unit_cost ?? 0;
+
+  const suggestion = suggestSellingPrice({
+    cost,
+    targetMargin: defaultMargin,
+    vatRate,
+    vatEnabled,
+    costIncludesVat,
+  });
+
+  const typed = parseFloat(value);
+  const outcome = Number.isFinite(typed) && typed > 0
+    ? describePrice({ price: typed, cost, vatRate, vatEnabled, costIncludesVat })
+    : null;
+
+  const band = BAND_STYLE[marginBand(outcome?.margin ?? null)] ?? BAND_STYLE.unknown;
+  const matchesSuggestion = suggestion && Math.abs(typed - suggestion.price) < 0.005;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-gray-500 shrink-0">Selling price (KSH)</label>
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          placeholder={suggestion ? String(suggestion.price) : "e.g. 250"}
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1 px-2.5 py-1.5 border-2 border-gray-200 rounded-lg text-sm font-bold text-right focus:outline-none focus:border-primary"
+        />
+        {suggestion && !matchesSuggestion && (
+          <button
+            type="button"
+            onClick={() => onChange(String(suggestion.price))}
+            className="shrink-0 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition btn-press"
+            title={`Suggested from cost and a ${Math.round(defaultMargin * 100)}% margin`}
+          >
+            {formatPrice(suggestion.price)}
+          </button>
+        )}
+      </div>
+
+      {/* What this price actually means — the whole point of the change */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5">
+        {outcome && outcome.margin !== null ? (
+          <>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${band.chip}`}>
+              {outcome.margin < 0 ? "Loss" : `${outcome.margin.toFixed(0)}% margin`}
+            </span>
+            <span className="text-[11px] text-gray-500">
+              {formatPrice(outcome.profit)} profit each
+            </span>
+            {vatEnabled && (
+              <span className="text-[11px] text-gray-400">
+                incl. {formatPrice(outcome.vatAmount)} VAT
+              </span>
+            )}
+          </>
+        ) : cost > 0 ? (
+          <span className="text-[11px] text-gray-400">
+            Suggested {suggestion ? formatPrice(suggestion.price) : "—"} at {Math.round(defaultMargin * 100)}% margin
+          </span>
+        ) : (
+          <span className="text-[11px] text-amber-600">
+            No unit cost recorded — margin can&apos;t be calculated
+          </span>
+        )}
+        {item.current_price > 0 && (
+          <span className="text-[11px] text-gray-400">
+            · now {formatPrice(item.current_price)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ReceiptCard({ receipt, onActivated }) {
   const [open, setOpen]         = useState(false);
   const [prices, setPrices]     = useState({});
   const [activating, setActivating] = useState(false);
   const [showFullPhoto, setShowFullPhoto] = useState(false);
+  // Whether the unit costs on this delivery already include VAT. Per receipt,
+  // not per shop: it depends on whether this supplier is VAT-registered, and
+  // getting it wrong skews every suggested price on the delivery by the VAT
+  // rate.
+  const [costIncludesVat, setCostIncludesVat] = useState(false);
 
-  // Pre-fill selling price fields with current product prices
+  const vatEnabled    = useSettingsStore((s) => s.vatEnabled);
+  const vatRate       = useSettingsStore((s) => s.vatRate);
+  const defaultMargin = useSettingsStore((s) => s.defaultMargin);
+
+  // Open on a suggested price rather than an empty box. Lines with no recorded
+  // cost stay blank, which still means "keep the current price".
   useEffect(() => {
     if (!open) return;
     const map = {};
-    receipt.items.forEach((item) => { map[item.product_id] = ""; });
+    receipt.items.forEach((item) => {
+      const suggestion = suggestSellingPrice({
+        cost: item.unit_cost ?? 0,
+        targetMargin: defaultMargin,
+        vatRate,
+        vatEnabled,
+        costIncludesVat,
+      });
+      map[item.product_id] = suggestion ? String(suggestion.price) : "";
+    });
     setPrices(map);
-  }, [open, receipt.items]);
+  }, [open, receipt.items, defaultMargin, vatRate, vatEnabled, costIncludesVat]);
 
   async function handleActivate() {
     setActivating(true);
@@ -141,28 +257,44 @@ function ReceiptCard({ receipt, onActivated }) {
                     </div>
                   </div>
 
-                  {/* Selling price input */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-500 shrink-0">Selling price (KSH)</label>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      placeholder="e.g. 250"
-                      value={prices[item.product_id] ?? ""}
-                      onChange={(e) =>
-                        setPrices((prev) => ({ ...prev, [item.product_id]: e.target.value }))
-                      }
-                      className="flex-1 px-2.5 py-1.5 border-2 border-gray-200 rounded-lg text-sm font-bold text-right focus:outline-none focus:border-primary"
-                    />
-                  </div>
+                  <PriceField
+                    item={item}
+                    value={prices[item.product_id]}
+                    onChange={(v) =>
+                      setPrices((prev) => ({ ...prev, [item.product_id]: v }))
+                    }
+                    vatRate={vatRate}
+                    vatEnabled={vatEnabled}
+                    defaultMargin={defaultMargin}
+                    costIncludesVat={costIncludesVat}
+                  />
                 </div>
               );
             })}
           </div>
 
+          {vatEnabled && (
+            <label className="flex items-start gap-2.5 px-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={costIncludesVat}
+                onChange={(e) => setCostIncludesVat(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-primary shrink-0"
+              />
+              <span className="text-xs text-gray-500 leading-snug">
+                Supplier&apos;s unit costs already include VAT
+                <span className="block text-[11px] text-gray-400">
+                  Tick this for a VAT-registered supplier, so the margin is worked out on the
+                  real cost rather than on cost plus tax.
+                </span>
+              </span>
+            </label>
+          )}
+
           <p className="text-xs text-gray-400 px-1">
-            Leave selling price blank to keep the current price. Stock will be added for all items.
+            Prices are suggested from cost at a {Math.round(defaultMargin * 100)}% margin —
+            edit any of them freely. Clear a field to keep the current price. Stock is added
+            for every item either way.
           </p>
 
           <button

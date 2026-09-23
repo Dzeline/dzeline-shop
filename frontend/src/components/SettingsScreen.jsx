@@ -68,6 +68,7 @@ export default function SettingsScreen({ onClose }) {
   const [kraPin, setKraPin] = useState("");
   const [vatEnabled, setVatEnabled] = useState(true);
   const [vatRate, setVatRate] = useState("16");
+  const [defaultMargin, setDefaultMargin] = useState("25");
 
   // Payments
   const [mpesaType, setMpesaType] = useState("till");   // "till" | "paybill" | "none"
@@ -114,6 +115,9 @@ export default function SettingsScreen({ onClose }) {
       setKraPin(pin);
       setVatEnabled(s.vat_enabled !== "false");
       setVatRate(s.vat_rate ? String(Math.round(parseFloat(s.vat_rate) * 100)) : "16");
+      setDefaultMargin(
+        s.default_margin ? String(Math.round(parseFloat(s.default_margin) * 100)) : "25",
+      );
       setMpesaType(s.mpesa_till_type || (s.mpesa_till ? "till" : "none"));
       setMpesaTill(s.mpesa_till || "");
       setPochiNumber(s.pochi_number || "");
@@ -154,6 +158,7 @@ export default function SettingsScreen({ onClose }) {
         kra_pin: kraRegistered ? kraPin.trim() : "NOT_REGISTERED",
         vat_enabled: String(vatEnabled),
         vat_rate: String(parseFloat(vatRate) / 100 || 0.16),
+        default_margin: String(parseFloat(defaultMargin) / 100 || 0.25),
         mpesa_till: mpesaType !== "none" ? mpesaTill.trim() : "",
         mpesa_till_type: mpesaType,
         pochi_number: pochiNumber.trim(),
@@ -329,6 +334,25 @@ export default function SettingsScreen({ onClose }) {
                 />
               </Field>
             )}
+          </SectionCard>
+
+          {/* Pricing */}
+          <SectionCard title="Pricing">
+            <Field label="Default Profit Margin (%)">
+              <input
+                type="number"
+                value={defaultMargin}
+                onChange={(e) => { setDefaultMargin(e.target.value); mark(); }}
+                min={0}
+                max={95}
+                step={1}
+                className={inputCls}
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Used to suggest a selling price when a delivery is activated. VAT is added
+                on top of this margin, and the suggestion is always editable.
+              </p>
+            </Field>
           </SectionCard>
 
           {/* Payments */}

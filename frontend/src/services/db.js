@@ -663,12 +663,37 @@ export const dbHelpers = {
       .where("status").equals("draft")
       .reverse()
       .toArray();
-    return Promise.all(
+
+    const withItems = await Promise.all(
       receipts.map(async (r) => ({
         ...r,
         items: await db.stock_receipt_items.where("receipt_id").equals(r.id).toArray(),
       }))
     );
+
+    // Attach what the product sells for today. The manager is setting a new
+    // price, and "what is it now" is the first thing they need to see — without
+    // it the price field is a blind guess.
+    const productIds = [
+      ...new Set(withItems.flatMap((r) => r.items.map((i) => i.product_id)).filter(Boolean)),
+    ];
+    if (productIds.length === 0) return withItems;
+
+    const products = await db.products.bulkGet(productIds);
+    const byId = new Map(products.filter(Boolean).map((p) => [p.id, p]));
+
+    return withItems.map((r) => ({
+      ...r,
+      items: r.items.map((i) => {
+        const p = byId.get(i.product_id);
+        return {
+          ...i,
+          current_price: p?.price ?? null,
+          current_cost: p?.cost_price ?? null,
+          current_stock: p?.stock ?? null,
+        };
+      }),
+    }));
   },
 
   async getStockReceiptHistory(limit = 20) {
@@ -701,7 +726,7 @@ export const dbHelpers = {
     const keys = [
       "shop_name", "town", "phone", "kra_pin",
       "vat_enabled", "vat_rate", "mpesa_till", "pochi_number",
-      "currency", "setup_complete",
+      "currency", "setup_complete", "default_margin",
     ];
     const rows = await db.settings.bulkGet(keys);
     const result = {};
@@ -857,6 +882,8 @@ export const dbHelpers = {
       revenue: 0, cogs: 0, grossProfit: 0, grossMargin: 0,
       netRevenue: 0, vatCollected: 0, avgTransaction: 0,
       transactionCount: 0, stockValue: 0, topProducts: [],
+      rangeDays: 1, products: [], restock: [],
+      profitConcentration: { total: 0, top5: 0, top5Share: 0, productCount: 0 },
     };
 
     const allProducts = await db.products.toArray();
@@ -901,17 +928,62 @@ export const dbHelpers = {
     const grossProfit = revenue - cogs;
     const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
-    const topProducts = [...productMetrics.values()]
-      .sort((a, b) => b.profit - a.profit)
-      .slice(0, 5)
-      .map((p) => ({ ...p, margin: p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0 }));
+    // How long the range has actually been running, so a "This Year" figure in
+    // January isn't divided by 365. Floored at one day: a half-day of trading
+    // would otherwise double every velocity.
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const rangeDays = Math.max(1, (Date.now() - start) / DAY_MS);
+
+    // Everything sold in the range, each line carrying what it takes to decide
+    // whether to reorder it: how fast it moves, what it earns, and how long the
+    // shelf stock will last at that rate.
+    const productRows = [...productMetrics.values()]
+      .map((p) => {
+        const product = productMap.get(p.id);
+        const stock = product?.stock ?? null;
+        const velocity = p.qty / rangeDays;            // units sold per day
+        // Days of stock left at the current rate. Null when nothing is moving —
+        // "infinite cover" is not a useful thing to sort or display.
+        const coverDays = velocity > 0 && stock !== null ? stock / velocity : null;
+        return {
+          ...p,
+          margin: p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0,
+          profitPerDay: p.profit / rangeDays,
+          velocity,
+          stock,
+          reorderLevel: product?.reorder_level ?? 10,
+          coverDays,
+        };
+      })
+      .sort((a, b) => b.profit - a.profit);
+
+    const totalProductProfit = productRows.reduce((sum, p) => sum + Math.max(0, p.profit), 0);
+    const top5Profit = productRows.slice(0, 5).reduce((sum, p) => sum + Math.max(0, p.profit), 0);
+
+    // Selling and running out. Sorted by what the shop loses per day it is
+    // unavailable, so the most expensive gap is dealt with first — a fast,
+    // profitable line out of stock costs more than a slow one.
+    const restock = productRows
+      .filter((p) => p.velocity > 0 && p.coverDays !== null && p.coverDays <= 14)
+      .sort((a, b) => a.coverDays - b.coverDays || b.profitPerDay - a.profitPerDay);
 
     return {
       revenue, cogs, grossProfit, grossMargin,
       netRevenue, vatCollected,
       avgTransaction: revenue / txns.length,
       transactionCount: txns.length,
-      stockValue, topProducts,
+      stockValue,
+      rangeDays,
+      products: productRows,
+      restock,
+      profitConcentration: {
+        total: totalProductProfit,
+        top5: top5Profit,
+        top5Share: totalProductProfit > 0 ? (top5Profit / totalProductProfit) * 100 : 0,
+        productCount: productRows.length,
+      },
+      // Kept for anything still reading the old shape.
+      topProducts: productRows.slice(0, 5),
     };
   },
 

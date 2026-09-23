@@ -32,6 +32,228 @@ function marginBg(pct) {
   return "bg-red-500";
 }
 
+// Status, not series colour — reserved for state and always paired with a
+// word, so urgency is never carried by colour alone.
+const URGENCY = {
+  critical: { chip: "bg-red-100 text-red-700",       dot: "bg-red-500" },
+  warning:  { chip: "bg-orange-100 text-orange-700", dot: "bg-orange-500" },
+  watch:    { chip: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-500" },
+};
+
+function urgencyOf(coverDays) {
+  if (coverDays <= 3) return "critical";
+  if (coverDays <= 7) return "warning";
+  return "watch";
+}
+
+function formatCover(days) {
+  if (days === null || !Number.isFinite(days)) return "—";
+  if (days < 1) return "today";
+  if (days < 2) return "1 day";
+  if (days < 14) return Math.round(days) + " days";
+  return Math.round(days / 7) + " wks";
+}
+
+function formatVelocity(perDay) {
+  if (!Number.isFinite(perDay) || perDay <= 0) return "—";
+  if (perDay >= 10) return Math.round(perDay) + "/day";
+  if (perDay >= 1)  return perDay.toFixed(1) + "/day";
+  return (perDay * 7).toFixed(1) + "/wk";
+}
+
+/**
+ * What to reorder, and why.
+ *
+ * Replaces the ranked "top products by profit" as the lead, because profit rank
+ * alone cannot answer it: a product can top the list and still hold four months
+ * of stock, while the one that stocks out on Thursday sits fourth. Sorted by
+ * how soon it runs out, since that is the deadline.
+ */
+function RestockPanel({ restock }) {
+  if (restock.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <p className="font-bold text-gray-700 text-sm mb-1">Restock</p>
+        <p className="text-sm text-gray-400">
+          Nothing is running short &mdash; every product that sold in this period has more
+          than two weeks of cover.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <div className="flex items-baseline justify-between mb-1">
+        <p className="font-bold text-gray-700 text-sm">Restock first</p>
+        <p className="text-xs text-gray-400">
+          {restock.length} product{restock.length !== 1 ? "s" : ""}
+        </p>
+      </div>
+      <p className="text-xs text-gray-400 mb-3">
+        Selling steadily and close to running out &mdash; soonest first.
+      </p>
+
+      <div className="divide-y divide-gray-50">
+        {restock.slice(0, 8).map((p) => {
+          const u = URGENCY[urgencyOf(p.coverDays)];
+          return (
+            <div key={p.id ?? p.name} className="flex items-center gap-3 py-2.5 first:pt-0">
+              <span className={"w-1.5 h-1.5 rounded-full shrink-0 " + u.dot} aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm text-gray-800 truncate">{p.name}</p>
+                <p className="text-xs text-gray-400">
+                  {formatVelocity(p.velocity)} &middot; {p.stock ?? 0} left &middot;{" "}
+                  {formatPrice(p.profitPerDay)}/day profit
+                </p>
+              </div>
+              <span className={"shrink-0 text-[11px] font-bold px-2 py-1 rounded-full " + u.chip}>
+                {formatCover(p.coverDays)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Where the profit actually comes from.
+ *
+ * One bar, part-to-whole, one hue plus neutral. This is the number owners act
+ * on most often — "a handful of lines earn most of my money" — and a ranked
+ * list never states it outright.
+ */
+function ConcentrationPanel({ concentration }) {
+  const { top5Share, top5, total, productCount } = concentration;
+  if (productCount < 2 || total <= 0) return null;
+
+  const share = Math.min(100, Math.max(0, top5Share));
+  const shown = Math.min(5, productCount);
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <p className="font-bold text-gray-700 text-sm mb-1">Profit concentration</p>
+      <p className="text-sm text-gray-500 mb-3">
+        Your top {shown} product{shown !== 1 ? "s" : ""} earn{shown === 1 ? "s" : ""}{" "}
+        <span className="font-bold text-gray-800">{share.toFixed(0)}%</span> of gross profit
+        {productCount > shown
+          ? " — the other " + (productCount - shown) + " make up the rest."
+          : "."}
+      </p>
+
+      {/* 2px surface gap so the two segments read as separate marks */}
+      <div className="flex h-3 rounded-full overflow-hidden bg-gray-100 gap-0.5">
+        <div className="bg-primary rounded-l-full" style={{ width: share + "%" }} />
+        <div className="bg-gray-300 rounded-r-full" style={{ width: (100 - share) + "%" }} />
+      </div>
+      <div className="flex justify-between mt-2 text-xs">
+        <span className="font-semibold text-primary">
+          Top {shown} &middot; {formatPrice(top5)}
+        </span>
+        <span className="text-gray-400">
+          Rest &middot; {formatPrice(Math.max(0, total - top5))}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const MOVER_COLUMNS = [
+  { key: "name",         label: "Product",    align: "left",  sortable: false },
+  { key: "qty",          label: "Sold",       align: "right", sortable: true },
+  { key: "profitPerDay", label: "Profit/day", align: "right", sortable: true },
+  { key: "margin",       label: "Margin",     align: "right", sortable: true },
+  { key: "stock",        label: "Stock",      align: "right", sortable: true },
+  { key: "coverDays",    label: "Cover",      align: "right", sortable: true },
+];
+
+/**
+ * The full picture, as a table.
+ *
+ * Six measures that all carry meaning is past the point where more colour
+ * helps, so this is deliberately a table rather than a chart — and sorting lets
+ * the owner ask their own question instead of only the one a fixed ranking
+ * answers.
+ */
+function MoversTable({ products }) {
+  const [sortKey, setSortKey] = useState("profitPerDay");
+  const [asc, setAsc] = useState(false);
+
+  if (products.length === 0) return null;
+
+  const sorted = [...products].sort((a, b) => {
+    const av = a[sortKey] ?? -Infinity;
+    const bv = b[sortKey] ?? -Infinity;
+    return asc ? av - bv : bv - av;
+  });
+
+  function toggle(key) {
+    if (key === sortKey) setAsc((v) => !v);
+    else { setSortKey(key); setAsc(false); }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <p className="font-bold text-gray-700 text-sm mb-1">Movers</p>
+      <p className="text-xs text-gray-400 mb-3">
+        Everything sold in this period. Tap a heading to sort.
+      </p>
+
+      {/* Only the table scrolls sideways, never the page */}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-gray-100">
+              {MOVER_COLUMNS.map((c) => (
+                <th
+                  key={c.key}
+                  className={
+                    "py-2 font-semibold text-[11px] uppercase tracking-wide text-gray-400 whitespace-nowrap " +
+                    (c.align === "right" ? "text-right pl-3" : "text-left")
+                  }
+                >
+                  {c.sortable ? (
+                    <button
+                      onClick={() => toggle(c.key)}
+                      className={
+                        "hover:text-gray-600 transition " +
+                        (sortKey === c.key ? "text-primary" : "")
+                      }
+                    >
+                      {c.label}
+                      {sortKey === c.key ? (asc ? " ↑" : " ↓") : ""}
+                    </button>
+                  ) : c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((p) => (
+              <tr key={p.id ?? p.name} className="border-b border-gray-50 last:border-0">
+                <td className="py-2.5 pr-3 font-medium text-gray-800 max-w-40 truncate">{p.name}</td>
+                <td className="py-2.5 pl-3 text-right tabular-nums text-gray-600">{p.qty}</td>
+                <td className="py-2.5 pl-3 text-right tabular-nums font-semibold text-gray-800">
+                  {formatPrice(p.profitPerDay)}
+                </td>
+                <td className={"py-2.5 pl-3 text-right tabular-nums font-semibold " + marginColor(p.margin)}>
+                  {p.margin.toFixed(0)}%
+                </td>
+                <td className="py-2.5 pl-3 text-right tabular-nums text-gray-600">{p.stock ?? "—"}</td>
+                <td className="py-2.5 pl-3 text-right tabular-nums text-gray-600 whitespace-nowrap">
+                  {formatCover(p.coverDays)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function KpiCard({ label, value, accent, sub }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
@@ -267,41 +489,14 @@ export default function FinanceDashboard() {
               </div>
             </div>
 
-            {/* Top products by profit */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-              <p className="font-bold text-gray-700 text-sm mb-3">Top Products by Profit</p>
-              {data.topProducts.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">No sales in this period</p>
-              ) : (
-                <div className="space-y-3">
-                  {data.topProducts.map((product, i) => (
-                    <div key={product.id} className="flex items-center gap-3">
-                      <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">
-                        {i + 1}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-800 truncate">{product.name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${marginBg(product.margin)}`}
-                              style={{ width: `${Math.min(100, Math.max(0, product.margin))}%` }}
-                            />
-                          </div>
-                          <span className={`text-xs font-bold shrink-0 ${marginColor(product.margin)}`}>
-                            {product.margin.toFixed(0)}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-bold text-gray-700">{formatPrice(product.profit)}</p>
-                        <p className="text-xs text-gray-400">×{product.qty}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Reorder decisions: what is running out, where profit
+                concentrates, then the full sortable picture. Ordered by how
+                actionable each block is, not by how it was computed. */}
+            <RestockPanel restock={data.restock} />
+
+            <ConcentrationPanel concentration={data.profitConcentration} />
+
+            <MoversTable products={data.products} />
 
             {data.cogs === 0 && data.revenue > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">

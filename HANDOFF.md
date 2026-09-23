@@ -130,6 +130,7 @@ backend/app/
 | Security | `AndroidManifest.xml` | `allowBackup="true"` with the webhook secret and API key in plain `SharedPreferences`; both are extractable via `adb backup`. |
 | Risk | `AndroidManifest.xml` | `default_filter_types="conversations,alerting"` (API 33+) may drop M-Pesa notifications if the SMS app posts them silently. Untested on Android 13+. |
 | Build | `android-sms-listener` | No `gradlew.bat`, so the project cannot be built from Windows. Generate one with `gradle wrapper` on a machine running **JDK 17** — Gradle 8.2 rejects JDK 21+, and AGP 8.2 rejects anything below 11. |
+| Sync gap | `settingsStore` | The default profit margin is stored locally only. Syncing it needs a new column on the `tenants` row, so a second till falls back to 25% until then. |
 | Untested | `android-sms-listener` | Nothing in this module has ever been compiled — the wrapper jar was missing and `gradle.properties` did not exist, so both the APK workflow and any local build failed before reaching the Kotlin. CI is the first real build; expect it to surface more. |
 
 ---
@@ -153,6 +154,7 @@ Done since the last handoff: 512×512 PWA icon shipped; Render moved off the fre
 
 | Feature | Notes |
 | --- | --- |
+| **Purchase order tracking** | **The next piece.** Creating a supplier order is fire-and-forget today — `OrderModal` builds a WhatsApp/email message and persists nothing, so there is no "on order" state, which causes double-ordering and leaves stock alerts unable to show that a product is already coming. Needs `purchase_orders` + `purchase_order_items` (Dexie v15, same cloud_id/device_id/synced idiom as stock receipts), lines decremented when a delivery is activated, and an "Ordered · N due" badge in alerts. |
 | Real-time multi-device sync | WebSocket hub — Phase B. Today's sync is a 45s pull plus reconnect-edge push, which is adequate but not live. |
 | Category icon set | Categories render as a coloured block with an initial; real icons for Grains, Sugar, Dairy, Oils, Bakery, Beverages, Spices, Household, Produce. |
 | Selling price history | Track price changes per product over time. |

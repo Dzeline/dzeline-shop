@@ -249,6 +249,26 @@ subtotal   = grandTotal / (1 + rate)  ← net, ex-VAT
 vat        = grandTotal − subtotal    ← shown on the receipt
 ```
 
+### Suggesting a price
+
+Because the shelf price carries the VAT, a price suggested from cost has to go
+outwards in this order (`utils/pricing.js`):
+
+```text
+net price   = cost / (1 − target_margin)
+shelf price = net price × (1 + vat_rate)   ← rounded UP to the nearest 5
+```
+
+Taking the margin on the VAT-inclusive figure instead hands the taxman's share
+to the margin and under-prices every item. The suggestion pre-fills the price
+field when a delivery is activated; it is always editable, and whatever is typed
+is described back in margin and profit-per-unit so the number can be judged
+rather than guessed.
+
+`costIncludesVat` is asked per delivery, not per shop: it depends on whether
+that supplier is VAT-registered, and getting it wrong skews the whole delivery
+by the VAT rate.
+
 ## Security
 
 What is actually true today, so nobody assumes more:

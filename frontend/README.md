@@ -20,6 +20,9 @@ npm run dev                 # → http://localhost:5173
 | `preview` | Serve the built bundle |
 | `lint` | ESLint over `src/` |
 | `verify:responsive` | Playwright layout + POS-flow checks at 4 viewports (needs `dev` running) |
+| `verify:stock-finance` | Playwright checks for the pricing suggestion and Finance panels (needs `dev` running) |
+| `verify:pricing` | Selling-price suggestion maths (no browser needed) |
+| `verify:sms-match` | M-Pesa code/amount reconciliation rules (no browser needed) |
 | `generate-icons` | Regenerate PWA icons from the source SVG |
 
 First run opens the setup wizard. In development the admin PIN is `1234`.
@@ -50,7 +53,7 @@ src/
 │   └── etims.js         KRA VSCU client
 ├── store/               cartStore · staffStore · navStore · settingsStore (Zustand)
 ├── hooks/               usePermissions · useWedgeScanner · useEscapeKey
-├── utils/               apiHeaders · permissions · formatters · toast · useMediaQuery ·
+├── utils/               apiHeaders · permissions · pricing · formatters · toast · useMediaQuery ·
 │                        useDebounce · useOnline · csvExport · imageCompression · categories
 └── index.css            Tailwind v4 @theme tokens + all keyframes
 ```
