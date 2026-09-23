@@ -1,7 +1,7 @@
 # Handoff — current state
 
 Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
-(IndexedDB via Dexie, schema v14) and syncs to a FastAPI backend when a connection exists.
+(IndexedDB via Dexie, schema v15) and syncs to a FastAPI backend when a connection exists.
 
 This document is **what state the project is in**. The durable reference material lives
 next to it, one fact in one place:
@@ -154,7 +154,7 @@ Done since the last handoff: 512×512 PWA icon shipped; Render moved off the fre
 
 | Feature | Notes |
 | --- | --- |
-| **Purchase order tracking** | **The next piece.** Creating a supplier order is fire-and-forget today — `OrderModal` builds a WhatsApp/email message and persists nothing, so there is no "on order" state, which causes double-ordering and leaves stock alerts unable to show that a product is already coming. Needs `purchase_orders` + `purchase_order_items` (Dexie v15, same cloud_id/device_id/synced idiom as stock receipts), lines decremented when a delivery is activated, and an "Ordered · N due" badge in alerts. |
+| Purchase order sync | The local half is built (Dexie v15, `services/purchaseOrders.js`). Orders do not yet reach the backend: `purchase_orders` / `purchase_order_items` need SQLAlchemy models, a router and push/pull in `sync.js`, following the stock-receipts pattern. Until then a second till cannot see what the first ordered. |
 | Real-time multi-device sync | WebSocket hub — Phase B. Today's sync is a 45s pull plus reconnect-edge push, which is adequate but not live. |
 | Category icon set | Categories render as a coloured block with an initial; real icons for Grains, Sugar, Dairy, Oils, Bakery, Beverages, Spices, Household, Produce. |
 | Selling price history | Track price changes per product over time. |

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { dbHelpers } from "../services/db";
+import { purchaseOrders } from "../services/purchaseOrders";
 import { formatPrice } from "../utils/formatters";
 import { usePermissions } from "../hooks/usePermissions";
 import { useSettingsStore } from "../store/settingsStore";
@@ -62,7 +63,27 @@ function StockPill({ stock, reorderLevel }) {
   );
 }
 
-function ProductRow({ p }) {
+/**
+ * Stock is low, but a delivery is already coming.
+ *
+ * Without this, a low-stock alert says nothing about whether it has been dealt
+ * with, so the same product gets ordered again — the whole reason purchase
+ * orders are recorded.
+ */
+function OnOrderPill({ pending }) {
+  if (!pending || pending.qty <= 0) return null;
+  const supplier = pending.orders[0]?.supplier;
+  return (
+    <span
+      className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 whitespace-nowrap"
+      title={supplier ? `On order from ${supplier}` : "On order"}
+    >
+      Ordered &middot; {pending.qty} due
+    </span>
+  );
+}
+
+function ProductRow({ p, pending }) {
   const margin = p.cost_price && p.price
     ? Math.round(((p.price - p.cost_price) / p.price) * 100)
     : null;
@@ -87,8 +108,9 @@ function ProductRow({ p }) {
         {p.barcode && (
           <p className="text-xs text-gray-400 font-mono mt-0.5">{p.barcode}</p>
         )}
-        <div className="mt-1.5">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <StockPill stock={p.stock} reorderLevel={p.reorder_level} />
+          <OnOrderPill pending={pending} />
         </div>
       </div>
       <div className="text-right shrink-0 pt-0.5">
@@ -118,6 +140,7 @@ export default function InventoryScreen({ onClose }) {
   const shopName = useSettingsStore((s) => s.shopName);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [onOrder, setOnOrder] = useState(new Map());
   const [search, setSearch] = useState("");
   const [expandedCats, setExpandedCats] = useState({});
   const [viewMode, setViewMode] = useState("category");
@@ -128,6 +151,7 @@ export default function InventoryScreen({ onClose }) {
     setLoading(true);
     try {
       const all = await dbHelpers.getAllProducts();
+      setOnOrder(await purchaseOrders.getOnOrderMap());
       setProducts(all);
       const cats = [...new Set(all.map((p) => p.category || "Other"))];
       setExpandedCats(Object.fromEntries(cats.map((c) => [c, true])));
@@ -381,7 +405,7 @@ export default function InventoryScreen({ onClose }) {
                     </p>
                   </div>
                   <div className="divide-y divide-gray-50">
-                    {alertProducts.map((p) => <ProductRow key={p.id} p={p} />)}
+                    {alertProducts.map((p) => <ProductRow key={p.id} p={p} pending={onOrder.get(p.id)} />)}
                   </div>
                 </div>
               )
@@ -438,7 +462,7 @@ export default function InventoryScreen({ onClose }) {
                           {items
                             .slice()
                             .sort((a, b) => a.stock - b.stock || a.name.localeCompare(b.name))
-                            .map((p) => <ProductRow key={p.id} p={p} />)}
+                            .map((p) => <ProductRow key={p.id} p={p} pending={onOrder.get(p.id)} />)}
                         </div>
                       )}
                     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
+import { purchaseOrders } from "../services/purchaseOrders";
 import { formatPrice } from "../utils/formatters";
 import { showToast } from "../utils/toast";
 import { useSettingsStore } from "../store/settingsStore";
@@ -28,7 +29,7 @@ const BAND_STYLE = {
  * delivery. It now opens on a suggestion and shows what any typed price
  * actually earns, so the number can be judged instead of guessed.
  */
-function PriceField({ item, value, onChange, vatRate, vatEnabled, defaultMargin, costIncludesVat }) {
+function PriceField({ item, value, onChange, vatRate, vatEnabled, defaultMargin }) {
   const cost = item.unit_cost ?? 0;
 
   const suggestion = suggestSellingPrice({
@@ -36,12 +37,11 @@ function PriceField({ item, value, onChange, vatRate, vatEnabled, defaultMargin,
     targetMargin: defaultMargin,
     vatRate,
     vatEnabled,
-    costIncludesVat,
   });
 
   const typed = parseFloat(value);
   const outcome = Number.isFinite(typed) && typed > 0
-    ? describePrice({ price: typed, cost, vatRate, vatEnabled, costIncludesVat })
+    ? describePrice({ price: typed, cost, vatRate, vatEnabled })
     : null;
 
   const band = BAND_STYLE[marginBand(outcome?.margin ?? null)] ?? BAND_STYLE.unknown;
@@ -112,12 +112,6 @@ function ReceiptCard({ receipt, onActivated }) {
   const [prices, setPrices]     = useState({});
   const [activating, setActivating] = useState(false);
   const [showFullPhoto, setShowFullPhoto] = useState(false);
-  // Whether the unit costs on this delivery already include VAT. Per receipt,
-  // not per shop: it depends on whether this supplier is VAT-registered, and
-  // getting it wrong skews every suggested price on the delivery by the VAT
-  // rate.
-  const [costIncludesVat, setCostIncludesVat] = useState(false);
-
   const vatEnabled    = useSettingsStore((s) => s.vatEnabled);
   const vatRate       = useSettingsStore((s) => s.vatRate);
   const defaultMargin = useSettingsStore((s) => s.defaultMargin);
@@ -133,12 +127,11 @@ function ReceiptCard({ receipt, onActivated }) {
         targetMargin: defaultMargin,
         vatRate,
         vatEnabled,
-        costIncludesVat,
       });
       map[item.product_id] = suggestion ? String(suggestion.price) : "";
     });
     setPrices(map);
-  }, [open, receipt.items, defaultMargin, vatRate, vatEnabled, costIncludesVat]);
+  }, [open, receipt.items, defaultMargin, vatRate, vatEnabled]);
 
   async function handleActivate() {
     setActivating(true);
@@ -148,8 +141,24 @@ function ReceiptCard({ receipt, onActivated }) {
         const p = parseFloat(val);
         if (p > 0) pricingMap[Number(pid)] = p;
       });
-      await dbHelpers.activateStockReceipt(receipt.id, pricingMap);
-      showToast("Stock activated!");
+      const received = await dbHelpers.activateStockReceipt(receipt.id, pricingMap);
+
+      // Close down whatever this delivery covered on open purchase orders, so
+      // "on order" stops showing for stock that has now arrived. Best-effort:
+      // the stock movement has already committed and must not be undone if the
+      // bookkeeping match fails.
+      let matched = null;
+      try {
+        matched = await purchaseOrders.applyDelivery(received);
+      } catch (err) {
+        console.error("Purchase order match failed:", err);
+      }
+
+      showToast(
+        matched?.closedOrders
+          ? `Stock activated — ${matched.closedOrders} order${matched.closedOrders !== 1 ? "s" : ""} completed`
+          : "Stock activated!",
+      );
       onActivated();
       syncService.pushUnsyncedReceipts().catch(() => {});
     } catch (err) {
@@ -266,30 +275,11 @@ function ReceiptCard({ receipt, onActivated }) {
                     vatRate={vatRate}
                     vatEnabled={vatEnabled}
                     defaultMargin={defaultMargin}
-                    costIncludesVat={costIncludesVat}
                   />
                 </div>
               );
             })}
           </div>
-
-          {vatEnabled && (
-            <label className="flex items-start gap-2.5 px-1 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={costIncludesVat}
-                onChange={(e) => setCostIncludesVat(e.target.checked)}
-                className="mt-0.5 w-4 h-4 accent-primary shrink-0"
-              />
-              <span className="text-xs text-gray-500 leading-snug">
-                Supplier&apos;s unit costs already include VAT
-                <span className="block text-[11px] text-gray-400">
-                  Tick this for a VAT-registered supplier, so the margin is worked out on the
-                  real cost rather than on cost plus tax.
-                </span>
-              </span>
-            </label>
-          )}
 
           <p className="text-xs text-gray-400 px-1">
             Prices are suggested from cost at a {Math.round(defaultMargin * 100)}% margin —

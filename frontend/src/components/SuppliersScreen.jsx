@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { dbHelpers } from "../services/db";
+import { purchaseOrders } from "../services/purchaseOrders";
+import { useStaffStore } from "../store/staffStore";
 import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { formatPrice } from "../utils/formatters";
@@ -118,11 +120,18 @@ function OrderModal({ supplier, onClose }) {
   const [orderItems, setOrderItems] = useState([]);
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [onOrder, setOnOrder] = useState(new Map());
+  const [sending, setSending] = useState(false);
+  const currentStaff = useStaffStore((st) => st.currentStaff);
 
   useEffect(() => {
     async function init() {
-      const all = await dbHelpers.getAllProducts();
+      const [all, pending] = await Promise.all([
+        dbHelpers.getAllProducts(),
+        purchaseOrders.getOnOrderMap(),
+      ]);
       setProducts(all);
+      setOnOrder(pending);
     }
     init();
   }, []);
@@ -149,6 +158,11 @@ function OrderModal({ supplier, onClose }) {
       showToast(`${p.name} already in order`);
       return;
     }
+    // The point of recording orders: say so before it is ordered twice.
+    const pending = onOrder.get(p.id);
+    if (pending) {
+      showToast(`${p.name} — ${pending.qty} already on order from ${pending.orders[0].supplier}`);
+    }
     // Low-stock items still get a sensible default order quantity (enough
     // to clear the reorder level plus a small buffer) — the item just has
     // to be tapped in rather than showing up pre-added to every order.
@@ -156,7 +170,14 @@ function OrderModal({ supplier, onClose }) {
     const qty = p.stock <= reorderLevel ? Math.max(1, reorderLevel - p.stock + 5) : 1;
     setOrderItems((prev) => [
       ...prev,
-      { product_id: p.id, name: p.name, current_stock: p.stock, reorder_level: reorderLevel, qty },
+      {
+        product_id: p.id,
+        name: p.name,
+        current_stock: p.stock,
+        reorder_level: reorderLevel,
+        qty,
+        on_order: onOrder.get(p.id)?.qty ?? 0,
+      },
     ]);
     setSearch("");
   }
@@ -178,21 +199,62 @@ function OrderModal({ supplier, onClose }) {
     return `*Purchase Order — ${shopName}*\nDate: ${date}\n\n${lines}\n\nPlease confirm availability and delivery date. Thank you.`;
   }
 
-  function sendWhatsApp() {
-    if (orderItems.length === 0) { showToast("Add at least one product"); return; }
-    if (!supplier.phone) { showToast("No phone number saved for this supplier"); return; }
-    const raw = supplier.phone.replace(/\D/g, "");
-    const international = raw.startsWith("0") ? "254" + raw.slice(1) : raw;
-    const text = encodeURIComponent(buildOrderText());
-    window.open(`https://wa.me/${international}?text=${text}`, "_blank");
+  /**
+   * Record the order before handing the message to WhatsApp or email.
+   *
+   * Recorded first on purpose. If the message is never actually sent, the order
+   * can be cancelled from Orders — recoverable. A sent order that was never
+   * recorded is the invisible state that causes double-ordering, and there is
+   * no way back from it.
+   */
+  async function recordOrder() {
+    try {
+      await purchaseOrders.create({
+        supplier: supplier.name,
+        supplier_id: supplier.id,
+        staff_id: currentStaff?.id ?? null,
+        items: orderItems.map((i) => ({ product_id: i.product_id, name: i.name, qty: i.qty })),
+      });
+      setOnOrder(await purchaseOrders.getOnOrderMap());
+      return true;
+    } catch (err) {
+      console.error("Failed to record purchase order:", err);
+      showToast("Couldn't save the order — not sent");
+      return false;
+    }
   }
 
-  function sendEmail() {
+  async function sendWhatsApp() {
+    if (orderItems.length === 0) { showToast("Add at least one product"); return; }
+    if (!supplier.phone) { showToast("No phone number saved for this supplier"); return; }
+    setSending(true);
+    try {
+      if (!(await recordOrder())) return;
+      const raw = supplier.phone.replace(/\D/g, "");
+      const international = raw.startsWith("0") ? "254" + raw.slice(1) : raw;
+      const text = encodeURIComponent(buildOrderText());
+      window.open(`https://wa.me/${international}?text=${text}`, "_blank");
+      showToast("Order recorded");
+      onClose();
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendEmail() {
     if (orderItems.length === 0) { showToast("Add at least one product"); return; }
     if (!supplier.email) { showToast("No email saved for this supplier"); return; }
-    const subject = encodeURIComponent(`Purchase Order — ${new Date().toLocaleDateString("en-KE")}`);
-    const body = encodeURIComponent(buildOrderText());
-    window.open(`mailto:${supplier.email}?subject=${subject}&body=${body}`, "_blank");
+    setSending(true);
+    try {
+      if (!(await recordOrder())) return;
+      const subject = encodeURIComponent(`Purchase Order — ${new Date().toLocaleDateString("en-KE")}`);
+      const body = encodeURIComponent(buildOrderText());
+      window.open(`mailto:${supplier.email}?subject=${subject}&body=${body}`, "_blank");
+      showToast("Order recorded");
+      onClose();
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -248,7 +310,14 @@ function OrderModal({ supplier, onClose }) {
                 <div key={item.product_id} className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-gray-800 truncate">{item.name}</p>
-                    <p className="text-xs text-gray-400">In stock: {item.current_stock}</p>
+                    <p className="text-xs text-gray-400">
+                      In stock: {item.current_stock}
+                      {item.on_order > 0 && (
+                        <span className="text-amber-600 font-semibold">
+                          {" · "}{item.on_order} already on order
+                        </span>
+                      )}
+                    </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
@@ -308,19 +377,19 @@ function OrderModal({ supplier, onClose }) {
           )}
           <button
             onClick={sendWhatsApp}
-            disabled={orderItems.length === 0 || !supplier.phone}
+            disabled={sending || orderItems.length === 0 || !supplier.phone}
             className="w-full py-3.5 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed bg-green-500 text-white hover:bg-green-600 active:scale-95"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
               <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.555 4.116 1.528 5.845L.057 23.885l6.185-1.62A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.893a9.881 9.881 0 01-5.031-1.378l-.361-.214-3.741.981.998-3.648-.235-.374A9.86 9.86 0 012.107 12C2.107 6.588 6.589 2.107 12 2.107S21.893 6.588 21.893 12 17.411 21.893 12 21.893z"/>
             </svg>
-            {supplier.phone ? "Send via WhatsApp" : "No phone saved"}
+            {sending ? "Recording order…" : supplier.phone ? "Send via WhatsApp" : "No phone saved"}
           </button>
           {supplier.email && (
             <button
               onClick={sendEmail}
-              disabled={orderItems.length === 0}
+              disabled={sending || orderItems.length === 0}
               className="w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 disabled:opacity-40 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 active:scale-95"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -249,15 +249,15 @@ const priceInputs = page.locator("input[type='number']");
 const fieldCount = await priceInputs.count();
 check("delivery lines render price fields", fieldCount >= 3, `${fieldCount} fields`);
 
-// cost 152 @ 25% margin → 202.67 net → ×1.16 = 235.10 → rounds up to 240
+// cost 152 @ 25% margin -> 152 / 0.75 = 202.67 -> rounds up to 205
 const firstValue = await priceInputs.first().inputValue();
 check("price field opens pre-filled, not blank", firstValue !== "", `"${firstValue}"`);
-check("suggestion matches cost + margin + VAT", firstValue === "240", `expected 240, got "${firstValue}"`);
+check("suggestion matches cost and margin", firstValue === "205", `expected 205, got "${firstValue}"`);
 
 const panel = await page.evaluate(() => document.body.innerText);
 check("margin of the suggested price is shown", /% margin/.test(panel));
 check("profit per unit is shown", /profit each/.test(panel));
-check("VAT-inclusive cost toggle is offered", /already include VAT/.test(panel));
+check("VAT inside the price is shown", /VAT/.test(panel));
 
 await page.screenshot({ path: `${OUT}/receiving-pricing.png`, fullPage: true });
 

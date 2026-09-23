@@ -14,6 +14,7 @@ import DailySummary from "./components/DailySummary";
 import TransactionHistory from "./components/TransactionHistory";
 import InventoryScreen from "./components/InventoryScreen";
 import SuppliersScreen from "./components/SuppliersScreen";
+import PurchaseOrdersScreen from "./components/PurchaseOrdersScreen";
 import EtimsModal from "./components/EtimsModal";
 import FinanceDashboard from "./components/FinanceDashboard";
 import SalesExport from "./components/SalesExport";
@@ -29,6 +30,7 @@ import { showToast } from "./utils/toast";
 import { FEATURES, ROLE_LABELS } from "./utils/permissions";
 import { db, dbHelpers } from "./services/db";
 import { syncService } from "./services/sync";
+import { purchaseOrders } from "./services/purchaseOrders";
 import { setApiKey } from "./utils/apiHeaders";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
@@ -49,7 +51,7 @@ function getHeaderGradient(staff) {
 const PANEL_TITLES = {
   products: "Products",
   cart: "Cart",
-  stock: { inventory: "Inventory", receiving: "Stock Receiving", suppliers: "Suppliers" },
+  stock: { inventory: "Inventory", receiving: "Stock Receiving", orders: "Purchase Orders", suppliers: "Suppliers" },
   reports: { summary: "Daily Summary", history: "Transactions", finance: "Finance / P&L" },
   settings: { shop: "Shop Settings", staff: "Staff", etims: "eTIMS / KRA" },
 };
@@ -86,15 +88,25 @@ function SubTabBar({ options, labels, active, onChange }) {
 function StockPanel({ sub, navigateSub, currentStaffId }) {
   const { can } = usePermissions();
   const [pendingCount, setPendingCount] = useState(0);
+  const [openOrderCount, setOpenOrderCount] = useState(0);
   const canManage = can(FEATURES.EDIT_PRODUCTS);
+
+  // Badge on the Orders tab, so what is already coming is visible without
+  // opening the tab — the whole point of recording orders.
+  useEffect(() => {
+    purchaseOrders.getOpen()
+      .then((list) => setOpenOrderCount(list.length))
+      .catch(() => setOpenOrderCount(0));
+  }, [sub]);
 
   return (
     <div className="flex flex-col h-full">
       <SubTabBar
-        options={["inventory", "receiving", "suppliers"]}
+        options={["inventory", "receiving", "orders", "suppliers"]}
         labels={[
           "Inventory",
           pendingCount > 0 ? `Receiving (${pendingCount})` : "Receiving",
+          openOrderCount > 0 ? `Orders (${openOrderCount})` : "Orders",
           "Suppliers",
         ]}
         active={sub}
@@ -115,6 +127,7 @@ function StockPanel({ sub, navigateSub, currentStaffId }) {
             </div>
           </div>
         )}
+        {sub === "orders" && <PurchaseOrdersScreen />}
         {sub === "suppliers" && <SuppliersScreen />}
       </div>
     </div>

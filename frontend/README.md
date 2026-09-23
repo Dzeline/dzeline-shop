@@ -22,6 +22,7 @@ npm run dev                 # → http://localhost:5173
 | `verify:responsive` | Playwright layout + POS-flow checks at 4 viewports (needs `dev` running) |
 | `verify:stock-finance` | Playwright checks for the pricing suggestion and Finance panels (needs `dev` running) |
 | `verify:pricing` | Selling-price suggestion maths (no browser needed) |
+| `verify:purchase-orders` | Order recording and delivery matching (needs `dev` running) |
 | `verify:sms-match` | M-Pesa code/amount reconciliation rules (no browser needed) |
 | `generate-icons` | Regenerate PWA icons from the source SVG |
 
@@ -44,11 +45,13 @@ src/
 │   ├── BarcodeScanner   zxing decoder; one-shot, or continuous for a whole basket
 │   ├── Cart · CheckoutModal · Receipt
 │   ├── InventoryScreen · StockReceiving · ManagerReceiving · SuppliersScreen
+│   ├── PurchaseOrdersScreen  Open supplier orders, and closing them
 │   ├── DailySummary · TransactionHistory · FinanceDashboard · SalesExport
 │   └── StaffManagement · SettingsScreen · EtimsModal
 ├── services/
-│   ├── db.js            Dexie schema (v14) + every dbHelpers accessor
+│   ├── db.js            Dexie schema (v15) + every dbHelpers accessor
 │   ├── sync.js          Push/pull for all synced tables
+│   ├── purchaseOrders.js  What is on order, and matching deliveries to it
 │   ├── thermalPrinter.js  Web Bluetooth ESC/POS + browser print fallback
 │   └── etims.js         KRA VSCU client
 ├── store/               cartStore · staffStore · navStore · settingsStore (Zustand)

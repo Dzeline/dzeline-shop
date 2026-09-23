@@ -167,6 +167,22 @@ db.version(14).stores({
   print_jobs: "++id, device_id, created_at",
 });
 
+// Version 15: purchase orders. Sending an order to a supplier used to be
+// fire-and-forget — SuppliersScreen built a WhatsApp/email message and kept
+// nothing — so the shop had no record of what was already coming. That is what
+// caused the same product to be ordered twice, and why a low-stock alert could
+// not say "already on order".
+//
+// Same cloud_id/device_id/synced idiom as stock_receipts, so it rides the
+// existing sync machinery when the backend side is added. Lines carry
+// qty_outstanding, decremented as deliveries are activated against them, so
+// "on order" is derived from the data rather than a flag somebody has to
+// remember to clear.
+db.version(15).stores({
+  purchase_orders:      "++id, supplier_id, supplier, status, created_at, sent_at, synced, cloud_id, device_id",
+  purchase_order_items: "++id, order_id, product_id, qty_outstanding",
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -654,6 +670,12 @@ export const dbHelpers = {
         activated_at: Date.now(),
         synced:       false,   // needs re-sync to cloud with final prices
       });
+
+      // What this delivery covered, for matching against open purchase orders.
+      // Returned rather than applied here: purchase_orders isn't in this
+      // transaction's table list, and widening it would put an unrelated write
+      // inside the stock-movement transaction.
+      return items.map((i) => ({ product_id: i.product_id, qty: i.qty_added }));
     });
   },
 

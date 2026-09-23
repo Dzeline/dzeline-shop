@@ -17,8 +17,8 @@ moment it is rung up; the cloud is how tills agree with each other afterwards.
 │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐     │
 │  │  Zustand    │  │   Dexie.js   │  │  Service Worker  │     │
 │  │  cart,      │  │  IndexedDB   │  │  Workbox         │     │
-│  │  staff,     │  │  v14 schema  │  │  offline cache   │     │
-│  │  nav, prefs │  │  11 tables   │  └──────────────────┘     │
+│  │  staff,     │  │  v15 schema  │  │  offline cache   │     │
+│  │  nav, prefs │  │  13 tables   │  └──────────────────┘     │
 │  └─────────────┘  └──────────────┘                           │
 │         ↑                ↑                                    │
 │         └───── App.jsx ──┘                                    │
@@ -112,6 +112,31 @@ Manager (EDIT_PRODUCTS)
 Stock moves only on activation. Since schema v13 drafts sync too, so a manager can price a
 delivery from a different device than the one that recorded it.
 
+### Purchase orders
+
+Sending an order to a supplier used to be fire-and-forget — a WhatsApp or email
+message with nothing kept — so the shop had no record of what was already
+coming. That is what caused the same product to be ordered twice, and why a
+low-stock alert could not say "already on order".
+
+```text
+Suppliers → Create Order    → purchaseOrders.create() BEFORE the message opens
+                              status = sent, each line qty_outstanding = qty
+
+Delivery activated          → purchaseOrders.applyDelivery(received)
+                              oldest matching order first, qty_outstanding falls
+                              → all lines at zero  → status = received
+                              → some still open    → status = partially_received
+
+Inventory alerts            → "Ordered · 40 due" from getOnOrderMap()
+```
+
+**"On order" is derived, never a flag.** A boolean somebody has to clear by hand
+drifts out of step with reality within a week, which is the failure the table
+exists to prevent. Orders older than 21 days stop counting as on-order — an
+order nobody has closed in three weeks is usually forgotten, not in transit, and
+it must not go on suppressing a genuine shortage.
+
 ### M-Pesa
 
 ```text
@@ -185,6 +210,7 @@ flags in v5.
 | v12 | Suppliers sync: cloud_id, updated_at, deleted_at, synced |
 | v13 | Stock receipt drafts sync: cloud_id, device_id |
 | v14 | print_jobs outbox for the shared-printer queue |
+| v15 | purchase_orders + purchase_order_items — what has been ordered and not yet arrived |
 
 | Table | Key | Indexed | Notable unindexed |
 | --- | --- | --- | --- |
@@ -198,6 +224,8 @@ flags in v5.
 | `stock_receipt_items` | `++id` | `receipt_id, product_id` | `qty_added, qty_before, unit_cost, selling_price, expiry_date, condition` |
 | `suppliers` | `++id` | `name, created_at, cloud_id, updated_at, deleted_at, synced` | `phone, email, notes` |
 | `print_jobs` | `++id` | `device_id, created_at` | Pure outbox — deleted once pushed |
+| `purchase_orders` | `++id` | `supplier_id, supplier, status, created_at, sent_at, synced, cloud_id, device_id` | `note, closed_at` |
+| `purchase_order_items` | `++id` | `order_id, product_id, qty_outstanding` | `qty_ordered, qty_received, unit_cost` |
 
 **All IndexedDB access goes through `dbHelpers` in `db.js`.** Components never import `db`
 directly; that is what keeps migrations and invariants in one auditable place.
@@ -255,19 +283,23 @@ Because the shelf price carries the VAT, a price suggested from cost has to go
 outwards in this order (`utils/pricing.js`):
 
 ```text
-net price   = cost / (1 − target_margin)
-shelf price = net price × (1 + vat_rate)   ← rounded UP to the nearest 5
+shelf price = cost / (1 − target_margin)   ← rounded UP to the nearest 5
 ```
 
-Taking the margin on the VAT-inclusive figure instead hands the taxman's share
-to the margin and under-prices every item. The suggestion pre-fills the price
-field when a delivery is activated; it is always editable, and whatever is typed
-is described back in margin and profit-per-unit so the number can be judged
-rather than guessed.
+Margin is taken on the **cash outlay** — the unit cost exactly as it appears on
+the supplier's invoice, VAT included — against the VAT-inclusive shelf price.
+That is the shopkeeper's own model ("I paid 152, I want a quarter on it"), and
+critically it is the same basis `getFinancialSummary` already reports on, so the
+receiving screen and the Finance tab never quote different margins for the same
+sale. `verify:pricing` asserts that equality directly.
 
-`costIncludesVat` is asked per delivery, not per shop: it depends on whether
-that supplier is VAT-registered, and getting it wrong skews the whole delivery
-by the VAT rate.
+VAT is still extracted for the receipt and KRA, and the VAT inside a price is
+shown beside it — but it plays no part in the margin, so nobody has to answer
+"does this cost include VAT?": whatever was paid is the cost.
+
+The suggestion pre-fills the price field when a delivery is activated; it is
+always editable, and whatever is typed is described back in margin and
+profit-per-unit so the number can be judged rather than guessed.
 
 ## Security
 
