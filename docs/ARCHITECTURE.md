@@ -17,8 +17,8 @@ moment it is rung up; the cloud is how tills agree with each other afterwards.
 │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐     │
 │  │  Zustand    │  │   Dexie.js   │  │  Service Worker  │     │
 │  │  cart,      │  │  IndexedDB   │  │  Workbox         │     │
-│  │  staff,     │  │  v18 schema  │  │  offline cache   │     │
-│  │  nav, prefs │  │  15 tables   │  └──────────────────┘     │
+│  │  staff,     │  │  v19 schema  │  │  offline cache   │     │
+│  │  nav, prefs │  │  17 tables   │  └──────────────────┘     │
 │  └─────────────┘  └──────────────┘                           │
 │         ↑                ↑                                    │
 │         └───── App.jsx ──┘                                    │
@@ -164,6 +164,44 @@ missing rather than passing as a clean restock.
 Reasons come from a short editable list. Typing a reason every time is what
 makes people stop giving one, and a void is where theft hides.
 
+### Cash reconciliation
+
+The app could always say what was sold. It could not say whether the money was
+there — which is the mechanism an owner uses to notice cash going missing.
+
+```text
+Start of day  → shift opened with a COUNTED float, per user per day
+During        → cash in / cash out recorded with a reason
+Close         → cashier counts the drawer; expected vs counted vs difference
+```
+
+**A shift is per user, per day — never per device.** One person moves between
+devices in a day (a phone while handling suppliers, the desktop at the counter
+during the rush), so a device-scoped shift would split their takings across two
+records and reconcile neither. It follows the person, because that is who the
+money is accountable to.
+
+**Expected cash is derived, never accumulated:**
+
+```text
+expected = opening float
+         + cash sales   (that staff member, that date, any device, not voided)
+         + cash in
+         - cash out
+```
+
+Deriving it from the transactions means a sale rung up on the other device
+counts the moment it syncs, and a running total that has drifted from the sales
+it claims to represent is impossible by construction. Only CASH enters the
+drawer; M-Pesa and Pochi are reported beside it, not folded into it.
+
+At close the figure is **frozen** onto the shift row: while open it must follow
+late-syncing sales, but once counted it is a record of what was expected *then*
+and must not silently change afterwards.
+
+One deliberate UI rule: the expected figure stays hidden until a count has been
+entered. Showing it first turns counting into confirming.
+
 ### Supplier payments
 
 The order lifecycle runs to settlement, not just to stock:
@@ -277,6 +315,7 @@ flags in v5.
 | v16 | Supplier payment details; invoice amount / paid / status and order link on stock_receipts; supplier_payments ledger |
 | v17 | Voids become refunds — reason, author, time and whether stock was restored; void_reasons list |
 | v18 | Supplier payments sync (owner pays, staff receive — on different devices) |
+| v19 | shifts + cash_movements — cash reconciliation, per user per day |
 
 | Table | Key | Indexed | Notable unindexed |
 | --- | --- | --- | --- |
@@ -293,6 +332,8 @@ flags in v5.
 | `purchase_orders` | `++id` | `supplier_id, supplier, status, created_at, sent_at, synced, cloud_id, device_id` | `note, closed_at` |
 | `purchase_order_items` | `++id` | `order_id, product_id, qty_outstanding` | `qty_ordered, qty_received, unit_cost` |
 | `supplier_payments` | `++id` | `receipt_id, supplier_id, paid_at, synced, cloud_id, device_id` | `amount, method, reference, note, staff_id` |
+| `shifts` | `++id` | `staff_id, business_date, status, opened_at, synced, cloud_id, device_id, [staff_id+business_date]` | `opening_float, counted_cash, expected_cash, difference, note` |
+| `cash_movements` | `++id` | `shift_id, created_at, synced, cloud_id, device_id` | `type, amount, reason, staff_id` |
 
 **All IndexedDB access goes through `dbHelpers` in `db.js`.** Components never import `db`
 directly; that is what keeps migrations and invariants in one auditable place.

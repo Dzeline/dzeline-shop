@@ -208,7 +208,7 @@ Ordered by value to the shop per unit of work, not by how interesting it is.
 Do this first because every day it is not done, inventory drifts further and the
 new cover/velocity numbers are computed from a wrong stock figure.
 
-### Phase 2 — Cash reconciliation (the biggest win)
+### Phase 2 — Cash reconciliation — **done 2026-09-26**
 
 | Item | Work |
 |---|---|

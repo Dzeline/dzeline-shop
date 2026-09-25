@@ -1,7 +1,7 @@
 # Handoff — current state
 
 Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
-(IndexedDB via Dexie, schema v18) and syncs to a FastAPI backend when a connection exists.
+(IndexedDB via Dexie, schema v19) and syncs to a FastAPI backend when a connection exists.
 
 This document is **what state the project is in**. The durable reference material lives
 next to it, one fact in one place:
@@ -13,6 +13,7 @@ next to it, one fact in one place:
 | Running it, env vars, deploying | [docs/SETUP.md](docs/SETUP.md) |
 | The cross-device UI work | [docs/UI_OVERHAUL_PLAN.md](docs/UI_OVERHAUL_PLAN.md) |
 | What to build next, and why | [docs/ARONIUM_CASE_STUDY.md](docs/ARONIUM_CASE_STUDY.md) |
+| Getting a shop's data back | [docs/BACKUP_AND_RECOVERY.md](docs/BACKUP_AND_RECOVERY.md) |
 
 ---
 
@@ -131,6 +132,9 @@ backend/app/
 | Security | `AndroidManifest.xml` | `allowBackup="true"` with the webhook secret and API key in plain `SharedPreferences`; both are extractable via `adb backup`. |
 | Risk | `AndroidManifest.xml` | `default_filter_types="conversations,alerting"` (API 33+) may drop M-Pesa notifications if the SMS app posts them silently. Untested on Android 13+. |
 | Build | `android-sms-listener` | No `gradlew.bat`, so the project cannot be built from Windows. Generate one with `gradle wrapper` on a machine running **JDK 17** — Gradle 8.2 rejects JDK 21+, and AGP 8.2 rejects anything below 11. |
+| Recovery | `JoinShop.jsx` | A replacement device pulls products, staff and settings only — no transactions, receipts, suppliers, orders or payments. A shop whose only till is stolen gets a catalogue and an empty past. Phase 1 of the backup plan. |
+| Recovery | `sync.js` `pullTransactions` | With no watermark it defaults to the last 35 days, so a fresh device never sees older history. |
+| Sync gap | `shifts` / `purchase_orders` | Shifts, cash movements and purchase orders are local only. A shift is per user per day by design, so it must sync for someone who moves between devices mid-day. |
 | Sync gap | `settingsStore` | The default profit margin is stored locally only. Syncing it needs a new column on the `tenants` row, so a second till falls back to 25% until then. |
 | Untested | `android-sms-listener` | Nothing in this module has ever been compiled — the wrapper jar was missing and `gradle.properties` did not exist, so both the APK workflow and any local build failed before reaching the Kotlin. CI is the first real build; expect it to surface more. |
 

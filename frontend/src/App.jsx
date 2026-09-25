@@ -11,6 +11,7 @@ import StaffManagement from "./components/StaffManagement";
 import StockReceiving from "./components/StockReceiving";
 import ManagerReceiving from "./components/ManagerReceiving";
 import DailySummary from "./components/DailySummary";
+import ShiftScreen from "./components/ShiftScreen";
 import TransactionHistory from "./components/TransactionHistory";
 import InventoryScreen from "./components/InventoryScreen";
 import SuppliersScreen from "./components/SuppliersScreen";
@@ -53,7 +54,7 @@ const PANEL_TITLES = {
   products: "Products",
   cart: "Cart",
   stock: { inventory: "Inventory", receiving: "Stock Receiving", orders: "Purchase Orders", suppliers: "Suppliers" },
-  reports: { summary: "Daily Summary", history: "Transactions", finance: "Finance / P&L" },
+  reports: { summary: "Daily Summary", shift: "Shift", history: "Transactions", finance: "Finance / P&L" },
   settings: { shop: "Shop Settings", staff: "Staff", etims: "eTIMS / KRA" },
 };
 
@@ -142,8 +143,14 @@ function ReportsPanel({ sub, navigateSub }) {
   // role sees the other three tabs under) to match "Owner and sales manager"
   // specifically.
   const canExport = role === "admin" || role === "sales_manager";
-  const subTabs = canExport ? ["summary", "history", "finance", "export"] : ["summary", "history", "finance"];
-  const subLabels = canExport ? ["Summary", "History", "Finance", "Export"] : ["Summary", "History", "Finance"];
+  // Shift sits beside Summary because every cashier needs it daily — it is the
+  // one report that is about their own accountability, not the shop's numbers.
+  const subTabs = canExport
+    ? ["summary", "shift", "history", "finance", "export"]
+    : ["summary", "shift", "history", "finance"];
+  const subLabels = canExport
+    ? ["Summary", "Shift", "History", "Finance", "Export"]
+    : ["Summary", "Shift", "History", "Finance"];
   return (
     <div className="flex flex-col h-full">
       <SubTabBar
@@ -154,6 +161,7 @@ function ReportsPanel({ sub, navigateSub }) {
       />
       <div className="flex-1 min-h-0">
         {sub === "summary" && <DailySummary />}
+        {sub === "shift" && <ShiftScreen />}
         {sub === "history" && <TransactionHistory canVoid={can(FEATURES.VOID_SALES)} />}
         {sub === "finance" && <FinanceDashboard />}
         {sub === "export" && canExport && <SalesExport />}

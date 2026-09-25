@@ -16,7 +16,8 @@
     "verify:purchase-orders": "node scripts/verify-purchase-orders.mjs",
     "verify:scanner": "node scripts/verify-scanner.mjs",
     "verify:supplier-ledger": "node scripts/verify-supplier-ledger.mjs",
-    "verify:refunds": "node scripts/verify-refunds.mjs"
+    "verify:refunds": "node scripts/verify-refunds.mjs",
+    "verify:shifts": "node scripts/verify-shifts.mjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

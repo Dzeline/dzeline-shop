@@ -25,6 +25,7 @@ npm run dev                 # → http://localhost:5173
 | `verify:purchase-orders` | Order recording and delivery matching (needs `dev` running) |
 | `verify:supplier-ledger` | Invoices, part payments and what is owed (needs `dev` running) |
 | `verify:refunds` | Voids restore stock, with reason and audit (needs `dev` running) |
+| `verify:shifts` | Cash reconciliation arithmetic (needs `dev` running) |
 | `verify:scanner` | Camera decode cost and the fast/thorough split (needs `dev` running) |
 | `verify:sms-match` | M-Pesa code/amount reconciliation rules (no browser needed) |
 | `generate-icons` | Regenerate PWA icons from the source SVG |
@@ -51,13 +52,15 @@ src/
 │   ├── PurchaseOrdersScreen  Open supplier orders, what is owed, and paying it
 │   ├── SupplierDetail · RecordPaymentModal  One supplier's orders, invoices and payments
 │   ├── VoidSaleModal    Void with a reason, and a decision about the stock
+│   ├── ShiftScreen      Open a shift, track the drawer, count and close
 │   ├── DailySummary · TransactionHistory · FinanceDashboard · SalesExport
 │   └── StaffManagement · SettingsScreen · EtimsModal
 ├── services/
-│   ├── db.js            Dexie schema (v18) + every dbHelpers accessor
+│   ├── db.js            Dexie schema (v19) + every dbHelpers accessor
 │   ├── sync.js          Push/pull for all synced tables
 │   ├── purchaseOrders.js  What is on order, and matching deliveries to it
 │   ├── supplierLedger.js  Invoices, payments, and what the shop owes
+│   ├── shifts.js        Cash reconciliation — float, movements, close
 │   ├── thermalPrinter.js  Web Bluetooth ESC/POS + browser print fallback
 │   └── etims.js         KRA VSCU client
 ├── store/               cartStore · staffStore · navStore · settingsStore (Zustand)

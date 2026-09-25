@@ -284,6 +284,29 @@ db.version(18).stores({
   await tx.table("stock_receipts").toCollection().modify({ synced: false });
 });
 
+// Version 19: cash reconciliation.
+//
+// The app could say what was SOLD; it had no way to answer the question an
+// owner actually asks — did the money in the drawer match? That is the
+// mechanism for noticing cash going missing, and it did not exist.
+//
+// A shift is per USER per DAY, not per device. One person legitimately moves
+// between devices in a day — a phone while handling suppliers, the desktop at
+// the counter during the rush — and a device-scoped shift would split their
+// takings across two records and reconcile neither.
+//
+//   shifts          the float they started with, what they counted at close,
+//                   and the difference
+//   cash_movements  money in or out of the drawer mid-shift, with a reason
+//
+// What is deliberately NOT stored: expected cash. It is derived from the
+// transactions for that staff member on that date, so it stays correct as
+// sales sync in from the other device they used.
+db.version(19).stores({
+  shifts:         "++id, staff_id, business_date, status, opened_at, synced, cloud_id, device_id, [staff_id+business_date]",
+  cash_movements: "++id, shift_id, created_at, synced, cloud_id, device_id",
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
