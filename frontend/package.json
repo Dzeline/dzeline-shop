@@ -13,7 +13,8 @@
     "verify:sms-match": "node scripts/verify-sms-match.mjs",
     "verify:pricing": "node scripts/verify-pricing.mjs",
     "verify:stock-finance": "node scripts/verify-stock-finance.mjs",
-    "verify:purchase-orders": "node scripts/verify-purchase-orders.mjs"
+    "verify:purchase-orders": "node scripts/verify-purchase-orders.mjs",
+    "verify:scanner": "node scripts/verify-scanner.mjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

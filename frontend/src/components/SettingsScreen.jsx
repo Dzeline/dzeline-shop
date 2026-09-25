@@ -4,6 +4,7 @@ import { syncService } from "../services/sync";
 import { etimsService } from "../services/etims";
 import { useSettingsStore } from "../store/settingsStore";
 import { showToast } from "../utils/toast";
+import { useInstallPrompt } from "../hooks/useInstallPrompt";
 import { setApiKey } from "../utils/apiHeaders";
 import { thermalPrinter } from "../services/thermalPrinter";
 
@@ -69,6 +70,7 @@ export default function SettingsScreen({ onClose }) {
   const [vatEnabled, setVatEnabled] = useState(true);
   const [vatRate, setVatRate] = useState("16");
   const [defaultMargin, setDefaultMargin] = useState("25");
+  const { canInstall, isStandalone, install, instructions } = useInstallPrompt();
 
   // Payments
   const [mpesaType, setMpesaType] = useState("till");   // "till" | "paybill" | "none"
@@ -333,6 +335,47 @@ export default function SettingsScreen({ onClose }) {
                   className={inputCls}
                 />
               </Field>
+            )}
+          </SectionCard>
+
+          {/* Install — always present. The banner on the main screen only
+              appears if the browser decides to offer a prompt, which on iOS it
+              never does, so this is the route that always works. */}
+          <SectionCard title="Install app">
+            {isStandalone ? (
+              <p className="text-sm text-green-600 font-semibold">
+                ✓ Installed — you&apos;re running the installed app
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {canInstall && (
+                  <button
+                    onClick={async () => {
+                      const ok = await install();
+                      showToast(ok ? "App installed" : "Install cancelled");
+                    }}
+                    className="w-full py-3 rounded-xl bg-primary text-white font-bold text-sm hover:bg-blue-600 active:scale-95 transition"
+                  >
+                    Install Dzeline Shop
+                  </button>
+                )}
+                {instructions && (
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 mb-1.5">
+                      {canInstall ? "Or install it manually" : `On ${instructions.platform}`}
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1">
+                      {instructions.steps.map((step, i) => (
+                        <li key={i} className="text-xs text-gray-500 leading-relaxed">{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+                <p className="text-xs text-gray-400">
+                  Installing gives the till its own window and icon. The app already works
+                  offline either way.
+                </p>
+              </div>
             )}
           </SectionCard>
 

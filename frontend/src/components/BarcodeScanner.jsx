@@ -3,6 +3,7 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { formatPrice } from "../utils/formatters";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { cropRect, shouldTryHard } from "../utils/scanTuning";
 
 // Pure-JS decoder (works via getUserMedia + canvas frame sampling), unlike
 // the native BarcodeDetector API which Safari/iOS never implemented —
@@ -13,10 +14,13 @@ HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
   BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_39,
   BarcodeFormat.QR_CODE,
 ]);
-// Trades a little per-frame decode time for meaningfully better accuracy on
-// small, skewed, or partially-focused barcodes — the exact symptom reported
-// during testing (misreads, slow to lock on, worse on small barcodes).
-HINTS.set(DecodeHintType.TRY_HARDER, true);
+// TRY_HARDER was once set on every frame. Measured, that cost ~10x per decode
+// and dropped the loop to about 2 frames a second — which is what "scanning is
+// incredibly slow" actually was. It is now a fallback pass only (see
+// utils/scanTuning.js), so the common case runs fast and the awkward barcode
+// still gets the exhaustive treatment.
+const THOROUGH_HINTS = new Map(HINTS);
+THOROUGH_HINTS.set(DecodeHintType.TRY_HARDER, true);
 
 // zxing reports a held barcode many times a second. In continuous mode the
 // same code inside this window is the same physical item still in frame, not
@@ -62,16 +66,31 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
     }
 
     let cancelled = false;
-    const reader = new BrowserMultiFormatReader(HINTS);
+    let rafId = null;
+    let stream = null;
+
+    // Two readers over one cropped canvas. zxing's own decodeFromConstraints
+    // loop was decoding the entire 1080p frame with TRY_HARDER on every pass;
+    // driving the loop here is what makes cropping and the fast/thorough split
+    // possible at all.
+    const fastReader = new BrowserMultiFormatReader(HINTS);
+    const thoroughReader = new BrowserMultiFormatReader(THOROUGH_HINTS);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    let lastSuccessAt = performance.now();
+    let lastTryHardAt = 0;
 
     async function handleResult(text) {
+      lastSuccessAt = performance.now();
+
       if (continuous) {
         const now = Date.now();
         const { code, at } = lastRef.current;
         if (text === code && now - at < DUPLICATE_MS) return;
         lastRef.current = { code: text, at: now };
       } else {
-        controlsRef.current?.stop();
+        stopStream();
       }
 
       navigator.vibrate?.(40);
@@ -81,35 +100,69 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
       }
     }
 
-    reader
-      .decodeFromConstraints(
-        {
-          video: {
-            facingMode: "environment",
-            // The default getUserMedia profile is often a low-res video-call
-            // stream — not enough raw pixel detail to resolve a small
-            // barcode's bars. Requesting a higher ideal resolution (the
-            // browser picks the closest the camera actually supports) gives
-            // the decoder far more to work with. `advanced: focusMode
-            // continuous` asks the camera to keep refocusing as the phone
-            // moves instead of focusing once at stream start and going
-            // stale — an unrecognized constraint is just ignored by
-            // browsers/devices that don't support it, not fatal.
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            advanced: [{ focusMode: "continuous" }],
-          },
+    function stopStream() {
+      stream?.getTracks().forEach((t) => t.stop());
+      stream = null;
+    }
+    controlsRef.current = { stop: stopStream };
+
+    function tick() {
+      if (cancelled) return;
+      rafId = requestAnimationFrame(tick);
+
+      const video = videoRef.current;
+      if (!video || video.readyState < 2) return;
+
+      const rect = cropRect(video.videoWidth, video.videoHeight);
+      if (!rect) return;
+
+      if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+      }
+      ctx.drawImage(
+        video,
+        rect.x, rect.y, rect.width, rect.height,
+        0, 0, rect.width, rect.height,
+      );
+
+      const now = performance.now();
+      const thorough = shouldTryHard(now, lastSuccessAt, lastTryHardAt);
+      if (thorough) lastTryHardAt = now;
+
+      try {
+        const result = (thorough ? thoroughReader : fastReader).decodeFromCanvas(canvas);
+        if (result) handleResult(result.getText());
+      } catch {
+        // No barcode in this frame — the overwhelmingly common case, and not
+        // an error worth logging once a second.
+      }
+    }
+
+    navigator.mediaDevices
+      .getUserMedia({
+        video: {
+          facingMode: "environment",
+          // Still asking for a high-resolution stream: the crop keeps every
+          // sensor pixel the barcode occupies, which is what resolves a small
+          // barcode's bars. It is the decoding of the *rest* of the frame that
+          // was wasteful, and that is now gone.
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          // Keep refocusing as the phone moves rather than focusing once at
+          // stream start and going stale. Unsupported constraints are ignored,
+          // not fatal.
+          advanced: [{ focusMode: "continuous" }],
         },
-        videoRef.current,
-        (result) => {
-          if (cancelled || !result) return; // no barcode in frame yet — expected, not an error
-          handleResult(result.getText());
-        },
-      )
-      .then((controls) => {
-        if (cancelled) { controls.stop(); return; }
-        controlsRef.current = controls;
+      })
+      .then((s) => {
+        if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
+        stream = s;
+        const video = videoRef.current;
+        video.srcObject = s;
+        video.play().catch(() => {});
         setStatus("scanning");
+        rafId = requestAnimationFrame(tick);
       })
       .catch(() => {
         if (!cancelled) setStatus("denied");
@@ -117,8 +170,9 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
 
     return () => {
       cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
       clearTimeout(feedbackTimer.current);
-      controlsRef.current?.stop();
+      stopStream();
     };
     // Mount-only: the camera stream must outlive prop identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps

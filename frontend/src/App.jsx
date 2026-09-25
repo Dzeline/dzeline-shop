@@ -26,6 +26,7 @@ import { useSettingsStore } from "./store/settingsStore";
 import { useNavStore } from "./store/navStore";
 import { usePermissions } from "./hooks/usePermissions";
 import { useWedgeScanner } from "./hooks/useWedgeScanner";
+import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { showToast } from "./utils/toast";
 import { FEATURES, ROLE_LABELS } from "./utils/permissions";
 import { db, dbHelpers } from "./services/db";
@@ -381,21 +382,6 @@ function NavTab({ label, icon, active, badge, onClick }) {
   );
 }
 
-function useInstallPrompt() {
-  const [prompt, setPrompt] = useState(null);
-  const [isStandalone] = useState(
-    () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
-  );
-
-  useEffect(() => {
-    const handler = (e) => { e.preventDefault(); setPrompt(e); };
-    window.addEventListener("beforeinstallprompt", handler);
-    return () => window.removeEventListener("beforeinstallprompt", handler);
-  }, []);
-
-  return { prompt, setPrompt, isStandalone };
-}
-
 function InstallBanner({ onInstall, onDismiss }) {
   return (
     <div className="shrink-0 bg-indigo-600 text-white px-4 py-2.5 flex items-center gap-3">
@@ -448,7 +434,7 @@ function App() {
   const [setupReady, setSetupReady] = useState(null);
   const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
   const isOnline = useOnline();
-  const { prompt: installPrompt, setPrompt, isStandalone } = useInstallPrompt();
+  const { canInstall, isStandalone, install } = useInstallPrompt();
   const [installDismissed, setInstallDismissed] = useState(
     () => localStorage.getItem("dzeline_install_dismissed") === "1"
   );
@@ -573,19 +559,14 @@ function App() {
 
   const panelTitle = getPanelTitle(panel, sub);
 
-  function handleInstall() {
-    const p = installPrompt;
-    setPrompt(null); // clear banner immediately — prevent it showing behind native dialog
-    p.prompt();
-    p.userChoice.then((choice) => {
-      if (choice.outcome === "accepted") {
-        localStorage.setItem("dzeline_install_dismissed", "1");
-        setInstallDismissed(true);
-      } else {
-        // User cancelled — restore the prompt so they can try again
-        setPrompt(p);
-      }
-    });
+  async function handleInstall() {
+    const installed = await install();
+    if (installed) {
+      localStorage.setItem("dzeline_install_dismissed", "1");
+      setInstallDismissed(true);
+    }
+    // Declined: the banner stays, and Settings → Install app is always there
+    // as the route that does not depend on the browser offering a prompt.
   }
 
   function handleDismissInstall() {
@@ -593,7 +574,7 @@ function App() {
     setInstallDismissed(true);
   }
 
-  const showInstallBanner = installPrompt && !isStandalone && !installDismissed;
+  const showInstallBanner = canInstall && !isStandalone && !installDismissed;
 
   // At lg the cart is a permanent rail beside the product grid, so it is not
   // somewhere you navigate to. A resize while sitting on the cart panel would

@@ -30,6 +30,16 @@ function check(label, ok, detail = "") {
 
 const browser = await chromium.launch({ headless: true });
 
+// Warm the dev server first. Vite compiles the module graph on the first
+// request, and that one-off delay landed on the first viewport and looked like
+// a failing feature rather than a cold start.
+{
+  const warm = await browser.newContext();
+  const page = await warm.newPage();
+  await page.goto(BASE, { waitUntil: "networkidle", timeout: 60000 }).catch(() => {});
+  await warm.close();
+}
+
 async function seed(page) {
   await page.goto(BASE, { waitUntil: "networkidle", timeout: 20000 });
   await page.waitForTimeout(1200);
@@ -205,8 +215,17 @@ for (const vp of VIEWPORTS) {
   // Keyboard-wedge scanner: a USB scanner types the code fast and hits Enter.
   const cartBefore = await cartItems(page);
   await page.evaluate(() => document.activeElement?.blur());
-  await page.keyboard.type("6000000000000", { delay: 6 });
-  await page.keyboard.press("Enter");
+  // Dispatched in a synchronous loop rather than via page.keyboard.type: a
+  // wedge scanner emits keys microseconds apart, and Playwright's requested
+  // delay is only a lower bound. Under load a gap could exceed the 50ms that
+  // separates a scanner from a person, and the handler would correctly reject
+  // it — a flaky test measuring the harness, not the feature.
+  await page.evaluate((code) => {
+    for (const ch of code) {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: ch, bubbles: true }));
+    }
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  }, "6000000000000");
   const afterWedge = await waitFor(
     () => cartItems(page),
     (items) => items.length > cartBefore.length,
@@ -221,6 +240,8 @@ for (const vp of VIEWPORTS) {
   await search.click();
   await page.keyboard.type("6000000000002", { delay: 6 });
   await page.keyboard.press("Enter");
+  // (typed through the real keyboard on purpose — this asserts the handler
+  // ignores input aimed at a field, which is about focus, not timing)
   // Nothing should happen here, so there is no state change to wait on — a
   // fixed pause is correct for a negative assertion.
   await page.waitForTimeout(800);
