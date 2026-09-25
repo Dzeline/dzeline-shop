@@ -122,6 +122,34 @@ export const backup = {
     return payload;
   },
 
+  /**
+   * Clear every table that belongs to the shop.
+   *
+   * Shared by restore() and by joining a different shop, so the list cannot
+   * drift apart in two places — which it already had: joining named nine tables
+   * by hand and left behind every table added since.
+   *
+   * `keepSettings` exists for one case: a payload with no settings table at all.
+   * Wiping settings then would take the API key and the setup flag with it and
+   * leave the device unable to reach anything, so a malformed file loses nothing
+   * rather than bricking the till.
+   */
+  async wipeShopData({ keepSettings = false } = {}) {
+    const deviceId = await dbHelpers.getDeviceId().catch(() => null);
+    for (const name of BACKUP_TABLES) {
+      if (keepSettings && name === "settings") continue;
+      try {
+        await db.table(name).clear();
+      } catch { /* a table this build does not have */ }
+    }
+    // Not in BACKUP_TABLES (it is a transient outbox), but it is still the old
+    // shop's receipts queued to print.
+    await db.print_jobs.clear().catch(() => {});
+    if (!keepSettings && deviceId) {
+      await db.settings.put({ key: "device_id", value: deviceId });
+    }
+  },
+
   /** A filename a person can recognise a year later. */
   filename(meta) {
     const slug = (meta?.shop_name || "dzeline")
@@ -181,6 +209,11 @@ export const backup = {
     const summary = this.inspect(payload);
     const myDeviceId = await dbHelpers.getDeviceId().catch(() => null);
 
+    // Everything goes first, including tables this file has never heard of. A
+    // backup taken before shifts existed must not leave last month's shifts
+    // sitting behind a restored history — "replace" has to mean replace.
+    await this.wipeShopData({ keepSettings: !payload.tables.settings });
+
     const names = BACKUP_TABLES.filter((n) => payload.tables[n]);
     const restored = {};
 
@@ -190,7 +223,6 @@ export const backup = {
       const rows = payload.tables[name];
       if (!Array.isArray(rows)) continue;
       try {
-        await db.table(name).clear();
         if (rows.length) await db.table(name).bulkPut(rows);
         restored[name] = rows.length;
       } catch (err) {

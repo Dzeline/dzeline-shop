@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { db, dbHelpers } from "../services/db";
 import { setApiKey } from "../utils/apiHeaders";
 import { syncService } from "../services/sync";
+import { backup } from "../services/backup";
 
 const BG = "linear-gradient(160deg, #111827 0%, #1a2235 60%, #1e2a45 100%)";
 
@@ -12,31 +13,6 @@ function parseJoinLink() {
   const hash = window.location.hash.replace(/^#join\??/, "");
   const params = new URLSearchParams(hash);
   return { key: params.get("key") ?? "", shopName: params.get("shop") ?? "this shop" };
-}
-
-async function wipeLocalData() {
-  await db.transaction(
-    "rw",
-    [db.transactions, db.transaction_items, db.pending_mpesa, db.staff, db.products,
-     db.stock_receipts, db.stock_receipt_items, db.suppliers, db.settings],
-    async () => {
-      await Promise.all([
-        db.transactions.clear(),
-        db.transaction_items.clear(),
-        db.pending_mpesa.clear(),
-        db.staff.clear(),
-        db.products.clear(),
-        db.stock_receipts.clear(),
-        db.stock_receipt_items.clear(),
-        db.suppliers.clear(),
-      ]);
-      // Keep device_id (it's a hardware/install identifier, not shop-specific)
-      // but drop everything shop-specific so the join below starts clean.
-      const deviceId = await db.settings.get("device_id");
-      await db.settings.clear();
-      if (deviceId) await db.settings.put(deviceId);
-    },
-  );
 }
 
 async function performJoin(key, onProgress) {
@@ -56,14 +32,14 @@ async function performJoin(key, onProgress) {
   onProgress("Clearing demo data…");
   await db.products.clear(); // demo-seeded products from db.on("populate") on this fresh install
 
-  onProgress("Pulling products…");
-  await syncService.pullProducts();
-  onProgress("Pulling staff…");
-  await syncService.pullStaff();
-  onProgress("Pulling shop settings…");
-  await syncService.pullSettings();
+  // Everything, not just the catalogue. A device joining a shop is usually a
+  // replacement for one that was lost, and the history is the point.
+  const { recovered, failed } = await syncService.recoverEverything({
+    onProgress: (label) => onProgress(`Pulling ${label}…`),
+  });
 
   await dbHelpers.updateSetting("setup_complete", "true");
+  return { recovered, failed };
 }
 
 export default function JoinShop() {
@@ -74,6 +50,7 @@ export default function JoinShop() {
   const [status, setStatus] = useState("idle"); // idle | working | error | done
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
 
   useEffect(() => {
     dbHelpers.isSetupComplete().then(async (done) => {
@@ -90,17 +67,25 @@ export default function JoinShop() {
     setStatus("working");
     setError("");
     try {
-      if (alreadySetup) await wipeLocalData();
-      await performJoin(key, setProgress);
+      if (alreadySetup) await backup.wipeShopData();
+      const outcome = await performJoin(key, setProgress);
+      setResult(outcome);
       setStatus("done");
-      setTimeout(() => {
-        window.location.hash = "";
-        window.location.reload();
-      }, 1200);
+      // A clean join gets out of the way. A partial one waits to be read: a
+      // device that came back without its sales history should say so now, not
+      // leave somebody to discover it during a stock take.
+      if (!outcome.failed.length) {
+        setTimeout(finish, 2500);
+      }
     } catch (err) {
       setError(err.message || "Could not join — try again.");
       setStatus("error");
     }
+  }
+
+  function finish() {
+    window.location.hash = "";
+    window.location.reload();
   }
 
   function handleCancel() {
@@ -121,7 +106,36 @@ export default function JoinShop() {
         {status === "done" ? (
           <>
             <h1 className="text-lg font-bold text-white mb-1">You're in!</h1>
-            <p className="text-slate-400 text-sm">Loading {shopName}…</p>
+            <div className="text-left bg-[#0a1628] rounded-xl p-3 my-3 space-y-1">
+              {[
+                ["Products", result?.recovered?.products],
+                ["Sales", result?.recovered?.transactions],
+                ["Deliveries", result?.recovered?.stock_receipts],
+                ["Suppliers", result?.recovered?.suppliers],
+                ["Payments", result?.recovered?.supplier_payments],
+              ].map(([label, n]) => (
+                <div key={label} className="flex justify-between text-xs">
+                  <span className="text-slate-400">{label}</span>
+                  <span className="text-white font-semibold tabular-nums">
+                    {(n ?? 0).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {result?.failed?.length ? (
+              <>
+                <p className="text-amber-400 text-xs mb-3">
+                  Couldn't pull {result.failed.join(", ")}. The rest is here. Once you have a
+                  better connection, open Settings and sync again.
+                </p>
+                <button onClick={finish}
+                  className="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-2.5 rounded-xl text-sm transition">
+                  Continue
+                </button>
+              </>
+            ) : (
+              <p className="text-slate-400 text-sm">Loading {shopName}…</p>
+            )}
           </>
         ) : alreadySetup === null ? (
           <p className="text-slate-400 text-sm py-6">Checking this device…</p>
@@ -154,8 +168,10 @@ export default function JoinShop() {
           <>
             <h1 className="text-lg font-bold text-white mb-1">Join {shopName}?</h1>
             <p className="text-slate-400 text-sm mb-4">
-              This will set up this device for {shopName} and pull in the product catalogue and staff list.
-              Log in afterwards with the PIN the shop owner gave you.
+              This will set up this device for {shopName} and pull in everything — the product
+              catalogue, staff, suppliers, deliveries and the full sales history. On a slow
+              connection that can take a few minutes. Log in afterwards with the PIN the shop
+              owner gave you.
             </p>
             {status === "error" && (
               <p className="text-red-400 text-xs mb-3">{error}</p>

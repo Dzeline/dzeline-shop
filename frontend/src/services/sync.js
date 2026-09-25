@@ -70,6 +70,30 @@ async function _withSyncGuard(fn) {
   }
 }
 
+/**
+ * Take the sync guard, waiting for a routine cycle to finish rather than
+ * skipping.
+ *
+ * A background tick that finds the guard held can simply skip — it runs again
+ * in 45 seconds. A recovery cannot: somebody is standing there waiting for
+ * their shop to come back, and silently doing nothing is the worst outcome.
+ *
+ * Every pull bounds itself with an AbortSignal timeout of 20 seconds or less,
+ * so the guard cannot legitimately stay held for a minute. If it does, the
+ * honest answer is to refuse: running two pulls at once is how the same cloud
+ * row gets inserted twice, and a phantom sale in the books is worse than being
+ * told to try again.
+ */
+async function _claimSyncGuard(timeoutMs = 60_000) {
+  const start = Date.now();
+  while (_syncInFlight) {
+    if (Date.now() - start > timeoutMs) return false;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  _syncInFlight = true; // no await between the check and here — nothing interleaves
+  return true;
+}
+
 export const syncService = {
   /**
    * Re-query Daraja for any STK Push payments that were in-flight while offline.
@@ -211,6 +235,9 @@ export const syncService = {
         const productIds = [...new Set(receipt.items.map((i) => i.product_id).filter(Boolean))];
         const products = await db.products.bulkGet(productIds);
         const cloudIdMap = new Map(products.filter(Boolean).map((p) => [p.id, p.cloud_id]));
+        const suppliers = await db.suppliers.toArray();
+        const supplierCloudIds = new Map(suppliers.map((x) => [x.id, x.cloud_id ?? null]));
+        const supplierCloudId = (localId) => (localId != null ? supplierCloudIds.get(localId) ?? null : null);
         const itemsWithCloudIds = receipt.items.map((i) => ({
           ...i,
           cloud_product_id: i.cloud_product_id ?? cloudIdMap.get(i.product_id) ?? null,
@@ -249,7 +276,10 @@ export const syncService = {
               device_id:      deviceId,
               status:         receipt.status,
               supplier:       receipt.supplier,
-              supplier_id:    receipt.supplier_id,
+              // The server only knows cloud ids. Sending the local one points
+              // the delivery at whatever tenant-wide supplier happens to hold
+              // that number — or at none at all.
+              supplier_id:    supplierCloudId(receipt.supplier_id),
               invoice_number: receipt.invoice_number,
               staff_id:       receipt.staff_id,
               created_at:     receipt.timestamp,
@@ -745,11 +775,9 @@ export const syncService = {
 
   /**
    * Pages GET /sync/transactions to exhaustion and returns the full tenant-
-   * wide result — unlike pullTransactions() below, this never touches local
-   * Dexie and never stops after one page. Built for the Sales Export screen,
-   * which needs every transaction across a whole month/year regardless of
-   * this device's own sync history (pullTransactions()'s 35-day first-pull
-   * backfill window is not enough for that).
+   * wide result. Unlike pullTransactions() below, it never touches local Dexie:
+   * built for the Sales Export screen, which needs every transaction across a
+   * month or a year as data, not as rows merged into this device.
    */
   async fetchAllTransactions() {
     if (!API_BASE) throw new Error("Not connected to the cloud");
@@ -771,21 +799,23 @@ export const syncService = {
     return all;
   },
 
-  async pullTransactions() {
-    if (!API_BASE) return;
+  /**
+   * Pull sales from the cloud.
+   *
+   * With no watermark this pulls from the **beginning**, not from 35 days ago.
+   * The old floor was quietly permanent: the first pull wrote a watermark and
+   * every pull after it was incremental, so the months before that floor were
+   * never asked for again. A shop recovering a stolen till got a catalogue and
+   * five weeks of history, and there was no second chance to ask for the rest.
+   *
+   * It pages, because "from the beginning" can be years.
+   */
+  async pullTransactions({ since: sinceOverride, onProgress } = {}) {
+    if (!API_BASE) return { pulled: 0 };
     try {
       const myDeviceId = await dbHelpers.getDeviceId();
       const sinceRaw = await dbHelpers.getSetting("last_txn_pull_at");
-      // ~35 days back on first-ever pull — covers Reports' widest realistic range.
-      const since = sinceRaw ? Number(sinceRaw) : Date.now() - 35 * 24 * 60 * 60 * 1000;
-
-      const res = await fetch(`${API_BASE}/sync/transactions?since=${since}&limit=300`, {
-        headers: apiGetHeaders(),
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!res.ok) return;
-      const rows = await res.json();
-      if (rows.length === 0) return;
+      const since = sinceOverride ?? (sinceRaw ? Number(sinceRaw) : 0);
 
       const local = await db.transactions.toArray();
       const byCloudId = new Map(local.filter((t) => t.cloud_id != null).map((t) => [t.cloud_id, t]));
@@ -794,69 +824,106 @@ export const syncService = {
       const products = await db.products.toArray();
       const productByCloudId = new Map(products.filter((p) => p.cloud_id != null).map((p) => [p.cloud_id, p]));
 
+      const PAGE = 300;
+      // A shop with more than this many sales has bigger problems than a slow
+      // recovery, but a runaway loop against a misbehaving server is worse than
+      // an incomplete pull, so the paging is bounded.
+      const MAX_PAGES = 500;
+      let cursor = since;
       let maxUpdatedAt = since;
-      for (const r of rows) {
-        maxUpdatedAt = Math.max(maxUpdatedAt, r.updated_at ?? 0);
+      let pulled = 0;
 
-        // "Mine" primarily by device_id match. The local_id fallback covers
-        // rows pushed before device_id tracking existed on the backend
-        // (NULL there) — without it, this device's own pre-existing history
-        // would look foreign and get duplicated locally.
-        const isMine = r.device_id === myDeviceId || (r.device_id == null && myLocalIds.has(r.local_id));
-        if (isMine) {
-          const mine = byCloudId.get(r.id) ?? (myLocalIds.has(r.local_id) ? local.find((t) => t.id === r.local_id) : null);
-          if (mine && mine.cloud_id == null) {
-            await db.transactions.update(mine.id, { cloud_id: r.id });
-          }
-          continue; // never re-insert my own transaction
-        }
-
-        const existing = byCloudId.get(r.id);
-        if (existing) {
-          // Items are immutable once synced — only mutable header fields refresh.
-          await db.transactions.update(existing.id, { voided: r.voided, etims_status: r.etims_status });
-          continue;
-        }
-
-        const localTxnId = await db.transactions.add({
-          timestamp: r.timestamp,
-          subtotal: r.subtotal,
-          vat: r.vat,
-          total: r.total,
-          payment_method: r.payment_method,
-          payment_amount: r.payment_amount,
-          change_given: r.change_given,
-          mpesa_code: r.mpesa_code,
-          staff_id: null,
-          staff_name: r.staff_name,
-          customer_name: r.customer_name,
-          customer_phone: r.customer_phone,
-          voided: r.voided,
-          etims_status: r.etims_status,
-          synced: true,
-          cloud_id: r.id,
-          device_id: r.device_id,
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const res = await fetch(`${API_BASE}/sync/transactions?since=${cursor}&limit=${PAGE}`, {
+          headers: apiGetHeaders(),
+          signal: AbortSignal.timeout(20_000),
         });
+        if (!res.ok) break;
+        const rows = await res.json();
+        if (rows.length === 0) break;
 
-        for (const item of r.items ?? []) {
-          await db.transaction_items.add({
-            transaction_id: localTxnId,
-            product_id: productByCloudId.get(item.cloud_product_id)?.id ?? null,
-            // Kept even when product_id resolves — if this device hasn't
-            // synced the product yet, it's the only stable identity left for
-            // downstream uses (e.g. eTIMS item-code derivation).
-            cloud_product_id: item.cloud_product_id ?? null,
-            name: item.product_name,
-            quantity: item.quantity,
-            price: item.price,
-            subtotal: item.subtotal,
-            cost_price: item.cost_price ?? null,
+        let pageMax = cursor;
+        for (const r of rows) {
+            pageMax = Math.max(pageMax, r.updated_at ?? 0);
+
+          // "Mine" primarily by device_id match. The local_id fallback covers
+          // rows pushed before device_id tracking existed on the backend
+          // (NULL there) — without it, this device's own pre-existing history
+          // would look foreign and get duplicated locally.
+          const isMine = r.device_id === myDeviceId || (r.device_id == null && myLocalIds.has(r.local_id));
+          if (isMine) {
+            const mine = byCloudId.get(r.id) ?? (myLocalIds.has(r.local_id) ? local.find((t) => t.id === r.local_id) : null);
+            if (mine && mine.cloud_id == null) {
+              await db.transactions.update(mine.id, { cloud_id: r.id });
+            }
+            continue; // never re-insert my own transaction
+          }
+
+          const existing = byCloudId.get(r.id);
+          if (existing) {
+            // Items are immutable once synced — only mutable header fields refresh.
+            await db.transactions.update(existing.id, { voided: r.voided, etims_status: r.etims_status });
+            continue;
+          }
+
+          const localTxnId = await db.transactions.add({
+            timestamp: r.timestamp,
+            subtotal: r.subtotal,
+            vat: r.vat,
+            total: r.total,
+            payment_method: r.payment_method,
+            payment_amount: r.payment_amount,
+            change_given: r.change_given,
+            mpesa_code: r.mpesa_code,
+            staff_id: null,
+            staff_name: r.staff_name,
+            customer_name: r.customer_name,
+            customer_phone: r.customer_phone,
+            voided: r.voided,
+            etims_status: r.etims_status,
+            synced: true,
+            cloud_id: r.id,
+            device_id: r.device_id,
           });
+          // Registered immediately: the next page of a long recovery can carry
+          // a row this page already inserted, and the map is the only thing
+          // stopping it being added twice.
+          byCloudId.set(r.id, { id: localTxnId, cloud_id: r.id });
+          pulled++;
+
+          for (const item of r.items ?? []) {
+            await db.transaction_items.add({
+              transaction_id: localTxnId,
+              product_id: productByCloudId.get(item.cloud_product_id)?.id ?? null,
+              // Kept even when product_id resolves — if this device hasn't
+              // synced the product yet, it's the only stable identity left for
+              // downstream uses (e.g. eTIMS item-code derivation).
+              cloud_product_id: item.cloud_product_id ?? null,
+              name: item.product_name,
+              quantity: item.quantity,
+              price: item.price,
+              subtotal: item.subtotal,
+              cost_price: item.cost_price ?? null,
+            });
+          }
         }
+
+        maxUpdatedAt = Math.max(maxUpdatedAt, pageMax);
+        onProgress?.(pulled);
+        // A short page is the last one. A full page whose newest row is no
+        // newer than the cursor would ask for the same page forever, so stop
+        // there too and take the partial pull over the infinite loop.
+        if (rows.length < PAGE || pageMax <= cursor) break;
+        cursor = pageMax;
       }
 
-      await dbHelpers.updateSetting("last_txn_pull_at", String(maxUpdatedAt));
-    } catch { /* offline — try again next reconnect */ }
+      if (maxUpdatedAt > since) {
+        await dbHelpers.updateSetting("last_txn_pull_at", String(maxUpdatedAt));
+      }
+      return { pulled };
+    } catch {
+      return { pulled: 0 }; // offline — try again next reconnect
+    }
   },
 
   // ── Supplier sync ────────────────────────────────────────────────────────
@@ -978,6 +1045,11 @@ export const syncService = {
 
       const products = await db.products.toArray();
       const productByCloudId = new Map(products.filter((p) => p.cloud_id != null).map((p) => [p.cloud_id, p]));
+      // A delivery arrives carrying the *cloud* supplier id; every local join
+      // uses the local one. Without this the delivery lands attached to no
+      // supplier the device has, and it disappears from that supplier's history.
+      const suppliers = await db.suppliers.toArray();
+      const supplierByCloudId = new Map(suppliers.filter((x) => x.cloud_id != null).map((x) => [x.cloud_id, x]));
 
       let maxUpdatedAt = since;
       for (const r of rows) {
@@ -1007,7 +1079,10 @@ export const syncService = {
         }
 
         const localReceiptId = await db.stock_receipts.add({
-          timestamp: r.created_at, supplier: r.supplier, supplier_id: r.supplier_id,
+          timestamp: r.created_at,
+          supplier: r.supplier,
+          supplier_id: r.supplier_id != null ? supplierByCloudId.get(r.supplier_id)?.id ?? null : null,
+          cloud_supplier_id: r.supplier_id ?? null,
           invoice_number: r.invoice_number, staff_id: r.staff_id,
           status: r.status, activated_at: r.activated_at ?? null,
           order_id: r.order_id ?? null, invoice_amount: r.invoice_amount ?? 0,
@@ -1029,6 +1104,19 @@ export const syncService = {
             condition: item.condition,
           });
         }
+
+        // A payment can arrive before the delivery it settles — the owner pays
+        // from their phone the moment the staff photograph the invoice, and
+        // there is no guaranteed order between two devices pushing. Adopt any
+        // payment that was left waiting for this delivery rather than depending
+        // on the pulls happening in a lucky sequence.
+        const orphans = await db.supplier_payments
+          .filter((pm) => pm.receipt_id == null && pm.cloud_receipt_id === r.id)
+          .toArray();
+        for (const orphan of orphans) {
+          await db.supplier_payments.update(orphan.id, { receipt_id: localReceiptId });
+        }
+        if (orphans.length) await this.recomputeInvoicePayment(localReceiptId);
       }
 
       await dbHelpers.updateSetting("last_receipt_pull_at", String(maxUpdatedAt));
@@ -1058,9 +1146,30 @@ export const syncService = {
     if (unsynced.length === 0) return { pushed: 0 };
 
     const deviceId = await dbHelpers.getDeviceId();
+    const receipts = await db.stock_receipts.toArray();
+    const receiptCloudIds = new Map(receipts.map((x) => [x.id, x.cloud_id ?? null]));
+    const suppliers = await db.suppliers.toArray();
+    const supplierCloudIds = new Map(suppliers.map((x) => [x.id, x.cloud_id ?? null]));
     let pushed = 0;
+    let waiting = 0;
 
     for (const payment of unsynced) {
+      // The ids have to be translated, and until the invoice itself has a cloud
+      // id there is nothing to translate to. Pushing anyway would leave a
+      // payment on the server attached to no invoice, and nothing later would go
+      // back and fix it — the money would simply stop being owed to anybody.
+      // Holding it back costs one cycle; the receipt push runs first.
+      const cloudReceiptId = payment.receipt_id != null
+        ? receiptCloudIds.get(payment.receipt_id) ?? null
+        : null;
+      if (payment.receipt_id != null && cloudReceiptId == null) {
+        waiting++;
+        continue;
+      }
+      const cloudSupplierId = payment.supplier_id != null
+        ? supplierCloudIds.get(payment.supplier_id) ?? null
+        : null;
+
       try {
         const res = await fetch(`${API_BASE}/supplier-payments`, {
           method: "POST",
@@ -1068,8 +1177,8 @@ export const syncService = {
           body: JSON.stringify({
             device_id: deviceId,
             local_id: payment.id,
-            receipt_id: payment.receipt_id ?? null,
-            supplier_id: payment.supplier_id ?? null,
+            receipt_id: cloudReceiptId,
+            supplier_id: cloudSupplierId,
             supplier: payment.supplier ?? null,
             amount: payment.amount,
             method: payment.method ?? null,
@@ -1089,7 +1198,31 @@ export const syncService = {
         continue;
       }
     }
-    return { pushed };
+    return { pushed, waiting };
+  },
+
+  /**
+   * Recompute one invoice's paid figure from its payment rows.
+   *
+   * Derived, never accumulated: two devices both adding to `amount_paid` would
+   * double-count the same payment, and a retry would too. The payment rows are
+   * the record; this is only a cached total of them.
+   */
+  async recomputeInvoicePayment(receiptId) {
+    const receipt = await db.stock_receipts.get(receiptId);
+    if (!receipt) return;
+    const payments = await db.supplier_payments.where("receipt_id").equals(receiptId).toArray();
+    const amountPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+    const invoiceAmount = receipt.invoice_amount ?? 0;
+    await db.stock_receipts.update(receiptId, {
+      amount_paid: amountPaid,
+      payment_status:
+        invoiceAmount > 0 && amountPaid >= invoiceAmount - 0.01
+          ? "paid"
+          : amountPaid > 0.01
+          ? "partial"
+          : "unpaid",
+    });
   },
 
   /**
@@ -1100,6 +1233,14 @@ export const syncService = {
    * Foreign payments are inserted locally and the affected receipt's totals
    * recomputed from every payment now known — the receipt's own push carries
    * the same figures, but whichever arrives first must leave the till correct.
+   *
+   * The ids have to be translated on the way in. A payment arrives carrying the
+   * *cloud* receipt and supplier ids, and everything local joins on *local*
+   * ones, so storing them as they arrive silently detaches the payment from the
+   * invoice it settles: the owner's payment lands in the table and the staff's
+   * till still shows the full amount owed. The cloud ids are kept alongside, so
+   * a payment that arrives before its delivery can be adopted when the delivery
+   * turns up (see pullReceipts).
    */
   async pullPayments() {
     if (!API_BASE) return { pulled: 0 };
@@ -1115,6 +1256,11 @@ export const syncService = {
       const rows = await res.json();
       if (!rows.length) return { pulled: 0 };
 
+      const receipts = await db.stock_receipts.toArray();
+      const receiptByCloudId = new Map(receipts.filter((x) => x.cloud_id != null).map((x) => [x.cloud_id, x]));
+      const suppliers = await db.suppliers.toArray();
+      const supplierByCloudId = new Map(suppliers.filter((x) => x.cloud_id != null).map((x) => [x.cloud_id, x]));
+
       let pulled = 0;
       let newest = since;
       const touchedReceipts = new Set();
@@ -1126,9 +1272,16 @@ export const syncService = {
         const existing = await db.supplier_payments.filter((p) => p.cloud_id === r.id).first();
         if (existing) continue;
 
+        const localReceiptId = r.receipt_id != null ? receiptByCloudId.get(r.receipt_id)?.id ?? null : null;
+        const localSupplierId = r.supplier_id != null ? supplierByCloudId.get(r.supplier_id)?.id ?? null : null;
+
         await db.supplier_payments.add({
-          receipt_id: r.receipt_id ?? null,
-          supplier_id: r.supplier_id ?? null,
+          receipt_id: localReceiptId,
+          supplier_id: localSupplierId,
+          // Kept so an orphan can be linked later, and so a re-pull can tell
+          // this row is the same payment.
+          cloud_receipt_id: r.receipt_id ?? null,
+          cloud_supplier_id: r.supplier_id ?? null,
           supplier: r.supplier ?? null,
           amount: r.amount,
           method: r.method ?? null,
@@ -1140,7 +1293,7 @@ export const syncService = {
           cloud_id: r.id,
           device_id: r.device_id ?? null,
         });
-        if (r.receipt_id) touchedReceipts.add(r.receipt_id);
+        if (localReceiptId) touchedReceipts.add(localReceiptId);
         pulled++;
       }
 
@@ -1148,20 +1301,7 @@ export const syncService = {
       // knows about, so the balance is right even if the receipt's own update
       // has not arrived yet.
       for (const receiptId of touchedReceipts) {
-        const receipt = await db.stock_receipts.get(receiptId);
-        if (!receipt) continue;
-        const payments = await db.supplier_payments.where("receipt_id").equals(receiptId).toArray();
-        const amountPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
-        const invoiceAmount = receipt.invoice_amount ?? 0;
-        await db.stock_receipts.update(receiptId, {
-          amount_paid: amountPaid,
-          payment_status:
-            invoiceAmount > 0 && amountPaid >= invoiceAmount - 0.01
-              ? "paid"
-              : amountPaid > 0.01
-              ? "partial"
-              : "unpaid",
-        });
+        await this.recomputeInvoicePayment(receiptId);
       }
 
       await dbHelpers.updateSetting("payments_pulled_at", String(newest));
@@ -1171,19 +1311,101 @@ export const syncService = {
     }
   },
 
+  // ── Recovery ─────────────────────────────────────────────────────────────
+
+  /**
+   * Pull the shop's whole history onto this device.
+   *
+   * This is what a replacement phone runs. It differs from runFullSync() in two
+   * ways that matter:
+   *
+   * **It is ordered, not parallel.** The regular sync fires its pulls with
+   * Promise.allSettled because on an established device order is irrelevant —
+   * everything is nearly up to date already. On an empty device it is not:
+   * transaction items resolve their product by cloud id, deliveries resolve
+   * their supplier, and payments resolve their delivery. Pull them in the wrong
+   * order and the rows arrive orphaned, which is worse than not arriving,
+   * because nothing later goes back to fix them.
+   *
+   * **It reports what arrived, by counting rows.** Every pull* swallows its own
+   * errors so the 45-second cycle never throws; that is right for a background
+   * sync and useless for a recovery, where somebody is watching and needs to
+   * know whether their sales came back. So this counts each table before and
+   * after rather than trusting a return value. If the number is wrong, at least
+   * it is honestly wrong.
+   */
+  async recoverEverything({ onProgress } = {}) {
+    if (!(await _claimSyncGuard())) {
+      throw new Error("Another sync is still running — wait a moment and try again.");
+    }
+    const steps = [
+      ["products", "the product list", () => this.pullProducts()],
+      ["staff", "the staff list", () => this.pullStaff()],
+      ["settings", "shop settings", () => this.pullSettings()],
+      ["suppliers", "suppliers", () => this.pullSuppliers()],
+      ["stock_receipts", "deliveries", () => this.pullReceipts()],
+      ["supplier_payments", "supplier payments", () => this.pullPayments()],
+      [
+        "transactions",
+        "sales history",
+        () => this.pullTransactions({
+          since: 0,
+          onProgress: (n) => onProgress?.(`sales history — ${n.toLocaleString()} so far`, null),
+        }),
+      ],
+    ];
+
+    const recovered = {};
+    const failed = [];
+
+    // finally, not a release at the end: a guard leaked by an unexpected throw
+    // would silently stop this device syncing ever again.
+    try {
+      for (let i = 0; i < steps.length; i++) {
+        const [table, label, run] = steps[i];
+        onProgress?.(label, i / steps.length);
+        let before = 0;
+        try {
+          before = await db.table(table).count();
+        } catch { /* table absent on this schema */ }
+        try {
+          await run();
+        } catch (err) {
+          console.error(`Recovery step ${table} failed:`, err);
+          failed.push(label);
+        }
+        try {
+          recovered[table] = (await db.table(table).count()) - before;
+        } catch {
+          recovered[table] = 0;
+        }
+      }
+    } finally {
+      _syncInFlight = false;
+    }
+
+    onProgress?.("done", 1);
+    return { recovered, failed };
+  },
+
   async runFullSync() {
     return _withSyncGuard(async () => {
       await Promise.allSettled([
         this.pushUnsynced(),
-        this.pushUnsyncedReceipts(),
         this.pushUnsyncedPrintJobs(),
         this.resumePendingStkChecks(),
         this.reconcileSmsCodes(),
         this.pushUnsyncedProducts(),
         this.pushUnsyncedStaff(),
         this.pushUnsyncedSuppliers(),
-        this.pushUnsyncedPayments(),
       ]);
+      // In order, and after the batch above, because each references the
+      // previous by cloud id: a delivery names its supplier and its products, a
+      // payment names its delivery. Run in parallel, a first sync pushes the
+      // child before the parent has an id to be named by, and the link is lost
+      // for good — nothing later goes back to repair it.
+      await this.pushUnsyncedReceipts().catch(() => {});
+      await this.pushUnsyncedPayments().catch(() => {});
       await Promise.allSettled([
         this.pullProducts(),
         this.pullStaff(),
