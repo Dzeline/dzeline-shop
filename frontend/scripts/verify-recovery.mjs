@@ -180,10 +180,14 @@ const emptied = await page.evaluate(async () => {
   // The key is saved *after* the wipe, exactly as joining does: wipeShopData
   // clears settings, so saving it first would delete it again.
   await dbHelpers.saveApiKey("test-key");
+  const { syncService } = await import("/src/services/sync.js");
   return {
     sales: await db.transactions.count(),
     products: await db.products.count(),
     device: await dbHelpers.getDeviceId(),
+    // A wiped device has no record of ever reaching the cloud, and should say so
+    // rather than implying it is safe.
+    freshness: await syncService.getSyncFreshness(),
   };
 });
 
@@ -243,6 +247,8 @@ const out = await page.evaluate(async ({ apiHost, myDevice }) => {
   const hist = localSupplier ? await supplierLedger.getSupplierHistory(localSupplier.id) : null;
   r.supplierPaid = hist?.balance?.paid ?? null;
   r.supplierOutstanding = hist?.balance?.outstanding ?? null;
+
+  r.freshness = await syncService.getSyncFreshness();
 
   return r;
 }, { apiHost: API_HOST, myDevice: emptied.device });
@@ -367,6 +373,13 @@ const push = await page.evaluate(async () => {
     localReceiptId: pulled.id,
   };
 });
+
+console.log("");
+console.log("── the device says whether it is backed up ──");
+check("a wiped device admits it has never reached the cloud",
+  emptied.freshness.neverSynced === true && emptied.freshness.stale === true);
+check("after a recovery it no longer warns", out.freshness.stale === false,
+  out.freshness.lastOkAt ? `${Math.round(out.freshness.ageMs / 1000)}s ago` : "never");
 
 console.log("");
 console.log("── and pushing one back out ──");

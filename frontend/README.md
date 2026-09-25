@@ -26,6 +26,8 @@ npm run dev                 # → http://localhost:5173
 | `verify:supplier-ledger` | Invoices, part payments and what is owed (needs `dev` running) |
 | `verify:refunds` | Voids restore stock, with reason and audit (needs `dev` running) |
 | `verify:shifts` | Cash reconciliation arithmetic (needs `dev` running) |
+| `verify:backup` | Export, wipe, restore, and check the numbers match (needs `dev` running) |
+| `verify:recovery` | Recovering a whole shop onto an empty device, against an intercepted API (needs `dev` running) |
 | `verify:scanner` | Camera decode cost and the fast/thorough split (needs `dev` running) |
 | `verify:sms-match` | M-Pesa code/amount reconciliation rules (no browser needed) |
 | `generate-icons` | Regenerate PWA icons from the source SVG |
@@ -53,11 +55,13 @@ src/
 │   ├── SupplierDetail · RecordPaymentModal  One supplier's orders, invoices and payments
 │   ├── VoidSaleModal    Void with a reason, and a decision about the stock
 │   ├── ShiftScreen      Open a shift, track the drawer, count and close
+│   ├── BackupCard · SyncWarningBanner  Export, restore, and "not backed up" warnings
 │   ├── DailySummary · TransactionHistory · FinanceDashboard · SalesExport
 │   └── StaffManagement · SettingsScreen · EtimsModal
 ├── services/
 │   ├── db.js            Dexie schema (v19) + every dbHelpers accessor
-│   ├── sync.js          Push/pull for all synced tables
+│   ├── sync.js          Push/pull for all synced tables, plus recoverEverything()
+│   ├── backup.js        The export file a shop owns, and restoring one
 │   ├── purchaseOrders.js  What is on order, and matching deliveries to it
 │   ├── supplierLedger.js  Invoices, payments, and what the shop owes
 │   ├── shifts.js        Cash reconciliation — float, movements, close

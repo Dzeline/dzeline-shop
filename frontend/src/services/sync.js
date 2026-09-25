@@ -17,6 +17,27 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "";
 // versa, since both touch the same tables.
 let _syncInFlight = false;
 
+// The last moment the server answered this device. Kept in memory for the
+// current session and in settings so it survives a reload — "last synced three
+// days ago" is only useful if it is still true after the app is reopened.
+let _lastServerOkAt = 0;
+
+/**
+ * Note that the server answered.
+ *
+ * Deliberately not "a sync succeeded": every pull swallows its own failures, so
+ * there is no honest cycle-level verdict to record. What can be said truthfully
+ * is that the device reached the shop's data at this moment, which is exactly
+ * what somebody deciding whether their phone is safe to lose needs to know.
+ * Throttled, because it is written on every pull of every cycle.
+ */
+function _noteServerOk() {
+  const now = Date.now();
+  if (now - _lastServerOkAt < 30_000) return;
+  _lastServerOkAt = now;
+  dbHelpers.updateSetting("last_server_ok_at", String(now)).catch(() => {});
+}
+
 // Grace period for the SMS gateway to catch up before a still-unmatched code
 // is treated as a problem rather than a delay.
 const SMS_STALE_MS = 6 * 60 * 60 * 1000;
@@ -535,6 +556,7 @@ export const syncService = {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return;
+      _noteServerOk();
       const rows = await res.json();
 
       const local = await db.staff.toArray();
@@ -648,6 +670,7 @@ export const syncService = {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return;
+      _noteServerOk();
       const rows = await res.json();
       if (rows.length === 0) return;
 
@@ -740,6 +763,7 @@ export const syncService = {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return;
+      _noteServerOk();
       const s = await res.json();
       if (!s.settings_updated_at) return;
 
@@ -839,6 +863,7 @@ export const syncService = {
           signal: AbortSignal.timeout(20_000),
         });
         if (!res.ok) break;
+        _noteServerOk();
         const rows = await res.json();
         if (rows.length === 0) break;
 
@@ -983,6 +1008,7 @@ export const syncService = {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return;
+      _noteServerOk();
       const rows = await res.json();
 
       const local = await db.suppliers.toArray();
@@ -1037,6 +1063,7 @@ export const syncService = {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return;
+      _noteServerOk();
       const rows = await res.json();
       if (rows.length === 0) return;
 
@@ -1253,6 +1280,7 @@ export const syncService = {
         signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) return { pulled: 0 };
+      _noteServerOk();
       const rows = await res.json();
       if (!rows.length) return { pulled: 0 };
 
@@ -1309,6 +1337,29 @@ export const syncService = {
     } catch {
       return { pulled: 0 };
     }
+  },
+
+  /**
+   * When the shop's data was last reachable, and whether that is worrying.
+   *
+   * A device that has not synced is a device whose sales exist in exactly one
+   * place. Nobody thinks to check that before losing a phone, so the app has to
+   * say it unprompted.
+   */
+  async getSyncFreshness() {
+    if (!API_BASE) return { connected: false, lastOkAt: null, ageMs: null, stale: false };
+    const stored = Number(await dbHelpers.getSetting("last_server_ok_at")) || 0;
+    const lastOkAt = Math.max(stored, _lastServerOkAt) || null;
+    const ageMs = lastOkAt ? Date.now() - lastOkAt : null;
+    return {
+      connected: true,
+      lastOkAt,
+      ageMs,
+      // A day is the threshold because a shop trades daily: anything longer
+      // means at least one full day of takings exists on this device alone.
+      stale: lastOkAt == null || ageMs > 24 * 60 * 60 * 1000,
+      neverSynced: lastOkAt == null,
+    };
   },
 
   // ── Recovery ─────────────────────────────────────────────────────────────

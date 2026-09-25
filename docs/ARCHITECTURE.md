@@ -80,6 +80,33 @@ app stays online, and explicit calls after actions worth propagating immediately
 `runFullSync()` and `runPullSync()` share one in-flight guard, so an interval tick landing
 mid-cycle is a no-op rather than a racing second pull.
 
+**Ids are translated at the boundary, in both directions.** A row travels with
+*cloud* ids; every local join uses *local* ones. A delivery names its supplier, a
+payment names its delivery, a line item names its product — and storing an
+arriving id as-is silently detaches the row from the thing it belongs to, which
+no later pass goes back and repairs. Both the push and the pull map through
+`cloud_id`, and a push whose parent has no `cloud_id` yet **waits a cycle** rather
+than sending a row that can never be reattached.
+
+That is also why the dependent pushes are sequential — suppliers, then
+deliveries, then payments — while the independent ones stay parallel.
+
+### Recovery
+
+`recoverEverything()` is the pull a replacement device runs: products, staff,
+settings, suppliers, deliveries, payments, then sales, **in that order**, from the
+beginning of the shop's history. The routine cycle can pull in parallel because an
+established device already has everything the rows reference; an empty one does
+not, so order is the difference between a recovered shop and a heap of orphaned
+rows. It takes the sync guard rather than skipping on it, and reports what it
+wrote by counting rows before and after each step — the individual pulls swallow
+their own errors, which is right for a background cycle and useless when somebody
+is watching.
+
+Neither the device nor the cloud is a backup: both converge on the *current*
+state. `services/backup.js` is the copy that does not — see
+[BACKUP_AND_RECOVERY.md](BACKUP_AND_RECOVERY.md).
+
 ### Sale, end to end
 
 ```text
@@ -236,7 +263,14 @@ receive them, usually on different devices. Payments follow the outbox idiom
 (push-only, deduped on device+local id so a retry cannot double-count money);
 the receipt's invoice fields ride its existing two-way sync. A pulled payment
 recomputes the affected invoice from every payment that device now knows about,
-so the balance is right whichever update lands first.
+so the balance is right whichever update lands first — and `amount_paid` is only
+ever *derived* from the payment rows, never added to, because two devices both
+incrementing it would double-count the same shilling.
+
+A payment can arrive before the delivery it settles: the owner pays the moment
+the staff photograph the invoice, and there is no guaranteed order between two
+devices pushing. Such a payment keeps its cloud receipt id and is adopted when
+the delivery turns up, rather than depending on a lucky sequence.
 
 ### M-Pesa
 

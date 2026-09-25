@@ -81,6 +81,17 @@ npm run dev                  # in one terminal
 npm run verify:responsive    # in another
 ```
 
+`frontend/README.md` lists every suite. Two are worth knowing about by name:
+
+- **`verify:backup`** does the whole round trip — seed, export, **wipe the
+  database**, restore, and check the sales total, stock count, supplier balance
+  and expected cash all match. A backup nobody has restored is not a backup.
+- **`verify:recovery`** recovers a shop onto an empty device against an
+  intercepted API, with payloads shaped like the real FastAPI response models:
+  420 sales over 400 days, across two pages, both directions of the id
+  translation. Every payment assertion in it failed before the fix it was
+  written for.
+
 40 Playwright checks across 390 / 768 / 1440 / 1920 px: shell swaps at the right
 breakpoint, no horizontal overflow, search keeps focus, barcode search survives
 null-barcode rows, the wedge scanner adds to the cart and stays out of the way while
@@ -125,16 +136,15 @@ backend/app/
 | Security | `staffStore.js` | The persisted session carries the staff role until an explicit logout, so a role demotion does not take effect on a till that stays logged in. |
 | Design | `App.jsx` | Permission guards are duplicated between the tab array and the render block and must be kept in sync by hand. Adding a panel means editing both. |
 | UX | `PinLogin.jsx` | A wrong 4-digit PIN gives no feedback — deliberate, since 4-digit entry has to stay open for a 6-digit PIN to be typed. |
-| Cleanup | `utils/constants.js` | `DB_VERSION = 8` is stale and unused; the real schema version is the migration chain in `db.js`, now at v14. Delete the constant rather than updating it. |
+| Cleanup | `utils/constants.js` | `DB_VERSION = 8` is stale and unused; the real schema version is the migration chain in `db.js`, now at v19. Delete the constant rather than updating it. |
 | Security | `MpesaListenerService.kt` | The listener cannot tell a real Safaricom notification from one any installed app posts with the title "MPESA". Checking `sbn.packageName` against the device's SMS app would close most of this. Amount-matching in reconciliation limits the damage but does not remove it. |
 | Reliability | `MpesaListenerService.kt` | A failed webhook POST is not retried, and the notification fires once. For Pochi and manual till payments the SMS is the *only* confirmation that exists, so a delivery failure loses it permanently. Wants a small on-device queue. |
 | Privacy | `MpesaListenerService.kt` | Logs the first 50 characters of each M-Pesa message — code and amount — to logcat. |
 | Security | `AndroidManifest.xml` | `allowBackup="true"` with the webhook secret and API key in plain `SharedPreferences`; both are extractable via `adb backup`. |
 | Risk | `AndroidManifest.xml` | `default_filter_types="conversations,alerting"` (API 33+) may drop M-Pesa notifications if the SMS app posts them silently. Untested on Android 13+. |
 | Build | `android-sms-listener` | No `gradlew.bat`, so the project cannot be built from Windows. Generate one with `gradle wrapper` on a machine running **JDK 17** — Gradle 8.2 rejects JDK 21+, and AGP 8.2 rejects anything below 11. |
-| Recovery | `JoinShop.jsx` | A replacement device pulls products, staff and settings only — no transactions, receipts, suppliers, orders or payments. A shop whose only till is stolen gets a catalogue and an empty past. Phase 1 of the backup plan. |
-| Recovery | `sync.js` `pullTransactions` | With no watermark it defaults to the last 35 days, so a fresh device never sees older history. |
-| Sync gap | `shifts` / `purchase_orders` | Shifts, cash movements and purchase orders are local only. A shift is per user per day by design, so it must sync for someone who moves between devices mid-day. |
+| Data repair | `supplier_payments` on the server | Payments pushed before 2026-09-26 carry **local** receipt and supplier ids in `receipt_id` / `supplier_id`, because the push sent local ids as if they were cloud ones. They will resolve to the wrong invoice, or none, when pulled. Repair or discard them once Neon is back — the row count is small. |
+| Sync gap | `shifts` / `purchase_orders` | Shifts, cash movements and purchase orders are local only, and are the last Phase 1 item. Each needs a backend table and endpoint, so they wait on Neon. A shift is per user per day by design, so it must sync for someone who moves between devices mid-day. Until then the export file is the only way they leave the device. |
 | Sync gap | `settingsStore` | The default profit margin is stored locally only. Syncing it needs a new column on the `tenants` row, so a second till falls back to 25% until then. |
 | Untested | `android-sms-listener` | Nothing in this module has ever been compiled — the wrapper jar was missing and `gradle.properties` did not exist, so both the APK workflow and any local build failed before reaching the Kotlin. CI is the first real build; expect it to surface more. |
 
@@ -147,6 +157,14 @@ backend/app/
 - [ ] Add error tracking (Sentry or similar) on frontend and backend
 - [ ] Wire per-tenant Daraja credentials from the Settings UI through to the tenant record
 - [ ] Restore the Render service and Neon database, then verify sync end to end
+- [ ] Create the schema added since Neon went down, by hand — there is no migration
+      tooling. Supplier `pay_method` / `pay_account` / `pay_name`; StockReceipt
+      `order_id` / `invoice_amount` / `amount_paid` / `payment_status`; the
+      `supplier_payments` table
+- [ ] Check the Neon **instant restore** history window (Settings → Instant restore).
+      Launch allows *up to* 7 days, which is not the same as having 7, and history
+      storage bills at $0.20/GB-month
+- [ ] Repair or discard the mis-keyed `supplier_payments` rows (see Known issues)
 - [ ] Hardware pass on Phase H: scan a real basket on a phone, and test a real USB wedge
       scanner (`MAX_GAP_MS` / `MIN_LENGTH` in `hooks/useWedgeScanner.js` are the dials)
 

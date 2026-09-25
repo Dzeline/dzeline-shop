@@ -1,5 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { backup } from "../services/backup";
+import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
@@ -130,7 +131,38 @@ export default function BackupCard() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
   const [pending, setPending] = useState(null);
+  const [fresh, setFresh] = useState(null);
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    syncService.getSyncFreshness().then(setFresh).catch(() => {});
+  }, []);
+
+  // Pulls the shop's whole history onto this device. Safe on a device that is
+  // already working: it adds what is missing and never removes anything, which
+  // is what separates it from restoring a file.
+  async function pullFromCloud() {
+    setBusy(true);
+    try {
+      const { recovered, failed } = await syncService.recoverEverything({
+        onProgress: (label) => setProgress(label),
+      });
+      const rows = Object.values(recovered).reduce((a, b) => a + b, 0);
+      showToast(
+        failed.length
+          ? `Pulled ${rows.toLocaleString()} rows — couldn't get ${failed.join(", ")}`
+          : rows
+          ? `Pulled ${rows.toLocaleString()} rows from the cloud`
+          : "Already up to date",
+      );
+      syncService.getSyncFreshness().then(setFresh).catch(() => {});
+    } catch (err) {
+      showToast(err.message || "Couldn't reach the cloud");
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }
 
   async function download(includePhotos) {
     setBusy(true);
@@ -207,6 +239,31 @@ export default function BackupCard() {
 
         {busy && progress && (
           <p className="text-xs text-gray-500">Reading {progress}…</p>
+        )}
+
+        {fresh?.connected && (
+          <div className={`rounded-xl p-3 text-xs ${fresh.stale ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-500"}`}>
+            {fresh.neverSynced
+              ? "This device has never reached the cloud. Everything on it exists here only."
+              : `Cloud last reached ${when(fresh.lastOkAt)}.`}
+            {fresh.stale && " Take a backup now."}
+          </div>
+        )}
+
+        {fresh?.connected && (
+          <div className="pt-2 border-t border-gray-100">
+            <button
+              onClick={pullFromCloud}
+              disabled={busy}
+              className="w-full py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition disabled:opacity-50"
+            >
+              Pull everything from the cloud
+            </button>
+            <p className="text-xs text-gray-400 mt-1.5">
+              Fetches the shop's full history — sales, deliveries, suppliers and payments. Adds
+              what is missing and removes nothing. Use it on a device that is behind.
+            </p>
+          </div>
         )}
 
         <div className="pt-2 border-t border-gray-100">

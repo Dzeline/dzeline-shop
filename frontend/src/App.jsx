@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import ProductList from "./components/ProductList";
+import SyncWarningBanner from "./components/SyncWarningBanner";
 import Cart from "./components/Cart";
 import SideNav from "./components/SideNav";
 import CartBar from "./components/CartBar";
@@ -708,6 +709,8 @@ function App() {
             Offline — sales save locally and sync automatically when reconnected
           </div>
         )}
+
+        {isOnline && <SyncWarningBanner />}
 
         {showInstallBanner && (
           <InstallBanner onInstall={handleInstall} onDismiss={handleDismissInstall} />
