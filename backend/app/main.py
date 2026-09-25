@@ -11,7 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from .database import Base, engine
 from .limiter import limiter
-from .routers import products, sync, mpesa, etims, admin, scan, stock_receipts, sms, staff, settings, suppliers, print_jobs
+from .routers import supplier_payments, products, sync, mpesa, etims, admin, scan, stock_receipts, sms, staff, settings, suppliers, print_jobs
 
 load_dotenv()
 
@@ -261,6 +261,7 @@ app.include_router(staff.router)
 app.include_router(settings.router)
 app.include_router(suppliers.router)
 app.include_router(print_jobs.router)
+app.include_router(supplier_payments.router)
 
 
 @app.get("/health")

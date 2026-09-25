@@ -17,8 +17,8 @@ moment it is rung up; the cloud is how tills agree with each other afterwards.
 │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐     │
 │  │  Zustand    │  │   Dexie.js   │  │  Service Worker  │     │
 │  │  cart,      │  │  IndexedDB   │  │  Workbox         │     │
-│  │  staff,     │  │  v16 schema  │  │  offline cache   │     │
-│  │  nav, prefs │  │  14 tables   │  └──────────────────┘     │
+│  │  staff,     │  │  v18 schema  │  │  offline cache   │     │
+│  │  nav, prefs │  │  15 tables   │  └──────────────────┘     │
 │  └─────────────┘  └──────────────┘                           │
 │         ↑                ↑                                    │
 │         └───── App.jsx ──┘                                    │
@@ -33,6 +33,7 @@ moment it is rung up; the cloud is how tills agree with each other afterwards.
 │                                                              │
 │  /products /sync /mpesa /etims /sms /admin /scan              │
 │  /stock-receipts /staff /settings /suppliers /print-jobs      │
+│  /supplier-payments                                           │
 │        ↓                                                     │
 │  SQLAlchemy 2 · pool_pre_ping · pool_recycle=1800             │
 │  multi-tenant by X-API-Key                                    │
@@ -137,6 +138,32 @@ exists to prevent. Orders older than 21 days stop counting as on-order — an
 order nobody has closed in three weeks is usually forgotten, not in transit, and
 it must not go on suppressing a genuine shortage.
 
+### Voiding a sale
+
+A void is a refund: the goods go back on the shelf.
+
+```text
+Void → dbHelpers.voidTransaction(id, { reason, staffId, restock })
+       one atomic Dexie transaction:
+         each line's quantity returns to product.stock
+         the sale is marked voided with reason, author, time
+         stock_restored records what ACTUALLY happened
+```
+
+Until v17 this flipped a flag and nothing else, so the count drifted further
+from reality with every void — and `coverDays` in Finance is computed from that
+count.
+
+Three rules hold it together. It is **idempotent**: voiding twice cannot restock
+twice. It is **atomic** with the stock movement, because a void that half
+happened is worse than either outcome. And `stock_restored` is **recorded, not
+assumed** — goods that are not coming back (damaged, or the customer kept them)
+leave stock alone, and a line whose product no longer exists is counted as
+missing rather than passing as a clean restock.
+
+Reasons come from a short editable list. Typing a reason every time is what
+makes people stop giving one, and a void is where theft hides.
+
 ### Supplier payments
 
 The order lifecycle runs to settlement, not just to stock:
@@ -165,6 +192,13 @@ Only *activated* deliveries count as debts — a draft has not been accepted int
 stock, so it is not yet a bill. Suppliers carry their own payment details
 (paybill, till, phone, bank) so settling an invoice does not mean hunting for a
 number on a delivery note.
+
+**All of it syncs**, because the owner settles the invoices and the staff
+receive them, usually on different devices. Payments follow the outbox idiom
+(push-only, deduped on device+local id so a retry cannot double-count money);
+the receipt's invoice fields ride its existing two-way sync. A pulled payment
+recomputes the affected invoice from every payment that device now knows about,
+so the balance is right whichever update lands first.
 
 ### M-Pesa
 
@@ -241,6 +275,8 @@ flags in v5.
 | v14 | print_jobs outbox for the shared-printer queue |
 | v15 | purchase_orders + purchase_order_items — what has been ordered and not yet arrived |
 | v16 | Supplier payment details; invoice amount / paid / status and order link on stock_receipts; supplier_payments ledger |
+| v17 | Voids become refunds — reason, author, time and whether stock was restored; void_reasons list |
+| v18 | Supplier payments sync (owner pays, staff receive — on different devices) |
 
 | Table | Key | Indexed | Notable unindexed |
 | --- | --- | --- | --- |

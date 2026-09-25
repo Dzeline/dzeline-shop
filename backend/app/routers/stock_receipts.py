@@ -38,6 +38,10 @@ class StockReceiptIn(BaseModel):
     created_at:     Optional[int]   = None
     activated_at:   Optional[int]   = None
     photo_blob:     Optional[str]   = None  # set once at create — never resent on activation
+    order_id:       Optional[int]   = None
+    invoice_amount: Optional[float] = 0
+    amount_paid:    Optional[float] = 0
+    payment_status: Optional[str]   = "unpaid"
     items:          list[StockReceiptItemIn] = []
 
 
@@ -54,6 +58,12 @@ class StockReceiptItemUpdate(BaseModel):
 class StockReceiptUpdate(BaseModel):
     status:       Optional[str] = None
     activated_at: Optional[int] = None
+    # The invoice half. Sent on activation, and again whenever a payment is
+    # recorded — the paying device is often not the receiving one.
+    order_id:       Optional[int]   = None
+    invoice_amount: Optional[float] = None
+    amount_paid:    Optional[float] = None
+    payment_status: Optional[str]   = None
     items:        Optional[list[StockReceiptItemUpdate]] = None
 
 
@@ -85,6 +95,10 @@ class StockReceiptOut(BaseModel):
     activated_at:   Optional[int] = None
     photo_blob:     Optional[str] = None
     updated_at:     Optional[int] = None
+    order_id:       Optional[int]   = None
+    invoice_amount: Optional[float] = 0
+    amount_paid:    Optional[float] = 0
+    payment_status: Optional[str]   = "unpaid"
     items:          list[StockReceiptItemOut] = []
 
     class Config:
@@ -125,6 +139,10 @@ def create_receipt(
         created_at     = payload.created_at or now_ms,
         activated_at   = payload.activated_at,
         photo_blob     = payload.photo_blob,
+        order_id       = payload.order_id,
+        invoice_amount = payload.invoice_amount or 0,
+        amount_paid    = payload.amount_paid or 0,
+        payment_status = payload.payment_status or "unpaid",
         updated_at     = payload.created_at or now_ms,
     )
     db.add(receipt)
@@ -174,6 +192,16 @@ def update_receipt(
         receipt.status = payload.status
     if payload.activated_at is not None:
         receipt.activated_at = payload.activated_at
+    # The invoice half. Sent on activation and again on every payment — the
+    # device settling an invoice is usually not the one that received it.
+    if payload.order_id is not None:
+        receipt.order_id = payload.order_id
+    if payload.invoice_amount is not None:
+        receipt.invoice_amount = payload.invoice_amount
+    if payload.amount_paid is not None:
+        receipt.amount_paid = payload.amount_paid
+    if payload.payment_status is not None:
+        receipt.payment_status = payload.payment_status
     receipt.updated_at = int(datetime.utcnow().timestamp() * 1000)
 
     unmatched = []

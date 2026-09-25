@@ -198,7 +198,7 @@ Worth stating so the plan does not become "copy Aronium":
 
 Ordered by value to the shop per unit of work, not by how interesting it is.
 
-### Phase 1 — Correctness (small, and it is a bug)
+### Phase 1 — Correctness — **done 2026-09-26**
 
 | Item | Work |
 |---|---|

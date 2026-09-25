@@ -189,6 +189,12 @@ class StockReceipt(Base):
     activated_at   = Column(BigInteger, nullable=True)
     photo_blob     = Column(Text, nullable=True)  # compressed base64 data URL — set once at create, never on activation
     updated_at     = Column(BigInteger, nullable=True)  # bumped on create + activation — lets /stock-receipts be pulled incrementally instead of resending every receipt (incl. its photo) on every poll
+    # A delivery is also the invoice: it carries the number, the photo, what was
+    # billed and what has been paid against it.
+    order_id       = Column(Integer, nullable=True)     # the purchase order it fulfilled (local id)
+    invoice_amount = Column(Float, default=0, nullable=False)
+    amount_paid    = Column(Float, default=0, nullable=False)
+    payment_status = Column(String(20), default="unpaid", nullable=False)
 
     items = relationship("StockReceiptItem", back_populates="receipt", cascade="all, delete-orphan")
 
@@ -248,9 +254,46 @@ class Supplier(Base):
     phone      = Column(String(30),  nullable=True)
     email      = Column(String(200), nullable=True)
     notes      = Column(Text, nullable=True)
+    # How the shop pays this supplier. Shared because the owner settling an
+    # invoice is usually not the person who received it.
+    pay_method  = Column(String(30),  nullable=True)   # mpesa_paybill | mpesa_till | mpesa_send | bank | cash
+    pay_account = Column(String(100), nullable=True)
+    pay_name    = Column(String(200), nullable=True)
     deleted_at = Column(BigInteger, nullable=True)
     created_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
     updated_at = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+
+
+class SupplierPayment(Base):
+    """
+    Money paid to a supplier against one invoice.
+
+    Rows, not a running total: a large invoice is settled in instalments and
+    each needs its own reference and date to be worth anything in a dispute.
+    The receipt's amount_paid is recomputed from these.
+
+    Shared across devices because the shop owner pays while staff receive —
+    without this the person paying cannot see what arrived, and the person
+    receiving cannot see what has been settled.
+    """
+    __tablename__ = "supplier_payments"
+    __table_args__ = (UniqueConstraint("tenant_id", "device_id", "local_id", name="uq_supplier_payment_device_local"),)
+
+    id          = Column(Integer, primary_key=True, index=True)
+    tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    device_id   = Column(String(64), nullable=True, index=True)
+    local_id    = Column(Integer, nullable=True, index=True)
+    receipt_id  = Column(Integer, nullable=True, index=True)   # local receipt id on the device that recorded it
+    supplier_id = Column(Integer, nullable=True, index=True)
+    supplier    = Column(String(200), nullable=True)
+    amount      = Column(Float, nullable=False)
+    method      = Column(String(30), nullable=True)
+    reference   = Column(String(100), nullable=True)
+    note        = Column(Text, nullable=True)
+    staff_id    = Column(Integer, nullable=True)
+    paid_at     = Column(BigInteger, nullable=True, index=True)
+    created_at  = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
+    updated_at  = Column(BigInteger, default=lambda: int(datetime.utcnow().timestamp() * 1000))
 
 
 class EtimsConfig(Base):

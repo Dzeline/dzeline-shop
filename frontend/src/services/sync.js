@@ -224,6 +224,13 @@ export const syncService = {
             body: JSON.stringify({
               status:       receipt.status,
               activated_at: receipt.activated_at ?? null,
+              // The invoice half. Resent whenever a payment is recorded, since
+              // the device settling an invoice is rarely the one that received
+              // it — this is what lets the owner's total reach the staff's till.
+              order_id:       receipt.order_id ?? null,
+              invoice_amount: receipt.invoice_amount ?? 0,
+              amount_paid:    receipt.amount_paid ?? 0,
+              payment_status: receipt.payment_status ?? "unpaid",
               items: itemsWithCloudIds.map((i) => ({
                 product_id:       i.product_id,
                 cloud_product_id: i.cloud_product_id,
@@ -247,6 +254,10 @@ export const syncService = {
               staff_id:       receipt.staff_id,
               created_at:     receipt.timestamp,
               activated_at:   receipt.activated_at ?? null,
+              order_id:       receipt.order_id ?? null,
+              invoice_amount: receipt.invoice_amount ?? 0,
+              amount_paid:    receipt.amount_paid ?? 0,
+              payment_status: receipt.payment_status ?? "unpaid",
               // Create-only — never resent on the PUT (activation) branch
               // above, since the photo never changes after submission.
               photo_blob:     receipt.photo_blob ?? null,
@@ -864,6 +875,11 @@ export const syncService = {
           local_id: s.id,
           name: s.name,
           phone: s.phone ?? null,
+          // How to pay them — shared because the owner settling an invoice is
+          // usually not the person who received it.
+          pay_method: s.pay_method ?? null,
+          pay_account: s.pay_account ?? null,
+          pay_name: s.pay_name ?? null,
           email: s.email ?? null,
           notes: s.notes ?? null,
         };
@@ -918,7 +934,9 @@ export const syncService = {
         if (existing) {
           if (!existing.synced) continue; // pending local edit — don't clobber
           await db.suppliers.update(existing.id, {
-            name: r.name, phone: r.phone, email: r.email, notes: r.notes, synced: true,
+            name: r.name, phone: r.phone, email: r.email, notes: r.notes,
+            pay_method: r.pay_method ?? null, pay_account: r.pay_account ?? null,
+            pay_name: r.pay_name ?? null, synced: true,
           });
         } else {
           await db.suppliers.add({
@@ -969,7 +987,10 @@ export const syncService = {
         if (existing) {
           if (!existing.synced) continue; // pending local edit — don't clobber
           await db.stock_receipts.update(existing.id, {
-            status: r.status, activated_at: r.activated_at, synced: true,
+            status: r.status, activated_at: r.activated_at,
+            order_id: r.order_id ?? null, invoice_amount: r.invoice_amount ?? 0,
+            amount_paid: r.amount_paid ?? 0, payment_status: r.payment_status ?? "unpaid",
+            synced: true,
           });
           for (const item of r.items ?? []) {
             const local_item = await db.stock_receipt_items
@@ -989,6 +1010,8 @@ export const syncService = {
           timestamp: r.created_at, supplier: r.supplier, supplier_id: r.supplier_id,
           invoice_number: r.invoice_number, staff_id: r.staff_id,
           status: r.status, activated_at: r.activated_at ?? null,
+          order_id: r.order_id ?? null, invoice_amount: r.invoice_amount ?? 0,
+          amount_paid: r.amount_paid ?? 0, payment_status: r.payment_status ?? "unpaid",
           photo_blob: r.photo_blob ?? null,
           synced: true, cloud_id: r.id, device_id: r.device_id,
         });
@@ -1021,6 +1044,133 @@ export const syncService = {
   // SuppliersScreen, StockReceiving, etc.) must stay responsive to that one
   // user action regardless of whether a background cycle happens to be running.
 
+  /**
+   * Push payments made to suppliers.
+   *
+   * Outbox, like transactions: a payment is a fact that happened on this
+   * device and is never edited afterwards — a correction is another row. The
+   * backend dedupes on (device_id, local_id), so a retry after a dropped
+   * connection cannot double-count money against an invoice.
+   */
+  async pushUnsyncedPayments() {
+    if (!API_BASE) return { pushed: 0 };
+    const unsynced = await db.supplier_payments.filter((p) => !p.synced).toArray();
+    if (unsynced.length === 0) return { pushed: 0 };
+
+    const deviceId = await dbHelpers.getDeviceId();
+    let pushed = 0;
+
+    for (const payment of unsynced) {
+      try {
+        const res = await fetch(`${API_BASE}/supplier-payments`, {
+          method: "POST",
+          headers: apiHeaders(),
+          body: JSON.stringify({
+            device_id: deviceId,
+            local_id: payment.id,
+            receipt_id: payment.receipt_id ?? null,
+            supplier_id: payment.supplier_id ?? null,
+            supplier: payment.supplier ?? null,
+            amount: payment.amount,
+            method: payment.method ?? null,
+            reference: payment.reference ?? null,
+            note: payment.note ?? null,
+            staff_id: payment.staff_id ?? null,
+            paid_at: payment.paid_at ?? null,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          await db.supplier_payments.update(payment.id, { synced: true, cloud_id: data.id });
+          pushed++;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return { pushed };
+  },
+
+  /**
+   * Pull payments other devices recorded.
+   *
+   * This is the half that matters for the shop: the owner pays from their
+   * phone, and the staff device needs to stop showing the invoice as owed.
+   * Foreign payments are inserted locally and the affected receipt's totals
+   * recomputed from every payment now known — the receipt's own push carries
+   * the same figures, but whichever arrives first must leave the till correct.
+   */
+  async pullPayments() {
+    if (!API_BASE) return { pulled: 0 };
+    const deviceId = await dbHelpers.getDeviceId();
+    const since = parseInt(await dbHelpers.getSetting("payments_pulled_at"), 10) || 0;
+
+    try {
+      const res = await fetch(`${API_BASE}/supplier-payments?since=${since}`, {
+        headers: apiGetHeaders(),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return { pulled: 0 };
+      const rows = await res.json();
+      if (!rows.length) return { pulled: 0 };
+
+      let pulled = 0;
+      let newest = since;
+      const touchedReceipts = new Set();
+
+      for (const r of rows) {
+        newest = Math.max(newest, r.updated_at ?? 0);
+        // Our own payment coming back: already recorded, nothing to insert.
+        if (r.device_id === deviceId) continue;
+        const existing = await db.supplier_payments.filter((p) => p.cloud_id === r.id).first();
+        if (existing) continue;
+
+        await db.supplier_payments.add({
+          receipt_id: r.receipt_id ?? null,
+          supplier_id: r.supplier_id ?? null,
+          supplier: r.supplier ?? null,
+          amount: r.amount,
+          method: r.method ?? null,
+          reference: r.reference ?? null,
+          note: r.note ?? null,
+          staff_id: r.staff_id ?? null,
+          paid_at: r.paid_at ?? null,
+          synced: true,
+          cloud_id: r.id,
+          device_id: r.device_id ?? null,
+        });
+        if (r.receipt_id) touchedReceipts.add(r.receipt_id);
+        pulled++;
+      }
+
+      // Recompute each affected invoice from every payment this device now
+      // knows about, so the balance is right even if the receipt's own update
+      // has not arrived yet.
+      for (const receiptId of touchedReceipts) {
+        const receipt = await db.stock_receipts.get(receiptId);
+        if (!receipt) continue;
+        const payments = await db.supplier_payments.where("receipt_id").equals(receiptId).toArray();
+        const amountPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+        const invoiceAmount = receipt.invoice_amount ?? 0;
+        await db.stock_receipts.update(receiptId, {
+          amount_paid: amountPaid,
+          payment_status:
+            invoiceAmount > 0 && amountPaid >= invoiceAmount - 0.01
+              ? "paid"
+              : amountPaid > 0.01
+              ? "partial"
+              : "unpaid",
+        });
+      }
+
+      await dbHelpers.updateSetting("payments_pulled_at", String(newest));
+      return { pulled };
+    } catch {
+      return { pulled: 0 };
+    }
+  },
+
   async runFullSync() {
     return _withSyncGuard(async () => {
       await Promise.allSettled([
@@ -1032,6 +1182,7 @@ export const syncService = {
         this.pushUnsyncedProducts(),
         this.pushUnsyncedStaff(),
         this.pushUnsyncedSuppliers(),
+        this.pushUnsyncedPayments(),
       ]);
       await Promise.allSettled([
         this.pullProducts(),
@@ -1040,6 +1191,7 @@ export const syncService = {
         this.pullTransactions(),
         this.pullSuppliers(),
         this.pullReceipts(),
+        this.pullPayments(),
         this.pollPrintJobs(),
       ]);
     });
@@ -1054,6 +1206,10 @@ export const syncService = {
         this.pullTransactions(),
         this.pullSuppliers(),
         this.pullReceipts(),
+        // On the interval too, not just on reconnect: the owner paying from
+        // their phone should clear the balance on the staff's till within the
+        // same visit, not at the next restart.
+        this.pullPayments(),
         this.pollPrintJobs(),
       ]);
     });

@@ -243,6 +243,10 @@ class SupplierIn(BaseModel):
     phone:     Optional[str] = None
     email:     Optional[str] = None
     notes:     Optional[str] = None
+    # How the shop pays them — shared so whoever settles the invoice has it
+    pay_method:  Optional[str] = None
+    pay_account: Optional[str] = None
+    pay_name:    Optional[str] = None
 
 
 class SupplierUpdate(BaseModel):
@@ -250,6 +254,9 @@ class SupplierUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    pay_method:  Optional[str] = None
+    pay_account: Optional[str] = None
+    pay_name:    Optional[str] = None
 
 
 class SupplierOut(BaseModel):
@@ -260,8 +267,44 @@ class SupplierOut(BaseModel):
     phone:      Optional[str] = None
     email:      Optional[str] = None
     notes:      Optional[str] = None
+    pay_method:  Optional[str] = None
+    pay_account: Optional[str] = None
+    pay_name:    Optional[str] = None
     deleted_at: Optional[int] = None
     updated_at: int
+
+    class Config:
+        from_attributes = True
+
+
+class SupplierPaymentIn(BaseModel):
+    device_id:   Optional[str] = None
+    local_id:    Optional[int] = None
+    receipt_id:  Optional[int] = None
+    supplier_id: Optional[int] = None
+    supplier:    Optional[str] = None
+    amount:      float
+    method:      Optional[str] = None
+    reference:   Optional[str] = None
+    note:        Optional[str] = None
+    staff_id:    Optional[int] = None
+    paid_at:     Optional[int] = None
+
+
+class SupplierPaymentOut(BaseModel):
+    id:          int
+    device_id:   Optional[str] = None
+    local_id:    Optional[int] = None
+    receipt_id:  Optional[int] = None
+    supplier_id: Optional[int] = None
+    supplier:    Optional[str] = None
+    amount:      float
+    method:      Optional[str] = None
+    reference:   Optional[str] = None
+    note:        Optional[str] = None
+    staff_id:    Optional[int] = None
+    paid_at:     Optional[int] = None
+    updated_at:  Optional[int] = None
 
     class Config:
         from_attributes = True

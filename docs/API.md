@@ -96,6 +96,18 @@ of being set up from scratch.
 `PUT` matters: unlike transactions, a receipt is legitimately mutated by a device other
 than the one that created it.
 
+## Supplier payments
+
+Money paid against supplier invoices. Shared because the owner pays and the
+staff receive, usually on different devices.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/supplier-payments?since=` | Payments recorded since a timestamp |
+| POST | `/supplier-payments` | Record a payment (idempotent by device + local id) |
+
+A payment is never edited after the fact — a correction is another row.
+
 ## Print jobs
 
 Shared-printer queue. A till with no printer enqueues a job per sale; the device marked as
@@ -192,6 +204,7 @@ Where each endpoint is actually called from, for tracing a change through the fr
 | `sync.js` | `/suppliers` (push, pull) | Reconnect; 45s pull interval |
 | `sync.js` | `/settings` (push, pull) | Reconnect; settings save |
 | `sync.js` | `/print-jobs` | After a sale; hub polling |
+| `sync.js` | `/supplier-payments` (push, pull) | On recording a payment; reconnect; 45s pull |
 | `sync.js` | `/mpesa/stk-push`, `/mpesa/status/{id}`, `/mpesa/stk-query/{id}` | M-Pesa checkout, STK polling |
 | `sync.js` | `/sms/verified-codes` | Reconnect reconciliation |
 | `etims.js` | all `/etims/*` | eTIMS panel |

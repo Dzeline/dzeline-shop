@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supplierLedger, PAY_METHODS, payMethodLabel } from "../services/supplierLedger";
+import { syncService } from "../services/sync";
 import { useStaffStore } from "../store/staffStore";
 import { formatPrice } from "../utils/formatters";
 import { showToast } from "../utils/toast";
@@ -42,6 +43,11 @@ export default function RecordPaymentModal({ invoice, supplier, onClose, onSaved
         staff_id: currentStaff?.id ?? null,
       });
       showToast(`${formatPrice(value)} recorded`);
+      // Push straight away rather than waiting for the next cycle — the
+      // whole point is that the person who received the invoice sees it
+      // settled.
+      syncService.pushUnsyncedPayments().catch(() => {});
+      syncService.pushUnsyncedReceipts().catch(() => {});
       onSaved();
     } catch (err) {
       console.error(err);

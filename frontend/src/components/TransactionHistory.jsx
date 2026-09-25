@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { formatPrice, formatDate } from "../utils/formatters";
 import { showToast } from "../utils/toast";
+import { useStaffStore } from "../store/staffStore";
+import VoidSaleModal from "./VoidSaleModal";
 
 function SkeletonList() {
   return (
@@ -26,6 +28,8 @@ export default function TransactionHistory({ onClose, canVoid = false }) {
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [voidingId, setVoidingId] = useState(null);
+  const [voidTarget, setVoidTarget] = useState(null);
+  const currentStaff = useStaffStore((st) => st.currentStaff);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,17 +50,31 @@ export default function TransactionHistory({ onClose, canVoid = false }) {
     setExpanded((prev) => (prev === id ? null : id));
   }
 
-  async function handleVoid(txn) {
-    if (!window.confirm(
-      `Void sale #${String(txn.id).padStart(6, "0")} for ${formatPrice(txn.total)}?\n\nThis cannot be undone. Stock will NOT be automatically restored.`
-    )) return;
+  async function handleVoid(txn, reason, restock) {
     setVoidingId(txn.id);
     try {
-      await dbHelpers.voidTransaction(txn.id);
+      const result = await dbHelpers.voidTransaction(txn.id, {
+        reason,
+        staffId: currentStaff?.id ?? null,
+        restock,
+      });
       setTransactions((prev) =>
-        prev.map((t) => t.id === txn.id ? { ...t, voided: true } : t)
+        prev.map((t) => t.id === txn.id
+          ? { ...t, voided: true, void_reason: reason, stock_restored: restock && result.missing === 0 }
+          : t)
       );
-      showToast(`Sale #${String(txn.id).padStart(6, "0")} voided`);
+      setVoidTarget(null);
+
+      // Say what actually happened to the stock. A line that could not be put
+      // back — a deleted product, or a sale pulled from another till whose
+      // catalogue this device never had — must not pass as a clean restock.
+      if (!restock) {
+        showToast("Sale voided — stock not restored");
+      } else if (result.missing > 0) {
+        showToast(`Voided — ${result.restored} restocked, ${result.missing} not found`);
+      } else {
+        showToast(`Sale voided — ${result.restored} item${result.restored !== 1 ? "s" : ""} back in stock`);
+      }
     } catch {
       showToast("Failed to void transaction");
     } finally {
@@ -140,7 +158,13 @@ export default function TransactionHistory({ onClose, canVoid = false }) {
                       #{String(txn.id).padStart(6, "0")}
                     </p>
                     {isVoided ? (
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">
+                      <span
+                        className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600"
+                        title={[
+                          txn.void_reason ? `Reason: ${txn.void_reason}` : "No reason recorded",
+                          txn.stock_restored ? "Stock was restored" : "Stock was NOT restored",
+                        ].join(" · ")}
+                      >
                         Voided
                       </span>
                     ) : (
@@ -234,7 +258,7 @@ export default function TransactionHistory({ onClose, canVoid = false }) {
                   {canVoid && !isVoided && txn.origin !== "remote" && (
                     <div className="pt-2 border-t border-gray-200">
                       <button
-                        onClick={() => handleVoid(txn)}
+                        onClick={() => setVoidTarget(txn)}
                         disabled={voidingId === txn.id}
                         className="w-full py-2 rounded-xl text-xs font-bold bg-red-50 text-red-500 hover:bg-red-100 transition disabled:opacity-50"
                       >
@@ -248,6 +272,13 @@ export default function TransactionHistory({ onClose, canVoid = false }) {
           );
         })}
       </div>
+      {voidTarget && (
+        <VoidSaleModal
+          txn={voidTarget}
+          onClose={() => setVoidTarget(null)}
+          onVoided={(reason, restock) => handleVoid(voidTarget, reason, restock)}
+        />
+      )}
     </div>
   );
 }

@@ -24,6 +24,7 @@ npm run dev                 # → http://localhost:5173
 | `verify:pricing` | Selling-price suggestion maths (no browser needed) |
 | `verify:purchase-orders` | Order recording and delivery matching (needs `dev` running) |
 | `verify:supplier-ledger` | Invoices, part payments and what is owed (needs `dev` running) |
+| `verify:refunds` | Voids restore stock, with reason and audit (needs `dev` running) |
 | `verify:scanner` | Camera decode cost and the fast/thorough split (needs `dev` running) |
 | `verify:sms-match` | M-Pesa code/amount reconciliation rules (no browser needed) |
 | `generate-icons` | Regenerate PWA icons from the source SVG |
@@ -49,10 +50,11 @@ src/
 │   ├── InventoryScreen · StockReceiving · ManagerReceiving · SuppliersScreen
 │   ├── PurchaseOrdersScreen  Open supplier orders, what is owed, and paying it
 │   ├── SupplierDetail · RecordPaymentModal  One supplier's orders, invoices and payments
+│   ├── VoidSaleModal    Void with a reason, and a decision about the stock
 │   ├── DailySummary · TransactionHistory · FinanceDashboard · SalesExport
 │   └── StaffManagement · SettingsScreen · EtimsModal
 ├── services/
-│   ├── db.js            Dexie schema (v16) + every dbHelpers accessor
+│   ├── db.js            Dexie schema (v18) + every dbHelpers accessor
 │   ├── sync.js          Push/pull for all synced tables
 │   ├── purchaseOrders.js  What is on order, and matching deliveries to it
 │   ├── supplierLedger.js  Invoices, payments, and what the shop owes

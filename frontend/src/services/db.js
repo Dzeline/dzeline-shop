@@ -9,6 +9,18 @@ export async function hashPin(pin) {
     .join("");
 }
 
+// Offered at void time. A short list is what stops people typing "x" to get
+// past the dialog — and a void with no real reason is the one an owner most
+// needs to be able to ask about later.
+const DEFAULT_VOID_REASONS = [
+  "Customer changed their mind",
+  "Wrong item rung up",
+  "Wrong price",
+  "Damaged or expired goods",
+  "Duplicate sale",
+  "Payment failed",
+];
+
 // Initialize database
 export const db = new Dexie("DzelineShop");
 
@@ -224,6 +236,54 @@ db.version(16).stores({
   });
 });
 
+// Version 17: voiding a sale becomes a refund.
+//
+// Until now `voidTransaction` flipped a flag and nothing else — the confirm
+// dialog even warned that stock would not come back. So every void left the
+// count permanently wrong, and the cover/velocity figures in Finance are
+// computed from that number. A void is also where theft hides, and it recorded
+// no reason and no author.
+//
+//   transactions      gain why it was voided, by whom, when, and whether the
+//                     stock went back — recorded, not assumed, so a void that
+//                     could not restock (a deleted product) is still honest
+//   void_reasons      a short editable list, because typing a reason every time
+//                     is what makes people stop giving one
+db.version(17).stores({
+  transactions: "++id, timestamp, total, payment_method, synced, staff_id, etims_status, cloud_id, device_id, voided",
+  void_reasons: "++id, label, rank",
+}).upgrade(async (tx) => {
+  // Historic voids: we cannot know why, and their stock was never restored.
+  // Saying so is better than implying it was handled.
+  await tx.table("transactions").toCollection().modify((t) => {
+    if (t.voided) {
+      t.void_reason = t.void_reason ?? null;
+      t.voided_by = t.voided_by ?? null;
+      t.voided_at = t.voided_at ?? null;
+      t.stock_restored = t.stock_restored ?? false;
+    }
+  });
+  await Promise.all(
+    DEFAULT_VOID_REASONS.map((label, i) =>
+      tx.table("void_reasons").add({ label, rank: i, created_at: Date.now() }),
+    ),
+  );
+});
+
+// Version 18: supplier payments sync.
+//
+// The shop owner pays the invoices; the staff receive them, usually on another
+// device. Keeping the ledger local meant the person paying could not see what
+// had been received, and the person receiving could not see what had been paid.
+db.version(18).stores({
+  supplier_payments: "++id, receipt_id, supplier_id, paid_at, synced, cloud_id, device_id",
+}).upgrade(async (tx) => {
+  // Nothing recorded so far has ever been pushed.
+  await tx.table("supplier_payments").toCollection().modify({ synced: false, cloud_id: null });
+  await tx.table("suppliers").toCollection().modify({ synced: false });
+  await tx.table("stock_receipts").toCollection().modify({ synced: false });
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -359,8 +419,92 @@ export const dbHelpers = {
   },
 
   // Void a transaction — marks it as voided and resets synced flag
-  async voidTransaction(id) {
-    return await db.transactions.update(id, { voided: true, synced: false });
+  /**
+   * Void a sale and put the goods back on the shelf.
+   *
+   * This used to flip a flag and stop there, so the stock count drifted further
+   * from reality with every void — and the cover/velocity figures in Finance are
+   * computed from that count. Restoring stock is the correctness fix; the reason
+   * and the author are the audit trail, because a void is where theft hides.
+   *
+   * Atomic with the stock movement: a void that half-happened would be worse
+   * than either outcome. Idempotent — voiding twice cannot restock twice.
+   *
+   * @param restock  false when the goods are not coming back (damaged, or the
+   *                 customer kept them), so the count stays honest either way
+   * @returns { restored, missing } — lines put back, and lines whose product no
+   *          longer exists locally, which the caller should surface rather than
+   *          swallow
+   */
+  async voidTransaction(id, { reason = null, staffId = null, restock = true } = {}) {
+    return await db.transaction("rw", [db.transactions, db.transaction_items, db.products], async () => {
+      const txn = await db.transactions.get(id);
+      if (!txn) throw new Error("Sale not found");
+      if (txn.voided) return { restored: 0, missing: 0, alreadyVoided: true };
+
+      let restored = 0;
+      let missing = 0;
+
+      if (restock) {
+        const items = await db.transaction_items.where("transaction_id").equals(id).toArray();
+        for (const item of items) {
+          if (!item.product_id) { missing++; continue; }
+          const product = await db.products.get(item.product_id);
+          // A pulled sale can reference a product this device never had, and a
+          // product can have been deleted since. Neither should block the void.
+          if (!product) { missing++; continue; }
+          await db.products.update(item.product_id, {
+            stock: (product.stock ?? 0) + (item.quantity ?? 0),
+            synced: false,
+            updated_at: Date.now(),
+          });
+          restored++;
+        }
+      }
+
+      await db.transactions.update(id, {
+        voided: true,
+        void_reason: reason?.trim() || null,
+        voided_by: staffId ?? null,
+        voided_at: Date.now(),
+        // Recorded rather than assumed: a void that could not restock every line
+        // must not look like one that did.
+        stock_restored: restock && missing === 0,
+        synced: false,
+      });
+
+      return { restored, missing, alreadyVoided: false };
+    });
+  },
+
+  /**
+   * The short list offered at void time.
+   *
+   * Seeded here as well as in the v17 migration, because Dexie runs `upgrade()`
+   * only for a database being upgraded — a shop installing fresh would open the
+   * void dialog to an empty list and be back to typing a reason every time,
+   * which is what makes people stop giving one.
+   */
+  async getVoidReasons() {
+    const existing = await db.void_reasons.orderBy("rank").toArray();
+    if (existing.length > 0) return existing;
+    await db.void_reasons.bulkAdd(
+      DEFAULT_VOID_REASONS.map((label, i) => ({ label, rank: i, created_at: Date.now() })),
+    );
+    return db.void_reasons.orderBy("rank").toArray();
+  },
+
+  async addVoidReason(label) {
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("Reason cannot be empty");
+    const existing = await db.void_reasons.filter((r) => r.label.toLowerCase() === trimmed.toLowerCase()).first();
+    if (existing) return existing.id;
+    const count = await db.void_reasons.count();
+    return db.void_reasons.add({ label: trimmed, rank: count, created_at: Date.now() });
+  },
+
+  async deleteVoidReason(id) {
+    await db.void_reasons.delete(id);
   },
 
   // Get setting value
