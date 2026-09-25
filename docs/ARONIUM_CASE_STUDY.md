@@ -231,15 +231,22 @@ trust the till, and it is the clearest thing Aronium has that we do not.
 Discounts first — a cashier editing the product price to do a deal is a live
 problem today.
 
-### Phase 4 — Customer accounts
+### Phase 4 — Customer accounts — **dropped**
 
-| Item | Work |
-|---|---|
-| Customers | Name, phone, balance |
-| Sell on credit | A payment type that increases a balance instead of taking cash |
-| Collect payments | Against a balance, with a statement |
+Decided 2026-09-26: the shops are against selling on credit. Their reasoning is
+that letting goods leave without confirming payment is neither financially
+sound nor practical for them, so the whole feature — customer balances, credit
+as a payment type, collections — is off the roadmap rather than deferred.
 
-Needs Phase 2 first: credit only reconciles correctly once cash does.
+Worth revisiting only if a client asks for it directly. Nothing else in the plan
+depended on it.
+
+### Phase 4b — Paying suppliers — **done 2026-09-26**
+
+Not from Aronium; raised directly. The order lifecycle now runs all the way to
+settlement: raise an order, see it due, receive it, activate it into stock, and
+then see what was billed and pay it. See "Supplier payments" in
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ### Phase 5 — Stock depth
 
@@ -268,10 +275,10 @@ would compromise offline-first.
 
 ## Two things to verify before building
 
-- **Cash reconciliation needs a shift model**, and we have no concept of a shift —
-  only a logged-in staff member. Decide whether a shift is per-user-per-day or
-  per-device-per-day before designing the tables; getting it wrong is expensive
-  to undo.
-- **Credit sales interact with eTIMS.** A sale on account is still a sale for KRA
-  purposes and presumably still needs an invoice at the point of sale, not at
-  the point of payment. Worth confirming before Phase 4.
+- **The shift model is decided: per user, per day.** One person legitimately
+  moves between devices during a day — a phone while handling suppliers in the
+  morning, a desktop at the counter during the rush — so a shift that belonged
+  to a device would split one person's takings across two records and reconcile
+  neither. Per user per day follows the money and the accountability, which is
+  the point of the exercise. (Decided 2026-09-26.)
+- ~~Credit sales and eTIMS~~ — moot, now that credit is dropped.

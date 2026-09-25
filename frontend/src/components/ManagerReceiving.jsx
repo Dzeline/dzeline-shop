@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
 import { purchaseOrders } from "../services/purchaseOrders";
+import { supplierLedger } from "../services/supplierLedger";
 import { formatPrice } from "../utils/formatters";
 import { showToast } from "../utils/toast";
 import { useSettingsStore } from "../store/settingsStore";
@@ -150,6 +151,14 @@ function ReceiptCard({ receipt, onActivated }) {
       let matched = null;
       try {
         matched = await purchaseOrders.applyDelivery(received);
+        // File the invoice against the order it fulfilled, and bill it at the
+        // delivery's line total unless someone edits it later. Without this the
+        // invoice photo and the amount owed have nothing tying them to the
+        // order the supplier is chasing payment for.
+        if (matched?.orderIds?.length === 1) {
+          await supplierLedger.linkReceiptToOrder(receipt.id, matched.orderIds[0]);
+        }
+        await supplierLedger.setInvoiceAmount(receipt.id, invoiceTotal);
       } catch (err) {
         console.error("Purchase order match failed:", err);
       }

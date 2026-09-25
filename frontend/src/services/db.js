@@ -183,6 +183,47 @@ db.version(15).stores({
   purchase_order_items: "++id, order_id, product_id, qty_outstanding",
 });
 
+// Version 16: paying suppliers. An order could be raised, received and turned
+// into stock, and then the trail stopped — what the supplier actually billed,
+// whether it had been paid, and the invoice photo proving it were either
+// nowhere or stranded on one delivery record nobody could find again.
+//
+//   suppliers        gain payment details, so the shop knows HOW to pay them
+//   stock_receipts   gain the invoice amount, what has been paid against it,
+//                    and the order it fulfilled — a delivery IS the invoice
+//   supplier_payments is the ledger: several payments may settle one invoice,
+//                    and each needs its own reference and date to be auditable
+//
+// Payment sits on the delivery rather than the order because that is what
+// carries the invoice number and the photo, and a supplier may part-deliver one
+// order against two invoices. The order's payment state is derived from the
+// invoices raised against it.
+db.version(16).stores({
+  suppliers:         "++id, name, created_at, cloud_id, updated_at, deleted_at, synced",
+  stock_receipts:    "++id, timestamp, supplier, supplier_id, staff_id, status, synced, cloud_id, device_id, order_id, payment_status",
+  supplier_payments: "++id, receipt_id, supplier_id, paid_at, synced, cloud_id, device_id",
+}).upgrade(async (tx) => {
+  // Existing deliveries are historic: bill them at their own line totals and
+  // mark them unpaid rather than silently claiming they were settled.
+  const items = await tx.table("stock_receipt_items").toArray();
+  const totalByReceipt = new Map();
+  for (const i of items) {
+    const line = (i.qty_added ?? 0) * (i.unit_cost ?? 0);
+    totalByReceipt.set(i.receipt_id, (totalByReceipt.get(i.receipt_id) ?? 0) + line);
+  }
+  await tx.table("stock_receipts").toCollection().modify((r) => {
+    r.order_id = r.order_id ?? null;
+    r.invoice_amount = r.invoice_amount ?? (totalByReceipt.get(r.id) ?? 0);
+    r.amount_paid = r.amount_paid ?? 0;
+    r.payment_status = r.payment_status ?? "unpaid";
+  });
+  await tx.table("suppliers").toCollection().modify((s) => {
+    s.pay_method = s.pay_method ?? null;
+    s.pay_account = s.pay_account ?? null;
+    s.pay_name = s.pay_name ?? null;
+  });
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.

@@ -1,7 +1,7 @@
 # Handoff — current state
 
 Offline-first PWA point-of-sale for small Kenyan supermarkets. All data is local
-(IndexedDB via Dexie, schema v15) and syncs to a FastAPI backend when a connection exists.
+(IndexedDB via Dexie, schema v16) and syncs to a FastAPI backend when a connection exists.
 
 This document is **what state the project is in**. The durable reference material lives
 next to it, one fact in one place:
@@ -133,6 +133,7 @@ backend/app/
 | Security | `AndroidManifest.xml` | `allowBackup="true"` with the webhook secret and API key in plain `SharedPreferences`; both are extractable via `adb backup`. |
 | Risk | `AndroidManifest.xml` | `default_filter_types="conversations,alerting"` (API 33+) may drop M-Pesa notifications if the SMS app posts them silently. Untested on Android 13+. |
 | Build | `android-sms-listener` | No `gradlew.bat`, so the project cannot be built from Windows. Generate one with `gradle wrapper` on a machine running **JDK 17** — Gradle 8.2 rejects JDK 21+, and AGP 8.2 rejects anything below 11. |
+| Sync gap | `supplierLedger` | Supplier payment details and the `supplier_payments` ledger are local only. The backend needs columns on `suppliers`, the new invoice fields on `stock_receipts`, and a payments table before a second till can see what has been paid. |
 | Sync gap | `settingsStore` | The default profit margin is stored locally only. Syncing it needs a new column on the `tenants` row, so a second till falls back to 25% until then. |
 | Untested | `android-sms-listener` | Nothing in this module has ever been compiled — the wrapper jar was missing and `gradle.properties` did not exist, so both the APK workflow and any local build failed before reaching the Kotlin. CI is the first real build; expect it to surface more. |
 

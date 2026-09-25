@@ -138,10 +138,11 @@ export const purchaseOrders = {
    * Over-delivery is absorbed rather than left as a negative outstanding.
    *
    * @param received [{ product_id, qty }]
-   * @returns { closedOrders, matchedLines }
+   * @returns { closedOrders, matchedLines, orderIds } — orderIds is what the
+   *          delivery settled, so the receipt can be filed against it
    */
   async applyDelivery(received) {
-    if (!received || received.length === 0) return { closedOrders: 0, matchedLines: 0 };
+    if (!received || received.length === 0) return { closedOrders: 0, matchedLines: 0, orderIds: [] };
 
     return db.transaction("rw", [db.purchase_orders, db.purchase_order_items], async () => {
       const open = await db.purchase_orders.where("status").anyOf(OPEN_STATUSES).toArray();
@@ -191,7 +192,7 @@ export const purchaseOrders = {
         if (outstanding === 0) closedOrders++;
       }
 
-      return { closedOrders, matchedLines };
+      return { closedOrders, matchedLines, orderIds: [...touched] };
     });
   },
 

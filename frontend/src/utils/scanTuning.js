@@ -74,12 +74,24 @@ export function cropRect(videoWidth, videoHeight) {
  * @param lastSuccessAt    when a code last decoded (or when scanning started)
  * @param lastTryHardAt    when the last exhaustive pass ran
  */
-export function shouldTryHard(now, lastSuccessAt, lastTryHardAt) {
+/**
+ * How much of the loop a thorough pass may consume, as a share of wall clock.
+ *
+ * A fixed interval is wrong on a slow device: the pass itself takes longer
+ * there, so the same spacing hands it a bigger share of every second and
+ * starves the fast path exactly where the phone can least afford it. Spacing
+ * each pass at a multiple of its own measured duration keeps the share roughly
+ * constant on any hardware.
+ */
+const TRY_HARD_DUTY = 4;
+
+export function shouldTryHard(now, lastSuccessAt, lastTryHardAt, lastTryHardMs = 0) {
   if (now - lastSuccessAt < TRY_HARD_AFTER_MS) return false;
   // Never run one yet: allow it. Comparing against 0 would otherwise measure
   // page uptime rather than time since the last pass, so opening the scanner
   // within the first few seconds of a page load would have its first thorough
   // pass rate-limited away — exactly when a stubborn barcode most needs it.
   if (!lastTryHardAt) return true;
-  return now - lastTryHardAt >= TRY_HARD_EVERY_MS;
+  const spacing = Math.max(TRY_HARD_EVERY_MS, lastTryHardMs * TRY_HARD_DUTY);
+  return now - lastTryHardAt >= spacing;
 }

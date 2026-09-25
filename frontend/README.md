@@ -23,6 +23,8 @@ npm run dev                 # → http://localhost:5173
 | `verify:stock-finance` | Playwright checks for the pricing suggestion and Finance panels (needs `dev` running) |
 | `verify:pricing` | Selling-price suggestion maths (no browser needed) |
 | `verify:purchase-orders` | Order recording and delivery matching (needs `dev` running) |
+| `verify:supplier-ledger` | Invoices, part payments and what is owed (needs `dev` running) |
+| `verify:scanner` | Camera decode cost and the fast/thorough split (needs `dev` running) |
 | `verify:sms-match` | M-Pesa code/amount reconciliation rules (no browser needed) |
 | `generate-icons` | Regenerate PWA icons from the source SVG |
 
@@ -45,13 +47,15 @@ src/
 │   ├── BarcodeScanner   zxing decoder; one-shot, or continuous for a whole basket
 │   ├── Cart · CheckoutModal · Receipt
 │   ├── InventoryScreen · StockReceiving · ManagerReceiving · SuppliersScreen
-│   ├── PurchaseOrdersScreen  Open supplier orders, and closing them
+│   ├── PurchaseOrdersScreen  Open supplier orders, what is owed, and paying it
+│   ├── SupplierDetail · RecordPaymentModal  One supplier's orders, invoices and payments
 │   ├── DailySummary · TransactionHistory · FinanceDashboard · SalesExport
 │   └── StaffManagement · SettingsScreen · EtimsModal
 ├── services/
-│   ├── db.js            Dexie schema (v15) + every dbHelpers accessor
+│   ├── db.js            Dexie schema (v16) + every dbHelpers accessor
 │   ├── sync.js          Push/pull for all synced tables
 │   ├── purchaseOrders.js  What is on order, and matching deliveries to it
+│   ├── supplierLedger.js  Invoices, payments, and what the shop owes
 │   ├── thermalPrinter.js  Web Bluetooth ESC/POS + browser print fallback
 │   └── etims.js         KRA VSCU client
 ├── store/               cartStore · staffStore · navStore · settingsStore (Zustand)

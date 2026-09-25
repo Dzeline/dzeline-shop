@@ -17,8 +17,8 @@ moment it is rung up; the cloud is how tills agree with each other afterwards.
 │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐     │
 │  │  Zustand    │  │   Dexie.js   │  │  Service Worker  │     │
 │  │  cart,      │  │  IndexedDB   │  │  Workbox         │     │
-│  │  staff,     │  │  v15 schema  │  │  offline cache   │     │
-│  │  nav, prefs │  │  13 tables   │  └──────────────────┘     │
+│  │  staff,     │  │  v16 schema  │  │  offline cache   │     │
+│  │  nav, prefs │  │  14 tables   │  └──────────────────┘     │
 │  └─────────────┘  └──────────────┘                           │
 │         ↑                ↑                                    │
 │         └───── App.jsx ──┘                                    │
@@ -137,6 +137,35 @@ exists to prevent. Orders older than 21 days stop counting as on-order — an
 order nobody has closed in three weeks is usually forgotten, not in transit, and
 it must not go on suppressing a genuine shortage.
 
+### Supplier payments
+
+The order lifecycle runs to settlement, not just to stock:
+
+```text
+Suppliers → Create Order   → purchase_orders (sent)
+Delivery recorded          → stock_receipt (draft) + invoice number + photo
+Manager activates          → stock moves, order lines close,
+                             receipt linked to the order it fulfilled,
+                             invoice_amount set from the line total
+Payment                    → supplier_payments row; the receipt's amount_paid
+                             and payment_status are recomputed from those rows
+```
+
+**The invoice belongs to the delivery, not the order.** The delivery is what
+carries the invoice number and the photo, and a supplier may part-deliver one
+order against two invoices. An order's payment state is derived from the
+invoices raised against it, never stored on it.
+
+**Payments are rows, not a running total.** A shop settles a large invoice in
+instalments, and each one needs its own reference and date to be worth anything
+when a supplier disputes it. `amount_paid` is recomputed from the rows, so the
+two can never disagree.
+
+Only *activated* deliveries count as debts — a draft has not been accepted into
+stock, so it is not yet a bill. Suppliers carry their own payment details
+(paybill, till, phone, bank) so settling an invoice does not mean hunting for a
+number on a delivery note.
+
 ### M-Pesa
 
 ```text
@@ -211,6 +240,7 @@ flags in v5.
 | v13 | Stock receipt drafts sync: cloud_id, device_id |
 | v14 | print_jobs outbox for the shared-printer queue |
 | v15 | purchase_orders + purchase_order_items — what has been ordered and not yet arrived |
+| v16 | Supplier payment details; invoice amount / paid / status and order link on stock_receipts; supplier_payments ledger |
 
 | Table | Key | Indexed | Notable unindexed |
 | --- | --- | --- | --- |
@@ -226,6 +256,7 @@ flags in v5.
 | `print_jobs` | `++id` | `device_id, created_at` | Pure outbox — deleted once pushed |
 | `purchase_orders` | `++id` | `supplier_id, supplier, status, created_at, sent_at, synced, cloud_id, device_id` | `note, closed_at` |
 | `purchase_order_items` | `++id` | `order_id, product_id, qty_outstanding` | `qty_ordered, qty_received, unit_cost` |
+| `supplier_payments` | `++id` | `receipt_id, supplier_id, paid_at, synced, cloud_id, device_id` | `amount, method, reference, note, staff_id` |
 
 **All IndexedDB access goes through `dbHelpers` in `db.js`.** Components never import `db`
 directly; that is what keeps migrations and invariants in one auditable place.

@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { purchaseOrders, PO_STATUS, STALE_AFTER_DAYS } from "../services/purchaseOrders";
 import { showToast } from "../utils/toast";
+import { supplierLedger } from "../services/supplierLedger";
+import { formatPrice } from "../utils/formatters";
+import RecordPaymentModal from "./RecordPaymentModal";
 
 const STATUS_STYLE = {
   [PO_STATUS.SENT]:      { label: "Sent",      chip: "bg-blue-100 text-blue-700" },
@@ -17,13 +20,20 @@ function daysAgo(ts) {
   return `${days} days ago`;
 }
 
-function OrderCard({ order, onChanged }) {
+function OrderCard({ order, invoices = [], onChanged, onPay }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const style = STATUS_STYLE[order.status] ?? STATUS_STYLE[PO_STATUS.SENT];
 
   const outstanding = order.items.reduce((sum, i) => sum + Math.max(0, i.qty_outstanding), 0);
   const ordered = order.items.reduce((sum, i) => sum + (i.qty_ordered ?? 0), 0);
+
+  // Once the goods have arrived the question stops being "did it come?" and
+  // becomes "have we paid for it?" — so the card changes what it asks.
+  const billed = invoices.reduce((sum, i) => sum + i.invoice_amount, 0);
+  const owedOnOrder = invoices.reduce((sum, i) => sum + i.outstanding, 0);
+  const isDelivered = order.status === PO_STATUS.RECEIVED || order.status === PO_STATUS.PARTIAL;
+  const fullyPaid = invoices.length > 0 && owedOnOrder <= 0.01;
 
   async function act(cancelled) {
     setBusy(true);
@@ -49,12 +59,21 @@ function OrderCard({ order, onChanged }) {
           <p className="font-bold text-sm text-gray-800 truncate">{order.supplier}</p>
           <p className="text-xs text-gray-400">
             {daysAgo(order.sent_at ?? order.created_at)} &middot; {order.items.length} line
-            {order.items.length !== 1 ? "s" : ""} &middot; {outstanding} of {ordered} still due
+            {order.items.length !== 1 ? "s" : ""}
+            {outstanding > 0 ? ` · ${outstanding} of ${ordered} still due` : ""}
+            {billed > 0 ? ` · ${formatPrice(billed)} invoiced` : ""}
           </p>
         </div>
         <span className={`shrink-0 text-[11px] font-bold px-2 py-1 rounded-full ${style.chip}`}>
           {style.label}
         </span>
+        {invoices.length > 0 && (
+          <span className={`shrink-0 text-[11px] font-bold px-2 py-1 rounded-full ${
+            fullyPaid ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+          }`}>
+            {fullyPaid ? "Paid" : `Owe ${formatPrice(owedOnOrder)}`}
+          </span>
+        )}
         <svg
           className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
           fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -93,27 +112,80 @@ function OrderCard({ order, onChanged }) {
             })}
           </div>
 
-          <p className="text-xs text-gray-400">
-            Lines close by themselves as deliveries are activated in Receiving. Use these only
-            when stock arrived without going through Receiving, or the order is not coming.
-          </p>
+          {/* Invoices raised against this order */}
+          {invoices.length > 0 && (
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                Invoice{invoices.length !== 1 ? "s" : ""}
+              </p>
+              {invoices.map((inv) => (
+                <div key={inv.id} className="flex items-center gap-3">
+                  {inv.photo_blob && (
+                    <img
+                      src={inv.photo_blob}
+                      alt="Invoice"
+                      className="w-9 h-9 rounded-lg object-cover border border-gray-200 shrink-0"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">
+                      {inv.invoice_number ? `Invoice ${inv.invoice_number}` : "Delivery"}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {formatPrice(inv.invoice_amount)}
+                      {inv.amount_paid > 0 ? ` · ${formatPrice(inv.amount_paid)} paid` : ""}
+                    </p>
+                  </div>
+                  {inv.outstanding > 0.01 ? (
+                    <button
+                      onClick={() => onPay(inv)}
+                      className="shrink-0 px-3 py-2 rounded-xl bg-green-600 text-white text-xs font-bold hover:bg-green-700 active:scale-95 transition"
+                    >
+                      Mark as paid · {formatPrice(inv.outstanding)}
+                    </button>
+                  ) : (
+                    <span className="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full bg-green-100 text-green-700">
+                      Paid
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => act(false)}
-              disabled={busy}
-              className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 active:scale-95 transition disabled:opacity-50"
-            >
-              Mark received
-            </button>
-            <button
-              onClick={() => act(true)}
-              disabled={busy}
-              className="flex-1 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-600 text-sm font-bold hover:bg-gray-50 active:scale-95 transition disabled:opacity-50"
-            >
-              Cancel order
-            </button>
-          </div>
+          {/* Once delivered, "mark received" is meaningless — what is left to do
+              is pay. The manual close stays only for orders still waiting. */}
+          {isDelivered ? (
+            invoices.length === 0 && (
+              <p className="text-xs text-gray-400">
+                Delivered, but no invoice is filed against this order. Invoices are attached
+                when a delivery is activated in Receiving.
+              </p>
+            )
+          ) : (
+            <>
+              <p className="text-xs text-gray-400">
+                Lines close by themselves as deliveries are activated in Receiving. Use these
+                only when stock arrived without going through Receiving, or it is not coming.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => act(false)}
+                  disabled={busy}
+                  className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 active:scale-95 transition disabled:opacity-50"
+                >
+                  Mark received
+                </button>
+                <button
+                  onClick={() => act(true)}
+                  disabled={busy}
+                  className="flex-1 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-600 text-sm font-bold hover:bg-gray-50 active:scale-95 transition disabled:opacity-50"
+                >
+                  Cancel order
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -132,16 +204,27 @@ export default function PurchaseOrdersScreen() {
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [invoicesByOrder, setInvoicesByOrder] = useState(new Map());
+  const [payables, setPayables] = useState(null);
+  const [paying, setPaying] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [open, past] = await Promise.all([
+      const [open, past, owed] = await Promise.all([
         purchaseOrders.getOpen(),
         purchaseOrders.getHistory(30),
+        supplierLedger.getPayables(),
       ]);
+      const closed = past.filter(
+        (o) => o.status === PO_STATUS.RECEIVED || o.status === PO_STATUS.CANCELLED,
+      );
       setOrders(open);
-      setHistory(past.filter((o) => o.status === PO_STATUS.RECEIVED || o.status === PO_STATUS.CANCELLED));
+      setHistory(closed);
+      setPayables(owed);
+      setInvoicesByOrder(
+        await supplierLedger.getInvoicesByOrder([...open, ...closed].map((o) => o.id)),
+      );
     } finally {
       setLoading(false);
     }
@@ -176,6 +259,35 @@ export default function PurchaseOrdersScreen() {
           </div>
         )}
 
+        {/* What is owed across every supplier — so settling several is one
+            screen rather than a hunt through order history. */}
+        {!loading && payables?.total > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-baseline justify-between mb-2">
+              <p className="font-bold text-gray-700 text-sm">Owed to suppliers</p>
+              <p className="text-lg font-extrabold text-red-600">{formatPrice(payables.total)}</p>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {payables.suppliers.map((sup) => (
+                <div key={sup.supplier_id ?? sup.supplier} className="flex items-center justify-between py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{sup.supplier}</p>
+                    <p className="text-xs text-gray-400">
+                      {sup.invoices.length} unpaid invoice{sup.invoices.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold text-red-600 shrink-0 ml-2">
+                    {formatPrice(sup.outstanding)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
+              Open an order below, or a supplier in Suppliers, to record a payment.
+            </p>
+          </div>
+        )}
+
         {!loading && orders.length === 0 && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
             <p className="font-semibold text-gray-700">No open orders</p>
@@ -185,7 +297,15 @@ export default function PurchaseOrdersScreen() {
           </div>
         )}
 
-        {!loading && orders.map((o) => <OrderCard key={o.id} order={o} onChanged={load} />)}
+        {!loading && orders.map((o) => (
+          <OrderCard
+            key={o.id}
+            order={o}
+            invoices={invoicesByOrder.get(o.id) ?? []}
+            onChanged={load}
+            onPay={setPaying}
+          />
+        ))}
 
         {!loading && history.length > 0 && (
           <div className="pt-2">
@@ -197,12 +317,29 @@ export default function PurchaseOrdersScreen() {
             </button>
             {showHistory && (
               <div className="space-y-3 mt-3">
-                {history.map((o) => <OrderCard key={o.id} order={o} onChanged={load} />)}
+                {history.map((o) => (
+                  <OrderCard
+                    key={o.id}
+                    order={o}
+                    invoices={invoicesByOrder.get(o.id) ?? []}
+                    onChanged={load}
+                    onPay={setPaying}
+                  />
+                ))}
               </div>
             )}
           </div>
         )}
       </div>
+
+      {paying && (
+        <RecordPaymentModal
+          invoice={paying}
+          supplier={{ name: paying.supplier }}
+          onClose={() => setPaying(null)}
+          onSaved={() => { setPaying(null); load(); }}
+        />
+      )}
     </div>
   );
 }

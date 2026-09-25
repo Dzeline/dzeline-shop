@@ -14,7 +14,8 @@
     "verify:pricing": "node scripts/verify-pricing.mjs",
     "verify:stock-finance": "node scripts/verify-stock-finance.mjs",
     "verify:purchase-orders": "node scripts/verify-purchase-orders.mjs",
-    "verify:scanner": "node scripts/verify-scanner.mjs"
+    "verify:scanner": "node scripts/verify-scanner.mjs",
+    "verify:supplier-ledger": "node scripts/verify-supplier-ledger.mjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

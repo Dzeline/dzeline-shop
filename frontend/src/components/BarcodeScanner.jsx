@@ -80,6 +80,7 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
 
     let lastSuccessAt = performance.now();
     let lastTryHardAt = 0;
+    let lastTryHardMs = 0;
 
     async function handleResult(text) {
       lastSuccessAt = performance.now();
@@ -127,13 +128,17 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
       );
 
       const now = performance.now();
-      const thorough = shouldTryHard(now, lastSuccessAt, lastTryHardAt);
+      const thorough = shouldTryHard(now, lastSuccessAt, lastTryHardAt, lastTryHardMs);
       if (thorough) lastTryHardAt = now;
 
       try {
         const result = (thorough ? thoroughReader : fastReader).decodeFromCanvas(canvas);
+        // Measured, so the next pass can be spaced against what this one
+        // actually cost on this device rather than on a guess.
+        if (thorough) lastTryHardMs = performance.now() - now;
         if (result) handleResult(result.getText());
       } catch {
+        if (thorough) lastTryHardMs = performance.now() - now;
         // No barcode in this frame — the overwhelmingly common case, and not
         // an error worth logging once a second.
       }

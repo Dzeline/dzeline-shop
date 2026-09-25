@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { dbHelpers } from "../services/db";
 import { purchaseOrders } from "../services/purchaseOrders";
+import { supplierLedger, PAY_METHODS } from "../services/supplierLedger";
+import SupplierDetail from "./SupplierDetail";
 import { useStaffStore } from "../store/staffStore";
 import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
@@ -14,6 +16,11 @@ function SupplierModal({ supplier, onSave, onClose }) {
   const [phone, setPhone] = useState(supplier?.phone ?? "");
   const [email, setEmail] = useState(supplier?.email ?? "");
   const [notes, setNotes] = useState(supplier?.notes ?? "");
+  // How this supplier wants to be paid — so settling an invoice does not mean
+  // hunting for a paybill number on a delivery note.
+  const [payMethod, setPayMethod] = useState(supplier?.pay_method ?? "");
+  const [payAccount, setPayAccount] = useState(supplier?.pay_account ?? "");
+  const [payName, setPayName] = useState(supplier?.pay_name ?? "");
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
@@ -21,16 +28,28 @@ function SupplierModal({ supplier, onSave, onClose }) {
     setSaving(true);
     try {
       if (supplier) {
+        const payFields = {
+          pay_method: payMethod || null,
+          pay_account: payAccount.trim() || null,
+          pay_name: payName.trim() || null,
+        };
         await dbHelpers.updateSupplier(supplier.id, {
           name: name.trim(), phone: phone.trim() || null,
           email: email.trim() || null, notes: notes.trim() || null,
+          ...payFields,
         });
-        onSave({ ...supplier, name: name.trim(), phone: phone.trim() || null, email: email.trim() || null, notes: notes.trim() || null });
+        onSave({ ...supplier, name: name.trim(), phone: phone.trim() || null, email: email.trim() || null, notes: notes.trim() || null, ...payFields });
       } else {
+        const payFields = {
+          pay_method: payMethod || null,
+          pay_account: payAccount.trim() || null,
+          pay_name: payName.trim() || null,
+        };
         const id = await dbHelpers.addSupplier({
           name: name.trim(), phone: phone.trim(), email: email.trim(), notes: notes.trim(),
+          ...payFields,
         });
-        onSave({ id, name: name.trim(), phone: phone.trim() || null, email: email.trim() || null, notes: notes.trim() || null });
+        onSave({ id, name: name.trim(), phone: phone.trim() || null, email: email.trim() || null, notes: notes.trim() || null, ...payFields });
       }
       syncService.pushUnsyncedSuppliers().catch(() => {});
     } catch {
@@ -91,6 +110,46 @@ function SupplierModal({ supplier, onSave, onClose }) {
             />
           </div>
         </div>
+
+        {/* How to pay them */}
+        <div className="pt-1 border-t border-gray-100">
+          <label className="text-xs text-gray-500 mb-1 block mt-3">How do you pay them?</label>
+          <select
+            value={payMethod}
+            onChange={(e) => setPayMethod(e.target.value)}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+          >
+            <option value="">Not set</option>
+            {PAY_METHODS.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {payMethod && payMethod !== "cash" && (
+          <>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">
+                {PAY_METHODS.find((m) => m.id === payMethod)?.accountLabel ?? "Account"}
+              </label>
+              <input
+                value={payAccount}
+                onChange={(e) => setPayAccount(e.target.value)}
+                placeholder="e.g. 400200"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Account name (optional)</label>
+              <input
+                value={payName}
+                onChange={(e) => setPayName(e.target.value)}
+                placeholder="Name on the account"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          </>
+        )}
 
         <div className="flex gap-2 pt-1">
           <button
@@ -411,6 +470,10 @@ export default function SuppliersScreen({ onClose }) {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingSupplier, setEditingSupplier] = useState(null);
+  const [detailSupplier, setDetailSupplier] = useState(null);
+  // What is owed to each supplier, so the list itself shows who is waiting
+  // to be paid rather than hiding it one tap deeper.
+  const [owed, setOwed] = useState(new Map());
   const [showAddModal, setShowAddModal] = useState(false);
   const [orderSupplier, setOrderSupplier] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -419,12 +482,14 @@ export default function SuppliersScreen({ onClose }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [all, low] = await Promise.all([
+      const [all, low, payables] = await Promise.all([
         dbHelpers.getAllSuppliers(),
         dbHelpers.getLowStockProducts(),
+        supplierLedger.getPayables(),
       ]);
       setSuppliers(all);
       setLowStockCount(low.length);
+      setOwed(new Map(payables.suppliers.filter((p) => p.supplier_id).map((p) => [p.supplier_id, p])));
     } finally {
       setLoading(false);
     }
@@ -506,13 +571,23 @@ export default function SuppliersScreen({ onClose }) {
             suppliers.map((s) => (
               <div key={s.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
                 <div className="px-4 py-3.5">
-                  {/* Name + contacts */}
-                  <div className="flex items-start gap-3">
+                  {/* Name + contacts — the whole block opens their history */}
+                  <button
+                    onClick={() => setDetailSupplier(s)}
+                    className="flex items-start gap-3 w-full text-left"
+                  >
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                       <span className="text-sm font-extrabold text-primary">{s.name.charAt(0).toUpperCase()}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-800">{s.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-gray-800 truncate">{s.name}</p>
+                        {owed.get(s.id) && (
+                          <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
+                            owe {formatPrice(owed.get(s.id).outstanding)}
+                          </span>
+                        )}
+                      </div>
                       {s.phone && (
                         <p className="text-xs text-gray-500 mt-0.5">{s.phone}</p>
                       )}
@@ -523,7 +598,10 @@ export default function SuppliersScreen({ onClose }) {
                         <p className="text-xs text-gray-400 mt-1 italic">{s.notes}</p>
                       )}
                     </div>
-                  </div>
+                    <svg className="w-4 h-4 text-gray-300 shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
 
                   {/* Actions */}
                   <div className="flex gap-2 mt-3">
@@ -554,6 +632,14 @@ export default function SuppliersScreen({ onClose }) {
       )}
 
       {/* Add modal */}
+      {detailSupplier && (
+        <SupplierDetail
+          supplier={detailSupplier}
+          onClose={() => { setDetailSupplier(null); load(); }}
+          onCreateOrder={(sup) => setOrderSupplier(sup)}
+        />
+      )}
+
       {showAddModal && (
         <SupplierModal
           onSave={(saved) => {
