@@ -64,6 +64,7 @@ Backend setup, environment variables and deployment are in [docs/SETUP.md](docs/
 | [docs/API.md](docs/API.md) | Backend endpoints, auth, client call sites |
 | [docs/SETUP.md](docs/SETUP.md) | Local dev, env vars, deployment, printers, APK |
 | [docs/UI_OVERHAUL_PLAN.md](docs/UI_OVERHAUL_PLAN.md) | The cross-device UI work, phase by phase |
+| [docs/ARONIUM_CASE_STUDY.md](docs/ARONIUM_CASE_STUDY.md) | Comparison against a mature commercial POS, and the phased plan from it |
 
 ## Repository layout
 

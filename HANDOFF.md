@@ -12,6 +12,7 @@ next to it, one fact in one place:
 | Endpoints, auth, call sites | [docs/API.md](docs/API.md) |
 | Running it, env vars, deploying | [docs/SETUP.md](docs/SETUP.md) |
 | The cross-device UI work | [docs/UI_OVERHAUL_PLAN.md](docs/UI_OVERHAUL_PLAN.md) |
+| What to build next, and why | [docs/ARONIUM_CASE_STUDY.md](docs/ARONIUM_CASE_STUDY.md) |
 
 ---
 
@@ -120,6 +121,8 @@ backend/app/
 
 | Severity | Where | Issue |
 | --- | --- | --- |
+| Correctness | `db.js` `voidTransaction` | Voiding a sale flips a flag and does **not** put stock back, so every void leaves the stock count permanently wrong — and the new cover/velocity figures are computed from that wrong number. Phase 1 of the Aronium case study. |
+| Audit | `TransactionHistory.jsx` | A void records no reason and no separate record. Voids are where theft hides. |
 | Security | `staffStore.js` | The persisted session carries the staff role until an explicit logout, so a role demotion does not take effect on a till that stays logged in. |
 | Design | `App.jsx` | Permission guards are duplicated between the tab array and the render block and must be kept in sync by hand. Adding a panel means editing both. |
 | UX | `PinLogin.jsx` | A wrong 4-digit PIN gives no feedback — deliberate, since 4-digit entry has to stay open for a 6-digit PIN to be typed. |
