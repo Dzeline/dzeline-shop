@@ -90,17 +90,51 @@ dependency on us, and it works offline.
 A backup that has never been restored is a guess. The restore path should be
 exercised on a spare device before this is offered to anyone.
 
-### Phase 3 — server-side snapshots *(needs Neon)*
+### Phase 3 — use what Neon already gives us *(needs Neon)*
+
+Checked against Neon's docs and the account's own plan page rather than assumed:
+
+| | Free | **Launch (our plan)** | Scale |
+|---|---|---|---|
+| Instant restore window | 6 hours | **up to 7 days** | up to 30 days |
+| Object storage | 5 GB included | $0.023/GB-month | $0.023/GB-month |
+
+Three things follow, and they change what is worth building.
+
+**Most of "restore a deleted thing" is already paid for.** Neon's instant
+restore works by **branching** — it creates a new branch at a past timestamp
+rather than rolling the live database back. For a multi-tenant database that is
+exactly the right shape: to fix one shop you branch at the moment before the
+mistake, read that shop's rows out of the branch, and put them back, without a
+big-bang restore that touches every other tenant. That is a runbook, not a
+feature to build.
+
+**The window is configurable and is not free.** It is set in the Neon console
+under Settings → Instant restore, and history storage is billed at $0.20/GB-month,
+so a longer window costs more. **Check what ours is actually set to** — the
+plan allows *up to* 7 days, which is not the same as having 7. Decide it
+deliberately; 7 days is the ceiling on Launch either way.
+
+**Seven days does not cover the failure we actually had.** Instant restore, the
+branches, and Neon's object storage all live inside the same Neon account — the
+account that was suspended a fortnight ago for non-payment. A suspension, a
+closed account, or a billing dispute takes out the database and every backup of
+it at the same moment, and it is the one outage this project has actually
+experienced. **At least one copy has to live outside the Neon account.**
+
+So:
 
 | Item | Work |
 |---|---|
-| Confirm Neon's own PITR | Neon has branching and point-in-time restore on paid plans. **Check what the plan actually includes before building anything** — if PITR covers it, most of this phase is configuration, not code |
-| Nightly per-tenant export | A JSON or SQL dump per tenant to object storage, kept ~30 days |
-| Tenant-scoped restore | Restoring one shop must not touch another — the thing that makes a shared database frightening |
-| An admin restore path | `/admin/tenants/{id}/restore`, behind `X-Admin-Secret`, because this is our lever when a shop calls in a panic |
+| Set the history window deliberately | Console → Settings → Instant restore. Decide the number against the $0.20/GB-month it costs, and write it down |
+| A branch-and-extract runbook | The steps to recover one tenant from a branch without touching the others. Rehearsed once, written down, not invented during an incident |
+| Nightly per-tenant export | JSON per tenant. Neon object storage is S3-compatible and cheap, so it is the obvious first destination |
+| **A second destination outside Neon** | The point of the exercise. Anywhere not billed by the same account — another provider's bucket, or the owner's own Google Drive |
+| An admin restore path | `/admin/tenants/{id}/restore`, behind `X-Admin-Secret`, for when a shop calls in a panic |
 
-Order matters: find out what Neon already gives you before writing a backup
-system. Rebuilding a database's own PITR badly is a common and expensive mistake.
+What is explicitly **not** worth building: our own point-in-time recovery.
+Neon's is better than anything we would write, and within its window it is the
+right tool. The gap to fill is beyond that window and outside that account.
 
 ### Phase 4 — self-service recovery *(needs Neon)*
 
@@ -118,9 +152,10 @@ system. Rebuilding a database's own PITR badly is a common and expensive mistake
   bearing on both.
 - **Who may export?** A full export is every price, cost and customer the shop
   has. It should be `admin` only, and it should be noticeable that it happened.
-- **Where do server-side backups live?** Object storage in the same region is
-  simplest; a different provider protects against the case where Neon itself is
-  the problem, which is the case worth protecting against.
+- ~~Where do server-side backups live?~~ **Answered.** Neon's own object storage
+  for the routine copy, and a second destination outside the Neon account for
+  the copy that has to survive the account itself. The suspension in September
+  2026 is the argument.
 - **Is a backup encrypted?** It contains hashed PINs and full financial history.
   If it leaves the shop's device, that question needs an answer.
 
