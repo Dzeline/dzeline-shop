@@ -5,6 +5,7 @@ import { etimsService } from "../services/etims";
 import { useSettingsStore } from "../store/settingsStore";
 import { showToast } from "../utils/toast";
 import { useInstallPrompt } from "../hooks/useInstallPrompt";
+import BackupCard from "./BackupCard";
 import { setApiKey } from "../utils/apiHeaders";
 import { thermalPrinter } from "../services/thermalPrinter";
 
@@ -336,6 +337,12 @@ export default function SettingsScreen({ onClose }) {
                 />
               </Field>
             )}
+          </SectionCard>
+
+          {/* Backup — the copy the shop owns, and the only one that works with
+              the backend down, which is when people go looking for it. */}
+          <SectionCard title="Backup &amp; restore">
+            <BackupCard />
           </SectionCard>
 
           {/* Install — always present. The banner on the main screen only
