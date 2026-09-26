@@ -464,8 +464,10 @@ function App() {
   const handleWedgeScan = useCallback(async (code) => {
     const product = await dbHelpers.getProductByBarcode(code);
     if (product) {
-      addItem({ ...product });
-      showToast(`${product.name} added`);
+      const added = addItem({ ...product });
+      showToast(added.ok
+        ? `${product.name} added`
+        : `${product.name} has no price yet — set one before selling it`);
     } else {
       showToast(`${code} — not in catalog`);
     }

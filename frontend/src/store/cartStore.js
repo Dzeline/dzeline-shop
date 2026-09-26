@@ -7,8 +7,24 @@ export const useCartStore = create(
       // Cart state
       items: [],
 
-      // Add item to cart
+      /**
+       * Put a product in the cart, unless it has no price.
+       *
+       * A catalogue imported from another POS can arrive with prices missing -
+       * Aronium's stock report, for one, only reveals a price for products that
+       * had stock at the time of export. Without this guard a cashier scans such
+       * an item, it rings up at zero, and the shop gives away stock without
+       * anyone noticing until the day's takings are counted.
+       *
+       * The refusal lives here rather than at the three call sites (tap, camera
+       * scan, USB scanner) so none of them can miss it, and it returns the reason
+       * instead of showing a message, because what the cashier should see differs
+       * between a toast and the in-camera overlay.
+       */
       addItem: (product) => {
+        if (!product?.price || product.price <= 0) {
+          return { ok: false, reason: "no-price" };
+        }
         set((state) => {
           const existingItem = state.items.find(
             (item) => item.id === product.id,
@@ -24,6 +40,7 @@ export const useCartStore = create(
           }
           return { items: [...state.items, { ...product, quantity: 1 }] };
         });
+        return { ok: true };
       },
 
       // Remove item from cart

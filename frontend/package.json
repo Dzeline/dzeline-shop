@@ -19,7 +19,9 @@
     "verify:refunds": "node scripts/verify-refunds.mjs",
     "verify:shifts": "node scripts/verify-shifts.mjs",
     "verify:backup": "node scripts/verify-backup.mjs",
-    "verify:recovery": "node scripts/verify-recovery.mjs"
+    "verify:recovery": "node scripts/verify-recovery.mjs",
+    "verify:xlsx": "node scripts/verify-xlsx.mjs",
+    "verify:import": "node scripts/verify-import.mjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

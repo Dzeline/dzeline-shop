@@ -92,6 +92,7 @@ export default function ProductList() {
   const [showImport, setShowImport] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [needsPriceOnly, setNeedsPriceOnly] = useState(false);
 
   const addItem = useCartStore((state) => state.addItem);
   const cartCount = useCartStore((state) => state.getItemCount());
@@ -127,6 +128,15 @@ export default function ProductList() {
     }
   }, []);
 
+  // A product with no price cannot be sold (see cartStore.addItem), so it has to
+  // be findable. An import from another POS can bring in hundreds of them at
+  // once, and without somewhere to see them they are invisible until a cashier
+  // tries to sell one.
+  const unpricedCount = products.filter((p) => !p.price || p.price <= 0).length;
+  const visibleProducts = needsPriceOnly
+    ? products.filter((p) => !p.price || p.price <= 0)
+    : products;
+
   // One effect for both the first load and every query change — two effects
   // meant every mount fetched the catalog twice.
   const firstLoad = useRef(true);
@@ -139,7 +149,11 @@ export default function ProductList() {
   }, [debouncedSearch, loadProducts, searchProducts]);
 
   function handleAddToCart(product) {
-    addItem({ ...product });
+    const added = addItem({ ...product });
+    if (!added.ok) {
+      showToast(`${product.name} has no price yet — set one before selling it`);
+      return;
+    }
     showToast(`${product.name} added`);
   }
 
@@ -149,7 +163,10 @@ export default function ProductList() {
   const handleScan = useCallback(async (barcode) => {
     const product = await dbHelpers.getProductByBarcode(barcode);
     if (product) {
-      addItem({ ...product });
+      const added = addItem({ ...product });
+      if (!added.ok) {
+        return { ok: false, message: `${product.name} — no price set` };
+      }
       return { ok: true, message: `${product.name} added` };
     }
     // Remembered so closing the scanner leaves the unknown code in the search
@@ -236,11 +253,45 @@ export default function ProductList() {
         </div>
       )}
 
+      {/* Unpriced products — imported catalogues arrive with gaps */}
+      {!loading && unpricedCount > 0 && canEdit && (
+        <button
+          onClick={() => setNeedsPriceOnly((v) => !v)}
+          className={`mb-3 w-full flex items-center gap-2 rounded-xl px-3 py-2 text-left transition ${
+            needsPriceOnly
+              ? "bg-amber-500/20 border border-amber-500/50"
+              : "bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15"
+          }`}
+        >
+          <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-amber-300 text-xs font-semibold flex-1">
+            {unpricedCount.toLocaleString()} product{unpricedCount === 1 ? "" : "s"} need a price
+            {" "}— {needsPriceOnly ? "showing only these" : "they cannot be sold yet"}
+          </p>
+          <span className="text-amber-400/70 text-xs font-bold shrink-0">
+            {needsPriceOnly ? "Show all" : "Show"}
+          </span>
+        </button>
+      )}
+
       {/* Product Grid */}
       {loading ? (
         <SkeletonGrid />
-      ) : products.length === 0 ? (
-        search.trim() ? (
+      ) : visibleProducts.length === 0 ? (
+        needsPriceOnly ? (
+          <div className="text-center text-gray-500 mt-20">
+            <p className="text-lg font-semibold text-gray-400">Every product has a price</p>
+            <button
+              onClick={() => setNeedsPriceOnly(false)}
+              className="text-sm mt-2 text-primary font-semibold"
+            >
+              Show all products
+            </button>
+          </div>
+        ) : search.trim() ? (
           <div className="text-center text-gray-500 mt-20">
             <p className="text-lg font-semibold text-gray-400">No products found</p>
             <p className="text-sm mt-1 text-gray-600">Try a different search term</p>
@@ -275,7 +326,7 @@ export default function ProductList() {
         )
       ) : (
         <div className={GRID_CLASS}>
-          {products.map((product, idx) => {
+          {visibleProducts.map((product, idx) => {
             const col = accent(product.category);
             const outOfStock = product.stock === 0;
 
@@ -325,9 +376,17 @@ export default function ProductList() {
 
                   {/* Price + stock count */}
                   <div className="flex items-end justify-between gap-1 mt-0.5">
-                    <p className={`text-sm font-extrabold leading-none ${outOfStock ? "text-gray-300" : "text-primary"}`}>
-                      {formatPrice(product.price)}
-                    </p>
+                    {product.price > 0 ? (
+                      <p className={`text-sm font-extrabold leading-none ${outOfStock ? "text-gray-300" : "text-primary"}`}>
+                        {formatPrice(product.price)}
+                      </p>
+                    ) : (
+                      // Not formatPrice(0): "KES 0.00" reads as free rather than
+                      // as unknown, which is the difference that loses stock.
+                      <p className="text-[10px] font-extrabold leading-none text-amber-500 uppercase tracking-wide">
+                        No price
+                      </p>
+                    )}
                     {!outOfStock && (
                       <span className={`text-[9px] font-semibold leading-none pb-px ${
                         product.stock <= (product.reorder_level ?? 10) ? "text-orange-400" : "text-gray-400"

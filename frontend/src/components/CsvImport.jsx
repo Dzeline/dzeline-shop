@@ -1,105 +1,7 @@
 import { useRef, useState } from "react";
 import { db } from "../services/db";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-
-// ── Column name aliases ───────────────────────────────────────────────────────
-// Lowercase keys map CSV headers to our product fields.
-// Covers common POS exports + the specific Kaggle sample dataset.
-const ALIASES = {
-  name:          ["product_name", "name", "item_name", "item", "description", "product", "product name", "item name"],
-  barcode:       ["barcode", "sku", "upc", "ean", "product_id", "item_code", "code", "item_id", "product id"],
-  price:         ["unit_price", "price", "selling_price", "sale_price", "retail_price", "unit price", "selling price"],
-  cost_price:    ["cost", "cost_price", "unit_cost", "purchase_price", "buy_price", "cost price", "unit cost"],
-  stock:         ["stock_quantity", "stock", "qty", "quantity", "on_hand", "current_stock", "quantity on hand", "units"],
-  category:      ["catagory", "category", "dept", "department", "type", "product_category", "product category"],
-  reorder_level: ["reorder_level", "reorder_point", "min_stock", "minimum_stock", "min stock", "reorder level"],
-  active:        ["status", "active", "enabled", "is_active"],
-};
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function parsePrice(val) {
-  if (val == null || val === "") return 0;
-  const n = parseFloat(String(val).replace(/[$,\s]/g, ""));
-  return isNaN(n) ? 0 : n;
-}
-
-function parseStock(val) {
-  if (val == null || val === "") return 0;
-  const n = parseInt(String(val).replace(/[,\s]/g, ""), 10);
-  return isNaN(n) ? 0 : n;
-}
-
-function parseActive(val) {
-  if (val == null || val === "") return true;
-  const v = String(val).toLowerCase().trim();
-  return !["discontinued", "inactive", "disabled", "false", "0", "no", "n"].includes(v);
-}
-
-// Minimal CSV parser — handles quoted fields with embedded commas and newlines.
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    const next = text[i + 1];
-
-    if (inQuotes) {
-      if (ch === '"' && next === '"') { field += '"'; i++; }
-      else if (ch === '"') inQuotes = false;
-      else field += ch;
-    } else {
-      if (ch === '"') { inQuotes = true; }
-      else if (ch === ",") { row.push(field); field = ""; }
-      else if (ch === "\n" || (ch === "\r" && next === "\n")) {
-        if (ch === "\r") i++;
-        row.push(field);
-        field = "";
-        if (row.some(Boolean)) rows.push(row);
-        row = [];
-      } else {
-        field += ch;
-      }
-    }
-  }
-  if (field || row.length) { row.push(field); if (row.some(Boolean)) rows.push(row); }
-  return rows;
-}
-
-// Auto-detect which CSV header maps to which product field.
-function buildColumnMap(headers) {
-  const map = {};  // field → column index
-  const normalised = headers.map((h) => h.toLowerCase().trim().replace(/\s+/g, "_"));
-  for (const [field, aliases] of Object.entries(ALIASES)) {
-    for (const alias of aliases) {
-      const idx = normalised.indexOf(alias.replace(/\s+/g, "_"));
-      if (idx !== -1) { map[field] = idx; break; }
-    }
-  }
-  return map;
-}
-
-// Convert a raw CSV row to a product record using the column map.
-function rowToProduct(row, colMap) {
-  const get = (field) => (colMap[field] != null ? (row[colMap[field]] ?? "").trim() : "");
-  const name = get("name");
-  if (!name) return null;
-  return {
-    name,
-    barcode:       get("barcode") || null,
-    price:         parsePrice(get("price")),
-    cost_price:    colMap.cost_price != null ? parsePrice(get("cost_price")) || null : null,
-    stock:         parseStock(get("stock")),
-    category:      get("category") || "Other",
-    reorder_level: get("reorder_level") ? parseInt(get("reorder_level"), 10) || 10 : 10,
-    active:        colMap.active != null ? parseActive(get("active")) : true,
-    etims_status:  "pending",
-    updated_at:    Date.now(),
-  };
-}
+import { parseImportFile } from "../utils/productImport";
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -113,45 +15,31 @@ export default function CsvImport({ onClose, onImported }) {
   const [skipped, setSkipped] = useState(0);
   const [mode, setMode] = useState("upsert");   // upsert | skip
   const [result, setResult] = useState(null);   // { added, updated }
+  const [layout, setLayout] = useState(null);   // aronium | generic
 
-  function handleFile(e) {
+  // Products the file could not price. They import, because a shop moving over
+  // needs its catalogue, but the till refuses to sell them until somebody sets a
+  // price - see the guard in cartStore.
+  const unpriced = products.filter((p) => !p.price).length;
+
+  async function handleFile(e) {
     const file = e.target.files?.[0];
+    e.target.value = "";           // so picking the same file twice still fires
     if (!file) return;
     setError("");
+    setLayout(null);
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const rows = parseCsv(ev.target.result);
-        if (rows.length < 2) { setError("CSV has no data rows."); return; }
+    const outcome = await parseImportFile(file);
+    if (outcome.error) {
+      setError(outcome.error);
+      return;
+    }
 
-        const headers = rows[0];
-        const colMap = buildColumnMap(headers);
-
-        if (colMap.name == null) {
-          setError(
-            `Could not find a product name column. Headers found: ${headers.join(", ")}\n` +
-            `Expected one of: ${ALIASES.name.join(", ")}`
-          );
-          return;
-        }
-
-        const parsed = [];
-        let badRows = 0;
-        for (let i = 1; i < rows.length; i++) {
-          const p = rowToProduct(rows[i], colMap);
-          if (p) parsed.push(p); else badRows++;
-        }
-
-        setProducts(parsed);
-        setPreview(parsed.slice(0, 5));
-        setSkipped(badRows);
-        setStage("preview");
-      } catch {
-        setError("Could not parse the file. Make sure it is a valid CSV.");
-      }
-    };
-    reader.readAsText(file);
+    setProducts(outcome.products);
+    setPreview(outcome.products.slice(0, 5));
+    setSkipped(outcome.skipped);
+    setLayout(outcome.layout);
+    setStage("preview");
   }
 
   async function handleImport() {
@@ -238,8 +126,15 @@ export default function CsvImport({ onClose, onImported }) {
           {stage === "pick" && (
             <div className="flex flex-col gap-4">
               <p className="text-sm text-gray-400">
-                Select a CSV exported from your desktop POS. Columns are detected automatically.
+                Choose a spreadsheet exported from your old POS — Excel (.xlsx) or CSV.
+                Columns are detected automatically.
               </p>
+              <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl px-4 py-3 text-xs text-violet-200 leading-relaxed">
+                <span className="font-semibold text-violet-100">Aronium POS</span> exports are
+                recognised as they come. Its stock report has no price column, so prices are
+                worked out from the stock value — products with no stock arrive without a price
+                and are listed for pricing afterwards.
+              </div>
               <div className="bg-gray-800 rounded-xl p-4 text-xs text-gray-400 leading-relaxed">
                 <p className="font-semibold text-gray-300 mb-1">Recognised columns (any order)</p>
                 <p><span className="text-white">Name</span> — product / item / description <span className="text-red-400">*required</span></p>
@@ -260,7 +155,7 @@ export default function CsvImport({ onClose, onImported }) {
               <input
                 ref={fileRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 className="hidden"
                 onChange={handleFile}
               />
@@ -268,7 +163,7 @@ export default function CsvImport({ onClose, onImported }) {
                 onClick={() => fileRef.current?.click()}
                 className="w-full py-3 rounded-xl bg-primary text-white font-bold text-sm"
               >
-                Choose CSV File
+                Choose File
               </button>
             </div>
           )}
@@ -282,6 +177,12 @@ export default function CsvImport({ onClose, onImported }) {
                   <p className="text-xl font-extrabold text-white">{products.length}</p>
                   <p className="text-xs text-gray-400 mt-0.5">To import</p>
                 </div>
+                {unpriced > 0 && (
+                  <div className="flex-1 bg-gray-800 rounded-xl py-3">
+                    <p className="text-xl font-extrabold text-amber-400">{unpriced}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Need a price</p>
+                  </div>
+                )}
                 {skipped > 0 && (
                   <div className="flex-1 bg-gray-800 rounded-xl py-3">
                     <p className="text-xl font-extrabold text-orange-400">{skipped}</p>
@@ -289,6 +190,28 @@ export default function CsvImport({ onClose, onImported }) {
                   </div>
                 )}
               </div>
+
+              {layout === "aronium" && (
+                <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl px-4 py-3 text-xs text-violet-200 leading-relaxed">
+                  Read as an <span className="font-semibold text-violet-100">Aronium stock
+                  report</span>. Prices come from the stock value divided by the quantity. The
+                  Code column is Aronium&apos;s own numbering, not a barcode, so it is ignored.
+                </div>
+              )}
+
+              {unpriced > 0 && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs text-amber-200 leading-relaxed">
+                  <span className="font-semibold text-amber-100">
+                    {unpriced.toLocaleString()} product{unpriced === 1 ? "" : "s"} have no price
+                    in this file.
+                  </span>{" "}
+                  They will import so you keep the catalogue, but the till will refuse to sell
+                  them until a price is set. Find them under{" "}
+                  <span className="font-semibold text-amber-100">Products → Needs price</span>.
+                  If your old POS can also export a product list <em>with</em> prices, importing
+                  that afterwards will fill them in.
+                </div>
+              )}
 
               {/* Conflict mode */}
               <div className="bg-gray-800 rounded-xl p-4">
