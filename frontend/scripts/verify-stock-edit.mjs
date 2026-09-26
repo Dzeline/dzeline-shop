@@ -132,13 +132,20 @@ const camera = await page.evaluate(async () => {
   const m = await import("/src/utils/cameraSelect.js");
   const dev = (label, id = label) => ({ kind: "videoinput", label, deviceId: id });
 
-  // What a Galaxy A55 reports through Chrome on Android. camera2 0 is the main
-  // sensor; the browser does not always pick it for facingMode: environment.
+  // What a Galaxy A55 actually reports - read off the device, not guessed.
+  // Note the space: "camera 2", not "camera2 2". The first version of this only
+  // handled the second spelling, so every lens scored the same, the sort kept
+  // the enumeration order, and the ultra-wide stayed selected.
   const samsung = [
+    dev("camera 1, facing front"),
+    dev("camera 2, facing back"),
+    dev("camera 0, facing back"),
+  ];
+  // And the spelling Chrome uses elsewhere, which must keep working.
+  const chromeStyle = [
     dev("camera2 1, facing front"),
     dev("camera2 2, facing back"),
     dev("camera2 0, facing back"),
-    dev("camera2 3, facing back"),
   ];
   // What an iPhone reports. "Back Dual Wide Camera" is the MAIN camera, and
   // penalising the word "wide" would pick the worst lens on every iPhone.
@@ -149,9 +156,22 @@ const camera = await page.evaluate(async () => {
     dev("Back Telephoto Camera"),
   ];
 
+  const bestSamsung = m.rankBackCameras(samsung)[0]?.label;
   return {
-    samsungFirst: m.rankBackCameras(samsung)[0]?.label,
+    samsungFirst: bestSamsung,
     samsungCount: m.rankBackCameras(samsung).length,
+    chromeStyleFirst: m.rankBackCameras(chromeStyle)[0]?.label,
+    // The decision that matters: is it worth closing one camera to open another?
+    switchFromUltraWideA55: m.shouldSwitchFrom("camera 2, facing back", bestSamsung),
+    switchWhenAlreadyBest: m.shouldSwitchFrom("camera 0, facing back", bestSamsung),
+    switchFromIphoneUltra: m.shouldSwitchFrom("Back Ultra Wide Camera", "Back Dual Wide Camera"),
+    switchFromIphoneMain: m.shouldSwitchFrom("Back Dual Wide Camera", "Back Dual Wide Camera"),
+    switchOnNoInformation: m.shouldSwitchFrom("Integrated Webcam", "Some Other Camera"),
+    lensNumbers: [
+      m.cameraIndexFromLabel("camera 2, facing back"),
+      m.cameraIndexFromLabel("camera2 0, facing back"),
+      m.cameraIndexFromLabel("Back Ultra Wide Camera"),
+    ],
     iphoneFirst: m.rankBackCameras(iphone)[0]?.label,
     iphoneLast: m.rankBackCameras(iphone).slice(-1)[0]?.label,
     frontDropped: m.rankBackCameras(samsung).every((d) => !/front/i.test(d.label)),
@@ -173,9 +193,23 @@ const camera = await page.evaluate(async () => {
 });
 
 check("on a Samsung, the main sensor is chosen over the ultra-wide",
-  camera.samsungFirst === "camera2 0, facing back", camera.samsungFirst);
-check("all three rear lenses stay available to switch to", camera.samsungCount === 3,
+  camera.samsungFirst === "camera 0, facing back", camera.samsungFirst);
+check("the other spelling of the same label still works",
+  camera.chromeStyleFirst === "camera2 0, facing back", camera.chromeStyleFirst);
+check("both rear lenses stay available to switch to", camera.samsungCount === 2,
   `${camera.samsungCount}`);
+check("the lens number is read from either spelling, and absent when there is none",
+  JSON.stringify(camera.lensNumbers) === "[2,0,null]", JSON.stringify(camera.lensNumbers));
+
+console.log("");
+console.log("-- is it worth closing one camera to open another? --");
+check("yes, when the phone handed over lens 2 and lens 0 exists",
+  camera.switchFromUltraWideA55 === true);
+check("no, when already on the best one", camera.switchWhenAlreadyBest === false);
+check("yes, when the label says ultra wide", camera.switchFromIphoneUltra === true);
+check("no, when the label says it is the main camera", camera.switchFromIphoneMain === false);
+check("no, when nothing is known either way - a swap is a risk, not a free guess",
+  camera.switchOnNoInformation === false);
 check("front cameras are dropped", camera.frontDropped === true);
 check("on an iPhone, 'Dual Wide' is understood as the main camera",
   camera.iphoneFirst === "Back Dual Wide Camera", camera.iphoneFirst);

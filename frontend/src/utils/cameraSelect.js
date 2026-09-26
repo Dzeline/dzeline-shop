@@ -35,6 +35,25 @@ const BACK = /back|rear|environment/;
 const FRONT = /front|user|face/;
 
 /**
+ * The lens number a device reports, or null when it does not report one.
+ *
+ * Two spellings in the wild, and assuming only the first is what left a Galaxy
+ * A55 scanning through its ultra-wide: Chrome names the API ("camera2 0, facing
+ * back") while the phone that actually failed says "camera 2, facing back". The
+ * pattern written for the first never matched the second, so every lens scored
+ * the same, the sort kept the enumeration order, and the ultra-wide stayed
+ * selected.
+ *
+ * Android numbers rear lenses from 0 with 0 the main sensor, so on a device that
+ * says nothing else this number is the only signal there is.
+ */
+export function cameraIndexFromLabel(label) {
+  const text = String(label ?? "").toLowerCase();
+  const android = text.match(/camera2\s+(\d+)/) || text.match(/camera\s+(\d+)/);
+  return android ? Number(android[1]) : null;
+}
+
+/**
  * Is this lens one that cannot read a barcode at reading distance?
  *
  * The question that decides whether to override the browser's choice at all.
@@ -70,8 +89,8 @@ export function scoreCamera(label) {
     if (pattern.test(text)) score -= 100;
   }
 
-  const android = text.match(/camera2\s+(\d+)/);
-  if (android) score -= Number(android[1]);
+  const index = cameraIndexFromLabel(text);
+  if (index != null) score -= index;
 
   // Names that tend to mark the primary lens.
   if (/\bmain\b|\bprimary\b|\bdual\s+wide\b|\btriple\b/.test(text)) score += 5;
@@ -117,11 +136,35 @@ export function cameraShortName(label, index = 0) {
   if (/telephoto|\btele\b/.test(text)) return "Zoom";
   if (/macro/.test(text)) return "Macro";
   if (/depth/.test(text)) return "Depth";
-  const android = text.match(/camera2\s+(\d+)/);
-  if (android) return `Camera ${android[1]}`;
+  const lens = cameraIndexFromLabel(text);
+  if (lens != null) return `Camera ${lens}`;
   if (/^back camera$|^rear camera$/.test(text.trim())) return "Main";
   const cleaned = String(label ?? "").replace(/,?\s*facing\s+\w+/i, "").trim();
   return cleaned || `Camera ${index + 1}`;
+}
+
+/**
+ * Is the lens in use worth overruling for the best one available?
+ *
+ * Every swap means closing one camera and opening another, which is a risk on
+ * cheap hardware, so this has to be a real improvement rather than a preference.
+ * Two cases qualify:
+ *
+ * The lens says it cannot do the job - an ultra-wide, a macro, a depth sensor.
+ *
+ * Or the device labels its lenses only by number, and the browser handed over one
+ * that is not the first. Nothing in such a label says which lens is which, but
+ * the numbering does: 0 is the main sensor, so being given number 2 almost
+ * certainly means a supporting lens. This is the Galaxy A55 case.
+ */
+export function shouldSwitchFrom(activeLabel, bestLabel) {
+  if (!bestLabel || activeLabel === bestLabel) return false;
+  if (isUnusableForScanning(activeLabel)) return true;
+  // A descriptive label that does not say "unusable" is taken at its word.
+  if (isUnusableForScanning(bestLabel)) return false;
+  const active = cameraIndexFromLabel(activeLabel);
+  const best = cameraIndexFromLabel(bestLabel);
+  return active != null && best != null && best < active;
 }
 
 /**

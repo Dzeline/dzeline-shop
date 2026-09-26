@@ -4,7 +4,7 @@ import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { formatPrice } from "../utils/formatters";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { cropRect, shouldTryHard } from "../utils/scanTuning";
-import { rankBackCameras, cameraShortName, zoomFor, isUnusableForScanning } from "../utils/cameraSelect";
+import { rankBackCameras, cameraShortName, zoomFor, shouldSwitchFrom } from "../utils/cameraSelect";
 
 // Pure-JS decoder (works via getUserMedia + canvas frame sampling), unlike
 // the native BarcodeDetector API which Safari/iOS never implemented —
@@ -372,14 +372,18 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
       const ranked = rankBackCameras(devices);
       const activeLabel = ranked.find((d) => d.deviceId === activeDeviceId)?.label ?? "";
 
-      // Only overrule the browser when the lens it chose genuinely cannot read a
-      // barcode - an ultra-wide, a macro, a depth sensor. "Not my first choice"
-      // is not worth a second camera open: on most phones the browser picks the
-      // main sensor and swapping only risks the stream.
+      // Only overrule the browser when there is a real reason: the lens it chose
+      // says it cannot read a barcode, or the device numbers its lenses and gave
+      // us one that is not the first. Anything less is not worth a second camera
+      // open, which is itself a risk on cheap hardware.
       let index = ranked.findIndex((d) => d.deviceId === activeDeviceId);
-      if (isUnusableForScanning(activeLabel)) {
-        const better = ranked.find((d) => !isUnusableForScanning(d.label));
-        if (better && better.deviceId !== activeDeviceId) {
+      const best = ranked[0];
+      // index < 0 means the browser handed over a camera that is not in the rear
+      // list at all - nothing is known about it, and a ranked rear lens is a
+      // better bet than an unknown one.
+      if (best && (index < 0 || shouldSwitchFrom(activeLabel, best.label))) {
+        const better = best;
+        if (better.deviceId !== activeDeviceId) {
           const swapped = await openCamera(better.deviceId);
           if (swapped) {
             media = swapped;
