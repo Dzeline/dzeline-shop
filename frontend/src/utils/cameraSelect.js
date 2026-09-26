@@ -34,6 +34,20 @@ const UNUSABLE = [
 const BACK = /back|rear|environment/;
 const FRONT = /front|user|face/;
 
+/**
+ * Is this lens one that cannot read a barcode at reading distance?
+ *
+ * The question that decides whether to override the browser's choice at all.
+ * "Not my first preference" is not a good enough reason to swap cameras - every
+ * swap is a second camera open, and on cheap hardware that is a risk in itself.
+ * Only a lens that genuinely cannot do the job is worth the trouble.
+ */
+export function isUnusableForScanning(label) {
+  const text = String(label ?? "").toLowerCase();
+  if (!text) return false;                    // nothing said; assume it is fine
+  return UNUSABLE.some((pattern) => pattern.test(text));
+}
+
 /** Does this label describe a rear camera? */
 export function isBackCamera(label) {
   const text = String(label ?? "").toLowerCase();

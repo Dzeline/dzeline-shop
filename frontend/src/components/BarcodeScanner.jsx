@@ -4,7 +4,7 @@ import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { formatPrice } from "../utils/formatters";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { cropRect, shouldTryHard } from "../utils/scanTuning";
-import { rankBackCameras, cameraShortName, zoomFor } from "../utils/cameraSelect";
+import { rankBackCameras, cameraShortName, zoomFor, isUnusableForScanning } from "../utils/cameraSelect";
 
 // Pure-JS decoder (works via getUserMedia + canvas frame sampling), unlike
 // the native BarcodeDetector API which Safari/iOS never implemented —
@@ -81,6 +81,8 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
   const lastRef = useRef({ code: null, at: 0 });
   // Set inside the camera effect, called by the switch button outside it.
   const switchCameraRef = useRef(null);
+  // Lets the "camera stopped" message ask for another go.
+  const retryRef = useRef(null);
   const feedbackTimer = useRef(null);
 
   const showFeedback = useCallback((next) => {
@@ -117,6 +119,14 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
     let frames = 0;
     let decodes = 0;
     let lastReportAt = 0;
+    // Which camera is actually in use, so a recovery can ask for the same one.
+    let activeDeviceId = null;
+    let recovering = false;
+    let recoveries = 0;
+    // When the picture stopped arriving. The watchdog in tick() uses it to tell a
+    // momentary hiccup from a camera that has gone for good.
+    let deadSince = 0;
+    let lastVideoTime = -1;
 
     async function handleResult(text) {
       lastSuccessAt = performance.now();
@@ -148,7 +158,37 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
       rafId = requestAnimationFrame(tick);
 
       const video = videoRef.current;
-      if (!video || video.readyState < 2) return;
+
+      // Is the picture still arriving?
+      //
+      // Not as obvious a question as it looks. When a camera dies the video
+      // element keeps its last frame's dimensions and readyState, so width and
+      // readyState both keep saying everything is fine while the preview is a
+      // black rectangle - which is precisely what a staff member saw. And a track
+      // stopped by the operating system does not always fire "ended".
+      //
+      // currentTime is the honest signal: it advances only while frames are
+      // actually being delivered.
+      const at = performance.now();
+      const track = stream?.getVideoTracks?.()[0];
+      const ended = !track || track.readyState === "ended";
+
+      if (video && video.currentTime !== lastVideoTime) {
+        lastVideoTime = video.currentTime;
+        deadSince = 0;
+      } else if (!deadSince) {
+        deadSince = at;
+      }
+
+      const ready = video && video.readyState >= 2 && video.videoWidth > 0;
+      // Not while the app is in the background: frames legitimately stop there,
+      // and grabbing the camera again on return is the browser's job, not ours.
+      const frozen = !document.hidden && deadSince && at - deadSince > 2500;
+
+      if (ended || !ready || frozen) {
+        if (!recovering) recover(ended ? "the camera closed" : "no new frames");
+        return;
+      }
 
       const rect = cropRect(video.videoWidth, video.videoHeight);
       if (!rect) return;
@@ -219,48 +259,146 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
       };
     }
 
-    async function start(deviceId) {
-      const media = await navigator.mediaDevices.getUserMedia(constraintsFor(deviceId));
-      if (cancelled) { media.getTracks().forEach((t) => t.stop()); return null; }
+    /**
+     * Wait until the video is actually producing pictures.
+     *
+     * getUserMedia resolving is not the same as a working camera. A track can
+     * arrive live and never deliver a frame - which is what a second camera open
+     * does on hardware that cannot hold two at once. Without this check the
+     * scanner shows a black rectangle and claims to be scanning.
+     */
+    function framesArrive(video, timeoutMs = 2500) {
+      return new Promise((resolve) => {
+        const deadline = performance.now() + timeoutMs;
+        const poll = () => {
+          if (cancelled) return resolve(false);
+          if (video.readyState >= 2 && video.videoWidth > 0) return resolve(true);
+          if (performance.now() > deadline) return resolve(false);
+          setTimeout(poll, 100);
+        };
+        poll();
+      });
+    }
+
+    /**
+     * Open one camera, and prove it works before keeping it.
+     *
+     * The old stream is stopped *first*. Acquiring the new one while the old is
+     * still live is what broke a Redmi 12: budget Android cannot always hold two
+     * camera streams, so the second open returned a track that never produced a
+     * frame - and by then the working one had been stopped. A brief black gap
+     * while switching is a far better trade than a camera that never comes back.
+     */
+    async function openCamera(deviceId) {
       stopStream();
-      stream = media;
+      let media;
+      try {
+        media = await navigator.mediaDevices.getUserMedia(constraintsFor(deviceId));
+      } catch {
+        return null;
+      }
+      if (cancelled) { media.getTracks().forEach((t) => t.stop()); return null; }
+
       const video = videoRef.current;
       if (!video) { media.getTracks().forEach((t) => t.stop()); return null; }
+
+      stream = media;
       video.srcObject = media;
       await video.play().catch(() => {});
+
+      if (!(await framesArrive(video))) {
+        media.getTracks().forEach((t) => t.stop());
+        if (stream === media) stream = null;
+        return null;
+      }
+
+      lastVideoTime = -1;
+      deadSince = 0;
+      activeDeviceId = media.getVideoTracks()[0]?.getSettings?.().deviceId ?? deviceId ?? null;
+      watchTrack(media);
       return media;
     }
 
-    async function begin() {
+    // A camera can be taken away mid-scan - another app opens it, the phone
+    // sleeps, the OS reclaims it. The track says so; without listening, the loop
+    // carries on decoding a frozen or black frame for ever.
+    function watchTrack(media) {
+      const track = media.getVideoTracks()[0];
+      if (!track) return;
+      track.addEventListener("ended", () => { if (!cancelled) recover("the camera was closed"); });
+      track.addEventListener("mute", () => { if (!cancelled) recover("the camera was taken"); });
+    }
+
+    /**
+     * Get a working picture back, or say plainly that we cannot.
+     *
+     * Tries the camera that was in use, then any rear camera at all. Capped,
+     * because a phone whose camera is held by another app will not recover by
+     * being asked repeatedly, and a retry loop behind a black screen is worse
+     * than a message.
+     */
+    async function recover(why) {
+      if (cancelled || recovering) return;
+      recovering = true;
+      setStatus("starting");
       try {
-        // A stream first: until one exists the device labels are blank, so there
-        // is nothing to rank.
-        let media = await start(null);
-        if (!media || cancelled) return;
-
-        const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-        const ranked = rankBackCameras(devices);
-        const active = media.getVideoTracks()[0]?.getSettings?.().deviceId ?? null;
-
-        // The browser's choice is only kept when it is also the best one. This is
-        // the fix for the phone that opens the camera and never decodes: it was
-        // handed a lens that cannot focus this close.
-        let index = ranked.findIndex((d) => d.deviceId === active);
-        if (ranked.length > 0 && index !== 0) {
-          const preferred = ranked[0];
-          const better = await start(preferred.deviceId).catch(() => null);
-          if (better) { media = better; index = 0; }
-        }
-
+        const media = (await openCamera(activeDeviceId)) ?? (await openCamera(null));
         if (cancelled) return;
-        setCameras(ranked);
-        setCameraIndex(index < 0 ? 0 : index);
-        await applyZoom(media, ranked[index < 0 ? 0 : index]?.label);
-        setStatus("scanning");
-        rafId = requestAnimationFrame(tick);
-      } catch {
-        if (!cancelled) setStatus("denied");
+        if (media) {
+          deadSince = 0;
+          setStatus("scanning");
+        } else {
+          recoveries++;
+          console.warn(`Scanner could not restart the camera (${why}).`);
+          setStatus(recoveries >= 2 ? "lost" : "scanning");
+        }
+      } finally {
+        recovering = false;
       }
+    }
+
+    retryRef.current = () => { recoveries = 0; recover("asked to retry"); };
+
+    async function begin() {
+      // Any rear camera first: until a stream exists the device labels are blank,
+      // so there is nothing to rank.
+      let media = await openCamera(null);
+      if (!media || cancelled) {
+        if (!cancelled) setStatus("denied");
+        return;
+      }
+
+      const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+      const ranked = rankBackCameras(devices);
+      const activeLabel = ranked.find((d) => d.deviceId === activeDeviceId)?.label ?? "";
+
+      // Only overrule the browser when the lens it chose genuinely cannot read a
+      // barcode - an ultra-wide, a macro, a depth sensor. "Not my first choice"
+      // is not worth a second camera open: on most phones the browser picks the
+      // main sensor and swapping only risks the stream.
+      let index = ranked.findIndex((d) => d.deviceId === activeDeviceId);
+      if (isUnusableForScanning(activeLabel)) {
+        const better = ranked.find((d) => !isUnusableForScanning(d.label));
+        if (better && better.deviceId !== activeDeviceId) {
+          const swapped = await openCamera(better.deviceId);
+          if (swapped) {
+            media = swapped;
+            index = ranked.indexOf(better);
+          } else {
+            // The swap failed, so put back what was working rather than leaving
+            // the cashier with nothing.
+            media = (await openCamera(activeDeviceId)) ?? (await openCamera(null));
+            if (!media) { if (!cancelled) setStatus("denied"); return; }
+          }
+        }
+      }
+
+      if (cancelled) return;
+      setCameras(ranked);
+      setCameraIndex(index < 0 ? 0 : index);
+      await applyZoom(media, ranked[index < 0 ? 0 : index]?.label);
+      setStatus("scanning");
+      rafId = requestAnimationFrame(tick);
     }
 
     // An ultra-wide that is the only camera on offer can still read a barcode if
@@ -276,16 +414,16 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
 
     switchCameraRef.current = async (nextIndex) => {
       const target = cameras[nextIndex];
-      if (!target) return;
+      if (!target || recovering) return;
       setStatus("starting");
-      try {
-        const media = await start(target.deviceId);
-        if (!media) return;
+      const media = (await openCamera(target.deviceId)) ?? (await openCamera(activeDeviceId));
+      if (cancelled) return;
+      if (media) {
         setCameraIndex(nextIndex);
         await applyZoom(media, target.label);
         setStatus("scanning");
-      } catch {
-        setStatus("denied");
+      } else {
+        setStatus("lost");
       }
     };
 
@@ -407,17 +545,44 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
         </div>
       )}
 
-      {(status === "denied" || status === "unsupported") ? (
+      {(status === "denied" || status === "unsupported" || status === "lost") ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4">
           <p className="text-white font-semibold">
             {status === "unsupported"
               ? "Barcode scanning not supported on this browser"
+              : status === "lost"
+              ? "The camera stopped sending a picture"
               : "Camera access denied"}
           </p>
-          <p className="text-white/50 text-sm">Type the barcode number in the field instead</p>
-          <button onClick={onClose} className="px-5 py-2 bg-white/20 text-white rounded-xl text-sm font-semibold">
-            Close
-          </button>
+          <p className="text-white/50 text-sm">
+            {status === "lost"
+              // Said plainly, because a black rectangle that claims to be
+              // scanning is worse than an honest failure - and because the way
+              // round it takes two seconds.
+              ? "Another app may be using it. Try again, or search for the product by name or by the digits under its barcode."
+              : "Type the barcode number in the field instead"}
+          </p>
+          <div className="flex gap-2">
+            {status === "lost" && (
+              <button
+                onClick={() => retryRef.current?.()}
+                className="px-5 py-2 bg-white text-gray-900 rounded-xl text-sm font-bold"
+              >
+                Try again
+              </button>
+            )}
+            {status === "lost" && onSearchInstead && (
+              <button
+                onClick={onSearchInstead}
+                className="px-5 py-2 bg-white/20 text-white rounded-xl text-sm font-semibold"
+              >
+                Search instead
+              </button>
+            )}
+            <button onClick={onClose} className="px-5 py-2 bg-white/20 text-white rounded-xl text-sm font-semibold">
+              Close
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex-1 relative overflow-hidden">

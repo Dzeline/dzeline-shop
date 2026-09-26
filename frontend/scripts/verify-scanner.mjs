@@ -247,6 +247,56 @@ check("and puts the cursor in the search box, ready to type",
     return active?.tagName === "INPUT" && /search/i.test(active.placeholder ?? "");
   }));
 
+// -- a camera that dies mid-scan -------------------------------------------
+//
+// Reported from a Redmi 12: the scanner opened, worked for a few scans, then
+// showed a black rectangle while still saying it was scanning. A track can stop
+// delivering pictures without reporting an error - another app takes the camera,
+// the OS reclaims it, or a second camera was opened on hardware that cannot hold
+// two. Whatever the cause, the scanner has to notice.
+console.log("");
+console.log("-- when the camera stops sending pictures --");
+await page.click("button[title='Scan barcode']");
+await page.waitForTimeout(2500);
+
+const beforeKill = await page.evaluate(() => {
+  const v = document.querySelector("video");
+  return { width: v?.videoWidth ?? 0, tracks: v?.srcObject?.getVideoTracks().length ?? 0 };
+});
+check("the camera is running to begin with",
+  beforeKill.width > 0 && beforeKill.tracks === 1, JSON.stringify(beforeKill));
+
+// Stop the track the way the operating system would.
+await page.evaluate(() => {
+  document.querySelector("video")?.srcObject?.getVideoTracks().forEach((t) => t.stop());
+});
+await page.waitForTimeout(6000);
+
+const afterKill = await page.evaluate(() => {
+  const v = document.querySelector("video");
+  return {
+    width: v?.videoWidth ?? 0,
+    live: v?.srcObject?.getVideoTracks()[0]?.readyState ?? "none",
+    lost: Boolean(document.body.innerText.match(/stopped sending a picture/i)),
+  };
+});
+check("it does not sit there showing a black rectangle",
+  afterKill.width > 0 || afterKill.lost,
+  JSON.stringify(afterKill));
+check("either the picture is back, or it says so and offers a way on",
+  (afterKill.width > 0 && afterKill.live === "live") || afterKill.lost,
+  afterKill.width > 0 ? `recovered, track ${afterKill.live}` : "reported as lost");
+
+await page.screenshot({ path: "scripts/screenshots/scanner-recovered.png" });
+
+// However it ended, the camera must not be left running.
+const stillOpen = await page.isVisible("text=Done").catch(() => false);
+if (stillOpen) await page.click("text=Done");
+else await page.click("text=Close").catch(() => {});
+await page.waitForTimeout(700);
+check("and it still releases the camera on the way out",
+  await page.evaluate(() => !document.querySelector("video")));
+
 await browser.close();
 console.log("\n" + (failures.length === 0
   ? "All scanner checks passed."
