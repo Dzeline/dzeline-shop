@@ -1,8 +1,8 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.6
-# Capped: this code is written against the 2.0 line. 2.1 changes the default
-# postgresql driver to psycopg v3, which is not what psycopg2-binary below
-# provides - an unpinned rebuild crashed the service on boot because of it.
+# Capped to the line this code is written and tested against. The service
+# rebuilds rarely - months apart - so an open upper bound means a rebuild can
+# quietly resolve to a version nothing here has ever run on.
 sqlalchemy>=2.0.35,<2.1
 pydantic>=2.9.2
 python-dotenv>=1.0.1
