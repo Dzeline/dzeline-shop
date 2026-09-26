@@ -37,6 +37,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine, text  # noqa: E402
 
+from app.database import normalise_db_url  # noqa: E402
+
 FIXABLE = text("""
     SELECT p.id, p.tenant_id, p.device_id, p.receipt_id, p.supplier_id, p.amount, p.supplier
       FROM supplier_payments p
@@ -175,9 +177,8 @@ if __name__ == "__main__":
     url = os.getenv("DATABASE_URL", "")
     if not url:
         sys.exit("DATABASE_URL is not set. Run this with the shop database's URL in the environment.")
-    # SQLAlchemy 2 rejects the postgres:// spelling some providers still hand out.
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
+    # Shared with the app so the driver is chosen in exactly one place.
+    url = normalise_db_url(url)
 
     engine = create_engine(url)
     with engine.connect() as conn:

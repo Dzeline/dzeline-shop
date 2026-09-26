@@ -180,9 +180,9 @@ finally:
     removed = {}
     try:
         from sqlalchemy import create_engine, text
-        url = os.getenv("DATABASE_URL", "")
-        if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql://", 1)
+        from app.database import normalise_db_url
+        raw = os.getenv("DATABASE_URL", "")
+        url = normalise_db_url(raw) if raw else ""
         if not url:
             print("  DATABASE_URL not set - could not remove test tenant "
                   f"{tenant_id}. Delete it by hand.")

@@ -17,15 +17,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine, inspect as sa_inspect  # noqa: E402
 
-from app.database import Base  # noqa: E402
+from app.database import Base, normalise_db_url  # noqa: E402
 from app import models  # noqa: E402,F401
 from app.schema_sync import missing_columns, add_column_sql  # noqa: E402
 
 url = os.getenv("DATABASE_URL", "")
 if not url:
     sys.exit("DATABASE_URL is not set.")
-if url.startswith("postgres://"):
-    url = url.replace("postgres://", "postgresql://", 1)
+url = normalise_db_url(url)
 
 engine = create_engine(url)
 
