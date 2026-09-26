@@ -1,4 +1,5 @@
 import { db, dbHelpers } from "./db";
+import { indexByIdentity, findMatch, identityKeys as identityKeysOf } from "../utils/productIdentity";
 import { apiHeaders, apiGetHeaders } from "../utils/apiHeaders";
 import { useStaffStore } from "../store/staffStore";
 import { useSettingsStore } from "../store/settingsStore";
@@ -689,11 +690,46 @@ export const syncService = {
 
       const local = await db.products.toArray();
       const byCloudId = new Map(local.filter((p) => p.cloud_id != null).map((p) => [p.cloud_id, p]));
+      // Matching on cloud_id alone is how a shop ends up with everything twice.
+      // Two staff each add the same product on their own till; neither row has a
+      // cloud id yet; both get pushed and come back as two different cloud
+      // products; each device then finds no cloud_id match for the other's and
+      // inserts it. Four rows for one item, its stock split four ways, and a
+      // reorder alert that never fires.
+      const byIdentity = indexByIdentity(local);
+      let adopted = 0;
 
       let maxUpdatedAt = since;
       for (const r of rows) {
         maxUpdatedAt = Math.max(maxUpdatedAt, r.updated_at ?? 0);
-        const existing = byCloudId.get(r.id);
+        let existing = byCloudId.get(r.id);
+
+        // No cloud_id match: before creating anything, check whether this device
+        // already has the same product under its own local row.
+        if (!existing && r.active !== false) {
+          const twin = findMatch(byIdentity, r);
+          if (twin && twin.cloud_id == null) {
+            // The common case, and unambiguous: this device's own copy has never
+            // been pushed, so it IS this cloud row as far as the shop is
+            // concerned. Adopt the id rather than making a second product.
+            await db.products.update(twin.id, { cloud_id: r.id });
+            twin.cloud_id = r.id;
+            byCloudId.set(r.id, twin);
+            existing = twin;
+            adopted++;
+          } else if (twin) {
+            // The local copy already belongs to a different cloud product, so
+            // there are genuinely two of these on the server. Inserting would
+            // make it three. Leave it to the merge tool, which can ask a person
+            // which one is real.
+            console.warn(
+              `Duplicate product on the server: "${r.name}" (cloud ${r.id}) matches local ` +
+              `product ${twin.id} already linked to cloud ${twin.cloud_id}. Not inserted.`,
+            );
+            continue;
+          }
+        }
+
         if (existing) {
           if (!existing.synced) continue; // pending local edit — don't clobber
           const update = {
@@ -708,12 +744,22 @@ export const syncService = {
           // A cloud row this device has never seen locally that's already
           // deleted has nothing worth creating — skip it rather than
           // inserting an already-dead product.
-          await db.products.add({
+          const created = {
             barcode: r.barcode, name: r.name, price: r.price, cost_price: r.cost_price ?? null, stock: r.stock,
             category: r.category, reorder_level: r.reorder_level, image_blob: r.image_blob ?? null, tags: [],
             cloud_id: r.id, synced: true, updated_at: r.updated_at,
-          });
+          };
+          const id = await db.products.add(created);
+          // Registered so a later row in this same batch recognises it, rather
+          // than inserting the same product twice from one pull.
+          for (const key of identityKeysOf({ ...created, id })) {
+            if (!byIdentity.has(key)) byIdentity.set(key, []);
+            byIdentity.get(key).push({ ...created, id });
+          }
         }
+      }
+      if (adopted > 0) {
+        console.info(`Sync linked ${adopted} product(s) to this device's existing copy instead of duplicating them.`);
       }
       await dbHelpers.updateSetting("last_product_pull_at", String(maxUpdatedAt));
     } catch { /* offline — try again next reconnect */ }

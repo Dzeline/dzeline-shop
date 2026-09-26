@@ -187,6 +187,11 @@ export default function StockReceiving({ currentStaffId, onClose }) {
       <ProductAddModal
         onSave={handleNewProductSaved}
         onClose={() => setShowAddProduct(false)}
+        onOpenExisting={(product) => {
+          // What they were trying to do anyway: put this product on the delivery.
+          setShowAddProduct(false);
+          handleAddProduct(product);
+        }}
       />
     );
   }

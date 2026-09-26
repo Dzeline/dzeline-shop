@@ -166,37 +166,11 @@ check("a product with no price field at all is refused too",
 console.log("");
 console.log("-- importing twice does not duplicate the catalogue --");
 const twice = await page.evaluate(async ({ csv }) => {
-  const { parseImportFile, matchKey, mergeForUpdate } = await import("/src/utils/productImport.js");
+  const { parseImportFile, applyImport } = await import("/src/utils/productImport.js");
   const { db } = await import("/src/services/db.js");
 
-  // The same write path the import screen runs.
-  async function write(products, mode) {
-    const existingRows = await db.products.toArray();
-    const existingByKey = new Map();
-    for (const row of existingRows) {
-      const key = matchKey(row);
-      if (key && !existingByKey.has(key)) existingByKey.set(key, row);
-    }
-    let added = 0, updated = 0;
-    await db.transaction("rw", db.products, async () => {
-      for (const product of products) {
-        const key = matchKey(product);
-        const existing = key ? existingByKey.get(key) : null;
-        if (existing && mode === "skip") continue;
-        if (existing) {
-          const merged = mergeForUpdate(product, existing);
-          await db.products.update(existing.id, merged);
-          updated++;
-          existingByKey.set(key, { ...existing, ...merged });
-        } else {
-          const id = await db.products.add(product);
-          added++;
-          if (key) existingByKey.set(key, { ...product, id });
-        }
-      }
-    });
-    return { added, updated };
-  }
+  // applyImport is the same function the Import button calls.
+  const write = (products, mode) => applyImport(products, mode);
 
   await db.products.clear();
   const file = new File([csv], "Stock.csv");

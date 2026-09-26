@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
-import { db } from "../services/db";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { parseImportFile, matchKey, mergeForUpdate } from "../utils/productImport";
+import { parseImportFile, applyImport } from "../utils/productImport";
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -45,42 +44,10 @@ export default function CsvImport({ onClose, onImported }) {
   async function handleImport() {
     setStage("importing");
     try {
-      let added = 0;
-      let updated = 0;
-
       // Everything already here, keyed the same way the incoming rows are, so a
       // product with no barcode is still recognised by its name. Built once
       // rather than queried per row: 1,300 products is a normal import.
-      const existingRows = await db.products.toArray();
-      const existingByKey = new Map();
-      for (const row of existingRows) {
-        const key = matchKey(row);
-        // First one wins, so a catalogue that already contains duplicates is not
-        // made worse by picking a different one each time.
-        if (key && !existingByKey.has(key)) existingByKey.set(key, row);
-      }
-
-      await db.transaction("rw", db.products, async () => {
-        for (const product of products) {
-          const key = matchKey(product);
-          const existing = key ? existingByKey.get(key) : null;
-
-          if (existing && mode === "skip") continue;
-
-          if (existing) {
-            const merged = mergeForUpdate(product, existing);
-            await db.products.update(existing.id, merged);
-            updated++;
-            // So a file containing the same product twice updates it twice
-            // rather than inserting the second one as a new product.
-            existingByKey.set(key, { ...existing, ...merged });
-          } else {
-            const id = await db.products.add(product);
-            added++;
-            if (key) existingByKey.set(key, { ...product, id });
-          }
-        }
-      });
+      const { added, updated } = await applyImport(products, mode);
 
       setResult({ added, updated });
       setStage("done");

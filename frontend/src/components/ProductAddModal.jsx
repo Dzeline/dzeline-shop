@@ -6,6 +6,8 @@ import { formatPrice } from "../utils/formatters";
 import { DEFAULT_CATEGORIES, mergeCategories } from "../utils/categories";
 import { compressImage } from "../utils/imageCompression";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useDebounce } from "../utils/useDebounce";
+import { indexByIdentity, findMatch, normaliseName } from "../utils/productIdentity";
 
 // Lazy-loaded: pulls in the zxing decoder, only needed once the scanner opens.
 const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
@@ -13,7 +15,7 @@ const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
 const LABEL = "text-sm font-semibold text-gray-700 mb-1.5 block";
 const INPUT = "w-full px-3 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary";
 
-export default function ProductAddModal({ onSave, onClose }) {
+export default function ProductAddModal({ onSave, onClose, onOpenExisting }) {
   useEscapeKey(onClose);
   const [name, setName] = useState("");
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
@@ -28,10 +30,34 @@ export default function ProductAddModal({ onSave, onClose }) {
   const [imagePreview, setImagePreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [duplicate, setDuplicate] = useState(null);
 
   useEffect(() => {
     dbHelpers.getCategories().then((existing) => setCategories(mergeCategories(existing)));
   }, []);
+
+  // Say so before the product is created, not after.
+  //
+  // Two staff on two tills add the same item without either checking the
+  // catalogue, and the shop ends up with it twice - its stock split between the
+  // rows, so neither is ever low enough to trigger a reorder and the shelf runs
+  // empty while the system says there is plenty. Sync cannot prevent that: by the
+  // time it sees them they are already two products. This is where it is cheap to
+  // catch, while somebody is still looking at the form.
+  const debouncedName = useDebounce(name, 350);
+  useEffect(() => {
+    let alive = true;
+    const candidate = { name: debouncedName, barcode };
+    if (!normaliseName(debouncedName) && !barcode.trim()) {
+      setDuplicate(null);
+      return;
+    }
+    dbHelpers.getAllProducts().then((all) => {
+      if (!alive) return;
+      setDuplicate(findMatch(indexByIdentity(all), candidate));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [debouncedName, barcode]);
 
   function handlePhotoCapture(e) {
     const file = e.target.files?.[0];
@@ -63,7 +89,11 @@ export default function ProductAddModal({ onSave, onClose }) {
         price: parsedPrice,
         cost_price: parseFloat(costPrice) || null,
         stock: Math.max(0, parseInt(stock) || 0),
-        barcode: barcode.trim() || String(Date.now()),
+        // No barcode means no barcode. This used to fall back to
+        // String(Date.now()) - 13 digits, the length of an EAN-13 - so every
+        // unbarcoded product got a unique fake that scanned as nothing and, worse,
+        // made it impossible for two tills to ever recognise the same product.
+        barcode: barcode.trim() || null,
         reorder_level: Math.max(1, parseInt(reorderLevel) || 10),
         tags: [category.toLowerCase()],
         ...(imageBlob && { image_blob: imageBlob }),
@@ -155,6 +185,37 @@ export default function ProductAddModal({ onSave, onClose }) {
               className={INPUT}
             />
           </div>
+
+          {/* Already in the catalogue */}
+          {duplicate && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3">
+              <div className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-amber-800">This is already in your shop</p>
+                  <p className="text-xs text-amber-700 mt-0.5 truncate">
+                    {duplicate.name} — {formatPrice(duplicate.price)}, {duplicate.stock} in stock
+                    {duplicate.barcode ? ` · ${duplicate.barcode}` : ""}
+                  </p>
+                  <p className="text-xs text-amber-600 mt-1.5 leading-relaxed">
+                    Adding it again splits its stock between two entries, so neither ever looks
+                    low enough to reorder. Record a delivery against the existing one instead.
+                  </p>
+                </div>
+              </div>
+              {onOpenExisting && (
+                <button
+                  onClick={() => onOpenExisting(duplicate)}
+                  className="mt-2.5 w-full py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition active:scale-[0.98]"
+                >
+                  Open {duplicate.name}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Category */}
           <div>

@@ -7,6 +7,10 @@
  * directly by scripts/verify-import.mjs against a real Aronium export.
  */
 import { isXlsxFile, isLegacyXlsFile } from "./xlsx";
+// One definition of "the same product", shared with sync and the add form.
+export { identityKeys, indexByIdentity, findMatch } from "./productIdentity";
+import { identityKeys as keysOf, indexByIdentity, findMatch } from "./productIdentity";
+import { db } from "../services/db";
 
 // ── Column name aliases ───────────────────────────────────────────────────────
 // Lowercase keys map CSV headers to our product fields.
@@ -244,20 +248,6 @@ export async function parseImportFile(file) {
 
 
 /**
- * The key an imported row is matched on.
- *
- * Barcode first, and the name when there is none. Most exports from a small
- * shop's POS have no barcodes at all - 1,307 of the 1,311 rows in the Aronium
- * export that prompted this - so matching on barcode alone means matching almost
- * nothing, and a second import of the same shop duplicates the entire catalogue.
- */
-export function matchKey(product) {
-  if (product.barcode) return `barcode:${product.barcode}`;
-  const name = String(product.name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
-  return name ? `name:${name}` : null;
-}
-
-/**
  * What an update may change about a product that already exists.
  *
  * Importing must never destroy work the shop has done since the last import.
@@ -277,4 +267,51 @@ export function mergeForUpdate(incoming, existing) {
     next.category = existing.category;
   }
   return next;
+}
+
+
+/**
+ * Write parsed products into the catalogue.
+ *
+ * Here rather than in the import screen because this is the half that can do
+ * damage - duplicate a catalogue, or wipe prices - and a test has to be able to
+ * run exactly what the button runs. The screen only chooses the mode.
+ *
+ * @param mode  "upsert" updates a product that is already there; "skip" leaves it
+ */
+export async function applyImport(products, mode = "upsert") {
+  const index = indexByIdentity(await db.products.toArray());
+  let added = 0;
+  let updated = 0;
+
+  const remember = (product) => {
+    for (const key of keysOf(product)) {
+      if (!index.has(key)) index.set(key, []);
+      if (!index.get(key).includes(product)) index.get(key).push(product);
+    }
+  };
+
+  await db.transaction("rw", db.products, async () => {
+    for (const product of products) {
+      const existing = findMatch(index, product);
+
+      if (existing && mode === "skip") continue;
+
+      if (existing) {
+        const merged = mergeForUpdate(product, existing);
+        await db.products.update(existing.id, merged);
+        updated++;
+        // The in-memory copy is kept current so a file that lists the same
+        // product twice updates it twice rather than inserting the second one.
+        Object.assign(existing, merged);
+        remember(existing);
+      } else {
+        const id = await db.products.add(product);
+        added++;
+        remember({ ...product, id });
+      }
+    }
+  });
+
+  return { added, updated };
 }

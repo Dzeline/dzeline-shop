@@ -446,6 +446,10 @@ export default function ProductList() {
             setShowAddModal(false);
           }}
           onClose={() => setShowAddModal(false)}
+          onOpenExisting={(product) => {
+            setShowAddModal(false);
+            setEditingProduct(product);
+          }}
         />
       )}
 
