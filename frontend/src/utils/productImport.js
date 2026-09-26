@@ -103,10 +103,28 @@ function parsePrice(val) {
   return isNaN(n) ? 0 : n;
 }
 
+/**
+ * A quantity, never a negative one.
+ *
+ * Exports arrive with figures that were already wrong in the system that produced
+ * them: one client's stock report contained negative quantities, which no sale can
+ * produce - the till stops at zero. Importing them as-is puts an impossible number
+ * on the shelf card and makes the reorder maths meaningless, so they come in as
+ * zero and the import screen says how many were corrected. The real figure is
+ * whatever is on the shelf, and only somebody standing in front of it knows.
+ */
 function parseStock(val) {
   if (val == null || val === "") return 0;
   const n = parseInt(String(val).replace(/[,\s]/g, ""), 10);
-  return isNaN(n) ? 0 : n;
+  if (isNaN(n)) return 0;
+  return Math.max(0, n);
+}
+
+/** True when a cell held a negative quantity, so the screen can report it. */
+export function wasNegativeStock(val) {
+  if (val == null || val === "") return false;
+  const n = parseInt(String(val).replace(/[,\s]/g, ""), 10);
+  return !isNaN(n) && n < 0;
 }
 
 function parseActive(val) {
@@ -229,13 +247,23 @@ export async function parseImportFile(file) {
     };
   }
 
+  // Which column held the quantity, so an impossible figure can be reported
+  // rather than silently corrected.
+  const lowerHeaders = headers.map((h) => String(h).toLowerCase().trim());
+  const stockColumn = aronium
+    ? lowerHeaders.indexOf("qty.")
+    : (colMap.stock ?? -1);
+
   const products = [];
   let skipped = 0;
+  let negativeStock = 0;
   for (let i = 1; i < rows.length; i++) {
     const product = aronium
       ? aroniumRowToProduct(rows[i], headers)
       : rowToProduct(rows[i], colMap);
-    if (product) products.push(product); else skipped++;
+    if (!product) { skipped++; continue; }
+    if (stockColumn >= 0 && wasNegativeStock(rows[i][stockColumn])) negativeStock++;
+    products.push(product);
   }
 
   return {
@@ -243,6 +271,7 @@ export async function parseImportFile(file) {
     products,
     skipped,
     unpriced: products.filter((product) => !product.price || product.price <= 0).length,
+    negativeStock,
   };
 }
 

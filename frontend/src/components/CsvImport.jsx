@@ -15,6 +15,7 @@ export default function CsvImport({ onClose, onImported }) {
   const [mode, setMode] = useState("upsert");   // upsert | skip
   const [result, setResult] = useState(null);   // { added, updated }
   const [layout, setLayout] = useState(null);   // aronium | generic
+  const [negativeStock, setNegativeStock] = useState(0);
 
   // Products the file could not price. They import, because a shop moving over
   // needs its catalogue, but the till refuses to sell them until somebody sets a
@@ -38,6 +39,7 @@ export default function CsvImport({ onClose, onImported }) {
     setPreview(outcome.products.slice(0, 5));
     setSkipped(outcome.skipped);
     setLayout(outcome.layout);
+    setNegativeStock(outcome.negativeStock ?? 0);
     setStage("preview");
   }
 
@@ -152,6 +154,19 @@ export default function CsvImport({ onClose, onImported }) {
                 </div>
               )}
 
+              {negativeStock > 0 && (
+                <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-3 text-xs text-rose-200 leading-relaxed">
+                  <span className="font-semibold text-rose-100">
+                    {negativeStock.toLocaleString()} product{negativeStock === 1 ? " has" : "s have"} a
+                    negative quantity in this file.
+                  </span>{" "}
+                  Selling cannot produce that — the till stops at zero — so the figure was
+                  already wrong in the system that exported it.{" "}
+                  {negativeStock === 1 ? "It comes" : "They come"} in as 0, and the real number is
+                  whatever is on the shelf. Count and correct{" "}
+                  {negativeStock === 1 ? "it" : "them"} under Products.
+                </div>
+              )}
               {unpriced > 0 && (
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs text-amber-200 leading-relaxed">
                   <span className="font-semibold text-amber-100">

@@ -12,6 +12,15 @@ export async function hashPin(pin) {
 // Offered at void time. A short list is what stops people typing "x" to get
 // past the dialog — and a void with no real reason is the one an owner most
 // needs to be able to ask about later.
+const DEFAULT_ADJUSTMENT_REASONS = [
+  "Counted the shelf",
+  "Damaged",
+  "Expired",
+  "Missing / stolen",
+  "Wrong figure imported",
+  "Given away or used in the shop",
+];
+
 const DEFAULT_VOID_REASONS = [
   "Customer changed their mind",
   "Wrong item rung up",
@@ -307,6 +316,22 @@ db.version(19).stores({
   cash_movements: "++id, shift_id, created_at, synced, cloud_id, device_id",
 });
 
+// v20 — stock corrections.
+//
+// Stock used to be read-only outside a sale or a delivery, on the reasoning that
+// it should only ever move for a recorded reason. The reasoning was right and the
+// conclusion was wrong: shelves get counted, goods break, and a catalogue imported
+// from another system arrives with figures that were already wrong there - one
+// client's export contained negative quantities, which no sale can produce and no
+// screen could fix.
+//
+// So stock is editable, and every correction is a row here. A count that silently
+// overwrites a number is how shrinkage disappears: "someone set it to 4" and
+// "we sold 8" have to stay tellable apart.
+db.version(20).stores({
+  stock_adjustments: "++id, product_id, created_at, staff_id, synced, cloud_id, device_id",
+});
+
 // Seed initial data on first run
 db.on("populate", async () => {
   // Seed demo products so new users see a working product list immediately.
@@ -508,6 +533,82 @@ export const dbHelpers = {
    * void dialog to an empty list and be back to typing a reason every time,
    * which is what makes people stop giving one.
    */
+  /** The reasons offered for a stock correction. */
+  adjustmentReasons() {
+    return DEFAULT_ADJUSTMENT_REASONS;
+  },
+
+  /**
+   * Set a product's stock to what is actually on the shelf.
+   *
+   * Recorded, not just written. A correction that leaves no trace makes "someone
+   * counted 4" indistinguishable from "we sold 8", which is precisely the
+   * distinction a shop owner needs when stock goes missing. The row keeps what it
+   * was, what it became, who did it and why.
+   *
+   * Atomic, because the adjustment row and the new figure have to agree: a
+   * correction logged against a stock level that never took effect is worse than
+   * no log at all.
+   */
+  async adjustStock(productId, newStock, { reason, staffId = null, note = null } = {}) {
+    const target = Math.max(0, Math.round(Number(newStock)));
+    if (!Number.isFinite(target)) throw new Error("That is not a number of units");
+    if (!reason) throw new Error("A reason is needed for a stock correction");
+
+    // Resolved before the transaction: getDeviceId() reads db.settings, which is
+    // not in the table list below, and touching it inside would abort the whole
+    // transaction. completeTransaction() carries the same note.
+    const deviceId = await this.getDeviceId();
+
+    return db.transaction("rw", [db.products, db.stock_adjustments], async () => {
+      const product = await db.products.get(productId);
+      if (!product) throw new Error("That product no longer exists");
+
+      const before = product.stock ?? 0;
+      if (before === target) return { changed: false, before, after: target };
+
+      await db.stock_adjustments.add({
+        product_id: productId,
+        product_name: product.name,
+        stock_before: before,
+        stock_after: target,
+        delta: target - before,
+        reason,
+        note,
+        staff_id: staffId,
+        created_at: Date.now(),
+        synced: false,
+        cloud_id: null,
+        device_id: deviceId,
+      });
+
+      await db.products.update(productId, {
+        stock: target,
+        synced: false,
+        updated_at: Date.now(),
+      });
+
+      return { changed: true, before, after: target, delta: target - before };
+    });
+  },
+
+  /** Corrections made to one product, newest first. */
+  async getStockAdjustments(productId, limit = 20) {
+    const rows = await db.stock_adjustments.where("product_id").equals(productId).toArray();
+    return rows.sort((a, b) => b.created_at - a.created_at).slice(0, limit);
+  },
+
+  /**
+   * Products whose stock is impossible.
+   *
+   * Negative stock cannot come from selling - the till stops at zero - so it only
+   * ever arrives with imported data that was already wrong. Worth surfacing rather
+   * than leaving for somebody to notice.
+   */
+  async getImpossibleStock() {
+    return db.products.filter((p) => p.active !== false && (p.stock ?? 0) < 0).toArray();
+  },
+
   async getVoidReasons() {
     const existing = await db.void_reasons.orderBy("rank").toArray();
     if (existing.length > 0) return existing;

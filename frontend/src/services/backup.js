@@ -38,6 +38,7 @@ export const BACKUP_TABLES = [
   "shifts",
   "cash_movements",
   "void_reasons",
+  "stock_adjustments",
 ];
 
 // Base64 images dominate the file size, and a 200MB file will not leave a phone

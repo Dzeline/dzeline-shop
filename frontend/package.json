@@ -22,7 +22,8 @@
     "verify:recovery": "node scripts/verify-recovery.mjs",
     "verify:xlsx": "node scripts/verify-xlsx.mjs",
     "verify:import": "node scripts/verify-import.mjs",
-    "verify:duplicates": "node scripts/verify-duplicates.mjs"
+    "verify:duplicates": "node scripts/verify-duplicates.mjs",
+    "verify:stock-edit": "node scripts/verify-stock-edit.mjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

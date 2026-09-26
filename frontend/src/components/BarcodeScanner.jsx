@@ -4,6 +4,7 @@ import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { formatPrice } from "../utils/formatters";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { cropRect, shouldTryHard } from "../utils/scanTuning";
+import { rankBackCameras, cameraShortName, zoomFor } from "../utils/cameraSelect";
 
 // Pure-JS decoder (works via getUserMedia + canvas frame sampling), unlike
 // the native BarcodeDetector API which Safari/iOS never implemented —
@@ -45,12 +46,26 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
   const [status, setStatus] = useState("starting"); // starting | scanning | denied | unsupported
   const [feedback, setFeedback] = useState(null);   // { ok, message }
 
+  // Which rear camera is in use, and what else is available.
+  //
+  // A phone with several rear lenses does not always hand over the main one, and
+  // an ultra-wide or a depth sensor cannot resolve a barcode at reading distance -
+  // the preview looks fine and nothing ever decodes. Ranking picks the best guess;
+  // this state is what lets a person overrule it when the guess is wrong, which is
+  // the only thing that reliably works on a device nobody testing it owns.
+  const [cameras, setCameras] = useState([]);
+  const [cameraIndex, setCameraIndex] = useState(0);
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+
   // Kept in a ref so a new callback identity from the parent never tears down
   // and restarts the camera mid-scan.
   const onScanRef = useRef(onScan);
   useEffect(() => { onScanRef.current = onScan; });
 
   const lastRef = useRef({ code: null, at: 0 });
+  // Set inside the camera effect, called by the switch button outside it.
+  const switchCameraRef = useRef(null);
   const feedbackTimer = useRef(null);
 
   const showFeedback = useCallback((next) => {
@@ -81,6 +96,12 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
     let lastSuccessAt = performance.now();
     let lastTryHardAt = 0;
     let lastTryHardMs = 0;
+    // Counted so the scanner can say what it is doing on a device nobody
+    // debugging it has in their hand. "Looks 14 times a second and has decoded 0"
+    // and "looks 0 times a second" are completely different faults.
+    let frames = 0;
+    let decodes = 0;
+    let lastReportAt = 0;
 
     async function handleResult(text) {
       lastSuccessAt = performance.now();
@@ -127,7 +148,20 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
         0, 0, rect.width, rect.height,
       );
 
+      frames++;
       const now = performance.now();
+      if (now - lastReportAt > 1000) {
+        const video2 = videoRef.current;
+        setDiagnostics({
+          looks: frames,
+          resolution: video2 ? `${video2.videoWidth}x${video2.videoHeight}` : "—",
+          readyState: video2?.readyState ?? 0,
+          decoded: decodes,
+          crop: `${rect.width}x${rect.height}`,
+        });
+        frames = 0;
+        lastReportAt = now;
+      }
       const thorough = shouldTryHard(now, lastSuccessAt, lastTryHardAt, lastTryHardMs);
       if (thorough) lastTryHardAt = now;
 
@@ -136,7 +170,7 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
         // Measured, so the next pass can be spaced against what this one
         // actually cost on this device rather than on a guess.
         if (thorough) lastTryHardMs = performance.now() - now;
-        if (result) handleResult(result.getText());
+        if (result) { decodes++; handleResult(result.getText()); }
       } catch {
         if (thorough) lastTryHardMs = performance.now() - now;
         // No barcode in this frame — the overwhelmingly common case, and not
@@ -144,10 +178,13 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
       }
     }
 
-    navigator.mediaDevices
-      .getUserMedia({
+    // Asking for a specific camera when we know which one, and "any rear camera"
+    // on the first attempt, because labels cannot be read before permission is
+    // granted.
+    function constraintsFor(deviceId) {
+      return {
         video: {
-          facingMode: "environment",
+          ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "environment" }),
           // Still asking for a high-resolution stream: the crop keeps every
           // sensor pixel the barcode occupies, which is what resolves a small
           // barcode's bars. It is the decoding of the *rest* of the frame that
@@ -159,19 +196,80 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
           // not fatal.
           advanced: [{ focusMode: "continuous" }],
         },
-      })
-      .then((s) => {
-        if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
-        stream = s;
-        const video = videoRef.current;
-        video.srcObject = s;
-        video.play().catch(() => {});
+      };
+    }
+
+    async function start(deviceId) {
+      const media = await navigator.mediaDevices.getUserMedia(constraintsFor(deviceId));
+      if (cancelled) { media.getTracks().forEach((t) => t.stop()); return null; }
+      stopStream();
+      stream = media;
+      const video = videoRef.current;
+      if (!video) { media.getTracks().forEach((t) => t.stop()); return null; }
+      video.srcObject = media;
+      await video.play().catch(() => {});
+      return media;
+    }
+
+    async function begin() {
+      try {
+        // A stream first: until one exists the device labels are blank, so there
+        // is nothing to rank.
+        let media = await start(null);
+        if (!media || cancelled) return;
+
+        const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+        const ranked = rankBackCameras(devices);
+        const active = media.getVideoTracks()[0]?.getSettings?.().deviceId ?? null;
+
+        // The browser's choice is only kept when it is also the best one. This is
+        // the fix for the phone that opens the camera and never decodes: it was
+        // handed a lens that cannot focus this close.
+        let index = ranked.findIndex((d) => d.deviceId === active);
+        if (ranked.length > 0 && index !== 0) {
+          const preferred = ranked[0];
+          const better = await start(preferred.deviceId).catch(() => null);
+          if (better) { media = better; index = 0; }
+        }
+
+        if (cancelled) return;
+        setCameras(ranked);
+        setCameraIndex(index < 0 ? 0 : index);
+        await applyZoom(media, ranked[index < 0 ? 0 : index]?.label);
         setStatus("scanning");
         rafId = requestAnimationFrame(tick);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setStatus("denied");
-      });
+      }
+    }
+
+    // An ultra-wide that is the only camera on offer can still read a barcode if
+    // it is zoomed in.
+    async function applyZoom(media, label) {
+      const track = media?.getVideoTracks?.()[0];
+      if (!track?.getCapabilities) return;
+      try {
+        const zoom = zoomFor(label, track.getCapabilities());
+        if (zoom != null) await track.applyConstraints({ advanced: [{ zoom }] });
+      } catch { /* zoom is unsupported on most cameras; not worth reporting */ }
+    }
+
+    switchCameraRef.current = async (nextIndex) => {
+      const target = cameras[nextIndex];
+      if (!target) return;
+      setStatus("starting");
+      try {
+        const media = await start(target.deviceId);
+        if (!media) return;
+        setCameraIndex(nextIndex);
+        await applyZoom(media, target.label);
+        setStatus("scanning");
+      } catch {
+        setStatus("denied");
+      }
+    };
+
+    begin();
 
     return () => {
       cancelled = true;
@@ -192,9 +290,28 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
   return (
     <div className="fixed inset-0 z-60 bg-black flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 bg-black/70 shrink-0">
-        <p className="text-white font-semibold text-sm">
+        {/* Tapping the title shows what the camera is actually doing. Deliberately
+            undiscoverable rather than hidden behind a build flag: when a scanner
+            will not read on one particular phone, this is the difference between
+            diagnosing it and guessing. */}
+        <button
+          onClick={() => setShowDiagnostics((v) => !v)}
+          className="text-white font-semibold text-sm text-left"
+        >
           {continuous ? "Scan items" : "Scan Barcode"}
-        </p>
+        </button>
+
+        <div className="flex items-center gap-2">
+          {cameras.length > 1 && (
+            <button
+              onClick={() => switchCameraRef.current?.((cameraIndex + 1) % cameras.length)}
+              className="px-3 py-1.5 rounded-full bg-white/20 text-white text-xs font-semibold"
+              title="Try another camera"
+            >
+              {cameraShortName(cameras[cameraIndex]?.label, cameraIndex)}
+              <span className="text-white/60"> · switch</span>
+            </button>
+          )}
         {continuous ? (
           <button
             onClick={onClose}
@@ -208,7 +325,33 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
             className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 text-white text-lg"
           >×</button>
         )}
+        </div>
       </div>
+
+      {showDiagnostics && (
+        <div className="bg-black/80 px-4 py-2 text-[11px] text-white/80 font-mono shrink-0 space-y-0.5">
+          <p>
+            looks/sec {diagnostics?.looks ?? 0} · decoded {diagnostics?.decoded ?? 0} ·
+            {" "}video {diagnostics?.resolution ?? "—"} · crop {diagnostics?.crop ?? "—"} ·
+            {" "}ready {diagnostics?.readyState ?? 0}
+          </p>
+          <p className="text-white/50 break-all">
+            using: {cameras[cameraIndex]?.label || "(unlabelled)"}
+          </p>
+          {cameras.length > 1 && (
+            <p className="text-white/40 break-all">
+              available: {cameras.map((c) => cameraShortName(c.label)).join(" · ")}
+            </p>
+          )}
+          <p className="text-white/40">
+            {diagnostics?.looks === 0
+              ? "No frames — the video is not producing images."
+              : (diagnostics?.decoded ?? 0) === 0
+              ? "Frames are being read but nothing decodes — try switching camera, or move further back."
+              : "Decoding."}
+          </p>
+        </div>
+      )}
 
       {(status === "denied" || status === "unsupported") ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-4">

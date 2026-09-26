@@ -8,6 +8,7 @@ import { compressImage } from "../utils/imageCompression";
 import { usePermissions } from "../hooks/usePermissions";
 import { FEATURES } from "../utils/permissions";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useStaffStore } from "../store/staffStore";
 
 // Lazy-loaded: pulls in the zxing decoder, only needed once the scanner opens.
 const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
@@ -35,6 +36,9 @@ export default function ProductEditModal({ product, onSave, onDelete, onClose })
   const [saving, setSaving] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const currentStaff = useStaffStore((state) => state.currentStaff);
+  const [stock, setStock] = useState(String(product.stock ?? 0));
+  const [stockReason, setStockReason] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -55,10 +59,23 @@ export default function ProductEditModal({ product, onSave, onDelete, onClose })
     reader.readAsDataURL(file);
   }
 
+  const parsedStock = Math.max(0, Math.round(Number(stock)));
+  const stockChanged = Number.isFinite(parsedStock) && parsedStock !== (product.stock ?? 0);
+
   async function handleSave() {
     if (!name.trim()) { showToast("Name required"); return; }
     const parsedPrice = parseFloat(price);
     if (!parsedPrice || parsedPrice <= 0) { showToast("Enter a valid price"); return; }
+    if (stock.trim() === "" || !Number.isFinite(Number(stock))) {
+      showToast("Enter the number of units on the shelf");
+      return;
+    }
+    // Asked for, not assumed. A correction with no reason is the one that cannot
+    // be told apart from stock going missing.
+    if (stockChanged && !stockReason) {
+      showToast("Choose why the stock is changing");
+      return;
+    }
     setSaving(true);
     try {
       const finalCategory = category === "__custom__"
@@ -75,8 +92,23 @@ export default function ProductEditModal({ product, onSave, onDelete, onClose })
       };
       if (imageBlob) updates.image_blob = imageBlob;
       await dbHelpers.updateProduct(product.id, updates);
-      showToast("Product updated");
-      onSave({ ...product, ...updates });
+
+      // The stock correction is recorded separately, because it is a different
+      // kind of act from renaming a product: it says what is on the shelf, and
+      // who says so.
+      let newStock = product.stock;
+      if (stockChanged) {
+        const outcome = await dbHelpers.adjustStock(product.id, parsedStock, {
+          reason: stockReason,
+          staffId: currentStaff?.id ?? null,
+        });
+        newStock = outcome.after;
+      }
+
+      showToast(stockChanged
+        ? `Updated — stock now ${newStock}`
+        : "Product updated");
+      onSave({ ...product, ...updates, stock: newStock });
       syncService.pushUnsyncedProducts().catch(() => {});
     } catch (err) {
       console.error(err);
@@ -276,12 +308,68 @@ export default function ProductEditModal({ product, onSave, onDelete, onClose })
             )}
           </div>
 
-          {/* Current stock — read only */}
-          <div className="bg-gray-50 rounded-xl px-4 py-3 flex justify-between text-sm">
-            <span className="text-gray-500">Current stock</span>
-            <span className={`font-bold ${product.stock === 0 ? "text-red-500" : product.stock <= (product.reorder_level ?? 10) ? "text-orange-500" : "text-gray-800"}`}>
-              {product.stock} units
-            </span>
+          {/* Stock on the shelf */}
+          <div>
+            <label className={LABEL}>Units on the shelf</label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setStock(String(Math.max(0, parsedStock - 1)))}
+                className="w-11 h-11 shrink-0 rounded-xl bg-gray-100 text-gray-600 text-xl font-bold hover:bg-gray-200 active:scale-95 transition"
+              >
+                −
+              </button>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                className={`${INPUT} text-center font-bold`}
+              />
+              <button
+                type="button"
+                onClick={() => setStock(String(parsedStock + 1))}
+                className="w-11 h-11 shrink-0 rounded-xl bg-gray-100 text-gray-600 text-xl font-bold hover:bg-gray-200 active:scale-95 transition"
+              >
+                +
+              </button>
+            </div>
+
+            {(product.stock ?? 0) < 0 && (
+              <p className="text-xs text-rose-600 mt-1.5 leading-relaxed">
+                This product currently shows{" "}
+                <span className="font-bold">{product.stock}</span> units, which cannot happen
+                from selling — it came in with imported data. Set it to what is actually on the
+                shelf.
+              </p>
+            )}
+
+            {stockChanged && (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-gray-500">
+                  {product.stock ?? 0} → <span className="font-bold text-gray-700">{parsedStock}</span>
+                  {" "}({parsedStock > (product.stock ?? 0) ? "+" : ""}{parsedStock - (product.stock ?? 0)})
+                </p>
+                <div>
+                  <label className={LABEL}>Why is it changing? *</label>
+                  <select
+                    value={stockReason}
+                    onChange={(e) => setStockReason(e.target.value)}
+                    className={INPUT}
+                  >
+                    <option value="">Choose a reason…</option>
+                    {dbHelpers.adjustmentReasons().map((reason) => (
+                      <option key={reason} value={reason}>{reason}</option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  Corrections are recorded with who made them, so a recount stays tellable apart
+                  from stock going missing.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

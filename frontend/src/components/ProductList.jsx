@@ -95,6 +95,7 @@ export default function ProductList() {
   const [showScanner, setShowScanner] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [needsPriceOnly, setNeedsPriceOnly] = useState(false);
+  const [impossibleOnly, setImpossibleOnly] = useState(false);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [duplicateCount, setDuplicateCount] = useState(0);
 
@@ -137,6 +138,10 @@ export default function ProductList() {
   // once, and without somewhere to see them they are invisible until a cashier
   // tries to sell one.
   const unpricedCount = products.filter((p) => !p.price || p.price <= 0).length;
+  // Negative stock cannot come from selling - the till stops at zero - so it only
+  // ever arrives with imported data that was already wrong. Shown separately from
+  // "needs a price" because the fix is different: somebody has to count the shelf.
+  const impossibleCount = products.filter((p) => (p.stock ?? 0) < 0).length;
 
   // Counted from the whole catalogue rather than the filtered view, and recounted
   // after an import or a merge, so the banner reflects the shop and not the search
@@ -147,6 +152,8 @@ export default function ProductList() {
   }, [products, canEdit]);
   const visibleProducts = needsPriceOnly
     ? products.filter((p) => !p.price || p.price <= 0)
+    : impossibleOnly
+    ? products.filter((p) => (p.stock ?? 0) < 0)
     : products;
 
   // One effect for both the first load and every query change — two effects
@@ -268,7 +275,7 @@ export default function ProductList() {
       {/* Unpriced products — imported catalogues arrive with gaps */}
       {!loading && unpricedCount > 0 && canEdit && (
         <button
-          onClick={() => setNeedsPriceOnly((v) => !v)}
+          onClick={() => { setNeedsPriceOnly((v) => !v); setImpossibleOnly(false); }}
           className={`mb-3 w-full flex items-center gap-2 rounded-xl px-3 py-2 text-left transition ${
             needsPriceOnly
               ? "bg-amber-500/20 border border-amber-500/50"
@@ -285,6 +292,30 @@ export default function ProductList() {
           </p>
           <span className="text-amber-400/70 text-xs font-bold shrink-0">
             {needsPriceOnly ? "Show all" : "Show"}
+          </span>
+        </button>
+      )}
+
+      {/* Stock that cannot be right */}
+      {!loading && impossibleCount > 0 && canEdit && (
+        <button
+          onClick={() => { setImpossibleOnly((v) => !v); setNeedsPriceOnly(false); }}
+          className={`mb-3 w-full flex items-center gap-2 rounded-xl px-3 py-2 text-left transition ${
+            impossibleOnly
+              ? "bg-rose-500/20 border border-rose-500/50"
+              : "bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/15"
+          }`}
+        >
+          <svg className="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M18 12H6" />
+          </svg>
+          <p className="text-rose-300 text-xs font-semibold flex-1">
+            {impossibleCount} product{impossibleCount === 1 ? " has" : "s have"} negative stock
+            {" "}— {impossibleOnly ? "showing only these" : "count the shelf and correct it"}
+          </p>
+          <span className="text-rose-400/70 text-xs font-bold shrink-0">
+            {impossibleOnly ? "Show all" : "Show"}
           </span>
         </button>
       )}
@@ -311,7 +342,14 @@ export default function ProductList() {
       {loading ? (
         <SkeletonGrid />
       ) : visibleProducts.length === 0 ? (
-        needsPriceOnly ? (
+        impossibleOnly ? (
+          <div className="text-center text-gray-500 mt-20">
+            <p className="text-lg font-semibold text-gray-400">No impossible stock left</p>
+            <button onClick={() => setImpossibleOnly(false)} className="text-sm mt-2 text-primary font-semibold">
+              Show all products
+            </button>
+          </div>
+        ) : needsPriceOnly ? (
           <div className="text-center text-gray-500 mt-20">
             <p className="text-lg font-semibold text-gray-400">Every product has a price</p>
             <button
