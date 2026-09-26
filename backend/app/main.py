@@ -12,7 +12,7 @@ from slowapi import _rate_limit_exceeded_handler
 from .database import Base, engine
 from .schema_sync import reconcile_model_columns
 from .limiter import limiter
-from .routers import supplier_payments, products, sync, mpesa, etims, admin, scan, stock_receipts, sms, staff, settings, suppliers, print_jobs
+from .routers import supplier_payments, products, sync, mpesa, etims, admin, stock_receipts, sms, staff, settings, suppliers, print_jobs
 
 load_dotenv()
 
@@ -221,12 +221,11 @@ _apply_migrations()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # OCR is intentionally NOT pre-warmed here anymore — it used to load
-    # ~1GB of PaddleOCR models into memory on every startup regardless of
-    # whether Scan was ever used, which was the likely cause of recurring
-    # SIGTERM/OOM crashes that took down the whole API, not just scanning.
-    # scan.py's _get_ocr() now loads lazily, in a background thread, only
-    # on the first actual scan attempt. See scan.py for the full reasoning.
+    # Nothing to warm. Invoice OCR used to live here and was the one thing that
+    # needed it — ~1GB of PaddleOCR models, the likely cause of the recurring
+    # SIGTERM/OOM crashes that took down the whole API rather than just scanning.
+    # The feature was removed in September 2026: clients did not use it and it
+    # added nothing to receiving a delivery.
     yield
 
 
@@ -273,7 +272,6 @@ app.include_router(sync.router)
 app.include_router(mpesa.router)
 app.include_router(etims.router)
 app.include_router(admin.router)
-app.include_router(scan.router)
 app.include_router(stock_receipts.router)
 app.include_router(sms.router)
 app.include_router(staff.router)

@@ -3,7 +3,7 @@ services:
     name: dzeline-api
     runtime: python
     rootDir: backend
-    buildCommand: apt-get install -y -qq libgomp1 libglib2.0-0 && pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     plan: standard
     # Explicit because both services came back from a billing suspension
@@ -40,11 +40,5 @@ services:
         sync: false
       - key: ADMIN_SECRET
         sync: false
-      - key: PADDLE_HOME
-        value: /opt/paddle_models
       - key: PYTHON_VERSION
         value: "3.11"
-    disk:
-      name: paddle-models
-      mountPath: /opt/paddle_models
-      sizeGB: 2

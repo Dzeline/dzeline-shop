@@ -159,15 +159,6 @@ alone would clear a sale of any size.
 | POST | `/etims/items/register` | Register product codes with KRA |
 | POST | `/etims/submit-batch` | Submit sales invoices |
 
-## AI invoice scanning
-
-Rate limited to **6 requests per minute per tenant**. Needs `ANTHROPIC_API_KEY` set on the
-backend.
-
-| Method | Path | Description |
-| --- | --- | --- |
-| POST | `/scan/invoice` | Base64 invoice photo → `{ supplier, invoice_number, items[] }` |
-
 ## Admin
 
 All require `X-Admin-Secret`. These manage tenants, not shop data.
@@ -208,4 +199,3 @@ Where each endpoint is actually called from, for tracing a change through the fr
 | `sync.js` | `/mpesa/stk-push`, `/mpesa/status/{id}`, `/mpesa/stk-query/{id}` | M-Pesa checkout, STK polling |
 | `sync.js` | `/sms/verified-codes` | Reconnect reconciliation |
 | `etims.js` | all `/etims/*` | eTIMS panel |
-| `StockReceiving.jsx` | `/scan/invoice` | Invoice photo scan |

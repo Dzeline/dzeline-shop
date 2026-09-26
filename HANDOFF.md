@@ -29,7 +29,7 @@ next to it, one fact in one place:
 | E | Navigation — bottom tabs + inline panels | done |
 | A | RBAC — granular role permissions | done |
 | C | Financial intelligence / P&L | done |
-| D | AI invoice scanning | done |
+| D | ~~AI invoice scanning~~ | **removed 2026-09-26** — clients never used it, and it added nothing to receiving a delivery |
 | F | Offline reliability, thermal printing, staged receiving | done |
 | G | Multi-device sync — products, staff, settings, suppliers, receipts, transactions | done |
 | H | Cross-device UI — desktop till + POS flow fixes | done, **needs a hardware pass** |

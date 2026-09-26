@@ -44,9 +44,8 @@ moment it is rung up; the cloud is how tills agree with each other afterwards.
          (M-Pesa STK Push)        (VSCU API)
 ```
 
-PostgreSQL is hosted on Neon; Render runs the API process and mounts a disk for the
-PaddleOCR models used by invoice scanning. There is no Redis and no message broker — the
-sync model below does not need one.
+PostgreSQL is hosted on Neon and Render runs the API process. Nothing else: no Redis, no
+message broker, no mounted disk. The sync model below needs none of them.
 
 ## Why offline-first
 
@@ -462,7 +461,7 @@ What is actually true today, so nobody assumes more:
   anything else is flagged for a person rather than auto-cleared.
 - **Secrets live in environment variables** only — never in the repo, never in the client
   bundle. Anything in `VITE_*` is public by definition.
-- HTTPS everywhere in production; invoice scanning is rate-limited to 6 req/min per tenant.
+- HTTPS everywhere in production; the SMS webhook and M-Pesa endpoints are rate-limited.
 
 ## Code standards
 

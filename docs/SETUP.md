@@ -76,8 +76,6 @@ scanner properly on a real device.
 | `SMS_WEBHOOK_SECRET` | 32-char random hex | optional second factor on the SMS webhook |
 | `ETIMS_ENV` | `sandbox` or `production` | for eTIMS |
 | `ETIMS_TIN` · `ETIMS_BHF_ID` · `ETIMS_DEVICE_SERIAL` | from KRA | for eTIMS |
-| `ANTHROPIC_API_KEY` | from console.anthropic.com | for invoice scanning |
-| `PADDLE_HOME` | `/opt/paddle_models` | for invoice scanning |
 
 Generate a secret:
 
@@ -102,8 +100,7 @@ secret behind that prefix.
 | Backend | Render | `render.yaml` at the repo root; `rootDir: backend` |
 | Database | Neon (PostgreSQL) | `DATABASE_URL`, set manually in the Render dashboard |
 
-`render.yaml` also mounts a 2GB disk at `/opt/paddle_models` for the OCR models used by
-invoice scanning, and declares every secret as `sync: false` so values are entered in the
+`render.yaml` declares every secret as `sync: false`, so values are entered in the
 dashboard rather than committed.
 
 ### A gitignore trap worth remembering
