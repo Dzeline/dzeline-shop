@@ -97,6 +97,18 @@ export default function ProductList() {
   const [editMode, setEditMode] = useState(false);
   const [needsPriceOnly, setNeedsPriceOnly] = useState(false);
   const [impossibleOnly, setImpossibleOnly] = useState(false);
+  const searchRef = useRef(null);
+
+  // Offered by the scanner once a barcode has refused to read for a while. The
+  // digits printed under the bars are matched by the same search box, so this is
+  // the way past a label no camera can manage.
+  function searchInstead() {
+    setShowScanner(false);
+    requestAnimationFrame(() => {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    });
+  }
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [duplicateCount, setDuplicateCount] = useState(0);
 
@@ -210,6 +222,7 @@ export default function ProductList() {
           <input
             type="text"
             placeholder="Search products..."
+            ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2.5 bg-gray-800 border border-gray-700 text-white placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-sm"
@@ -554,6 +567,7 @@ export default function ProductList() {
             continuous
             summary={{ count: cartCount, total: cartTotal }}
             onScan={handleScan}
+            onSearchInstead={searchInstead}
             onClose={() => setShowScanner(false)}
           />
         </Suspense>

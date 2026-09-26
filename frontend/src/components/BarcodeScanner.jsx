@@ -29,6 +29,15 @@ THOROUGH_HINTS.set(DecodeHintType.TRY_HARDER, true);
 const DUPLICATE_MS = 1500;
 const FEEDBACK_MS = 1400;
 
+// How long a cashier aims at a barcode that will not read before the app should
+// stop letting them wonder and offer the way round it.
+//
+// Eight seconds is well past a normal read - most are under one - and short of
+// the point where somebody gives up on the sale. Measured from the last
+// successful scan rather than from opening the camera, so it also catches the one
+// awkward item in a basket of twenty that scanned fine.
+const STALLED_AFTER_MS = 8000;
+
 /**
  * @param onScan    called with the decoded text. In continuous mode it may
  *                  return (or resolve to) `{ ok, message }` to drive the
@@ -38,8 +47,12 @@ const FEEDBACK_MS = 1400;
  *                  edit-product, inventory and stock-receiving call sites all
  *                  want a single code to fill a field.
  * @param summary   `{ count, total }` — running cart state shown while scanning.
+ * @param onSearchInstead  optional. Offered once scanning has stalled, to close
+ *                  the camera and put the cursor in the search box. Where a call
+ *                  site has no search to fall back to (filling in a barcode field,
+ *                  for instance) it is left out and the hint just explains.
  */
-export default function BarcodeScanner({ onScan, onClose, continuous = false, summary }) {
+export default function BarcodeScanner({ onScan, onClose, continuous = false, summary, onSearchInstead }) {
   useEscapeKey(onClose);
   const videoRef = useRef(null);
   const controlsRef = useRef(null);
@@ -57,6 +70,8 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
   const [cameraIndex, setCameraIndex] = useState(0);
   const [diagnostics, setDiagnostics] = useState(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [stalled, setStalled] = useState(false);
+  const [hintDismissed, setHintDismissed] = useState(false);
 
   // Kept in a ref so a new callback identity from the parent never tears down
   // and restarts the camera mid-scan.
@@ -151,6 +166,11 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
       frames++;
       const now = performance.now();
       if (now - lastReportAt > 1000) {
+        // A barcode printed on a curved or glossy surface can be unreadable by
+        // any phone camera while being perfectly fine to a laser scanner. The
+        // digits underneath it are not, and search matches them, so the way out
+        // is to say so rather than leave somebody aiming.
+        setStalled(now - lastSuccessAt > STALLED_AFTER_MS);
         const video2 = videoRef.current;
         setDiagnostics({
           looks: frames,
@@ -327,6 +347,40 @@ export default function BarcodeScanner({ onScan, onClose, continuous = false, su
         )}
         </div>
       </div>
+
+      {stalled && !hintDismissed && status === "scanning" && (
+        <div className="absolute inset-x-3 top-20 z-10 bg-amber-500 text-amber-950 rounded-2xl px-4 py-3 shadow-xl">
+          <div className="flex items-start gap-2">
+            <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold leading-snug">Not reading?</p>
+              <p className="text-xs mt-0.5 leading-relaxed">
+                Some labels will not scan — curved cups, shiny wrappers, scuffed print. The
+                numbers printed under the bars always work: type the last few in search.
+              </p>
+              <div className="flex gap-2 mt-2">
+                {onSearchInstead && (
+                  <button
+                    onClick={onSearchInstead}
+                    className="px-3 py-1.5 rounded-lg bg-amber-950 text-amber-50 text-xs font-bold"
+                  >
+                    Search instead
+                  </button>
+                )}
+                <button
+                  onClick={() => setHintDismissed(true)}
+                  className="px-3 py-1.5 rounded-lg bg-amber-950/10 text-amber-950 text-xs font-semibold"
+                >
+                  Keep trying
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDiagnostics && (
         <div className="bg-black/80 px-4 py-2 text-[11px] text-white/80 font-mono shrink-0 space-y-0.5">

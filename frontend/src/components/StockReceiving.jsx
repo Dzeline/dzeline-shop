@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { dbHelpers } from "../services/db";
 import { syncService } from "../services/sync";
 import { showToast } from "../utils/toast";
@@ -26,6 +26,17 @@ export default function StockReceiving({ currentStaffId, onClose }) {
   const [submitted, setSubmitted] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [showLineScanner, setShowLineScanner] = useState(false);
+  const searchRef = useRef(null);
+
+  // The scanner offers this when a barcode will not read. Search matches the
+  // digits printed under the bars, which stay legible when the bars do not.
+  function searchInstead() {
+    setShowLineScanner(false);
+    requestAnimationFrame(() => {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    });
+  }
 
   useEffect(() => {
     Promise.all([
@@ -334,6 +345,7 @@ export default function StockReceiving({ currentStaffId, onClose }) {
                     <input
                       type="text"
                       placeholder="Search existing products to add..."
+                      ref={searchRef}
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -547,7 +559,11 @@ export default function StockReceiving({ currentStaffId, onClose }) {
 
       {showLineScanner && (
         <Suspense fallback={null}>
-          <BarcodeScanner onScan={handleLineScan} onClose={() => setShowLineScanner(false)} />
+          <BarcodeScanner
+            onScan={handleLineScan}
+            onSearchInstead={searchInstead}
+            onClose={() => setShowLineScanner(false)}
+          />
         </Suspense>
       )}
     </>

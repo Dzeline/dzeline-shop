@@ -214,6 +214,39 @@ await page.waitForTimeout(800);
 const released = await page.evaluate(() => !document.querySelector("video"));
 check("closing releases the camera", released);
 
+// ── the way out of a barcode that will not read ────────────────────────────
+//
+// The fake camera never decodes anything, which is exactly the situation being
+// tested: a label no phone can read - a curved cup, a shiny wrapper - where the
+// cashier would otherwise keep aiming until they gave up on the sale.
+console.log("");
+console.log("── when a barcode will not read ──");
+await page.click("button[title='Scan barcode']");
+await page.waitForTimeout(2500);
+
+check("nothing is offered while scanning is still worth a try",
+  !(await page.isVisible("text=Not reading?")));
+
+// STALLED_AFTER_MS is 8s from the last successful read.
+await page.waitForTimeout(7000);
+
+check("after a while it offers the way round", await page.isVisible("text=Not reading?"));
+check("and says what actually works — the digits under the bars",
+  await page.isVisible("text=/type the last few in search/i"));
+
+await page.screenshot({ path: "scripts/screenshots/scanner-stalled.png" });
+
+await page.click("text=Search instead");
+await page.waitForTimeout(700);
+
+check("taking it closes the camera",
+  await page.evaluate(() => !document.querySelector("video")));
+check("and puts the cursor in the search box, ready to type",
+  await page.evaluate(() => {
+    const active = document.activeElement;
+    return active?.tagName === "INPUT" && /search/i.test(active.placeholder ?? "");
+  }));
+
 await browser.close();
 console.log("\n" + (failures.length === 0
   ? "All scanner checks passed."
