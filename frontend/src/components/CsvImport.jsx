@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { db } from "../services/db";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { parseImportFile } from "../utils/productImport";
+import { parseImportFile, matchKey, mergeForUpdate } from "../utils/productImport";
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -48,53 +48,39 @@ export default function CsvImport({ onClose, onImported }) {
       let added = 0;
       let updated = 0;
 
-      if (mode === "upsert") {
-        // Match existing records by barcode; update if found, insert if not.
-        const withBarcode = products.filter((p) => p.barcode);
-        const noBarcode = products.filter((p) => !p.barcode);
-
-        const existingMap = new Map();
-        if (withBarcode.length > 0) {
-          const barcodes = withBarcode.map((p) => p.barcode);
-          const existing = await db.products.where("barcode").anyOf(barcodes).toArray();
-          for (const e of existing) existingMap.set(e.barcode, e.id);
-        }
-
-        await db.transaction("rw", db.products, async () => {
-          for (const p of withBarcode) {
-            const existingId = existingMap.get(p.barcode);
-            if (existingId) {
-              await db.products.update(existingId, p);
-              updated++;
-            } else {
-              await db.products.add(p);
-              added++;
-            }
-          }
-          for (const p of noBarcode) {
-            await db.products.add(p);
-            added++;
-          }
-        });
-      } else {
-        // Skip mode — only add products whose barcode doesn't already exist.
-        const withBarcode = products.filter((p) => p.barcode);
-        const noBarcode = products.filter((p) => !p.barcode);
-
-        const existingBarcodes = new Set();
-        if (withBarcode.length > 0) {
-          const existing = await db.products.where("barcode").anyOf(withBarcode.map((p) => p.barcode)).toArray();
-          for (const e of existing) existingBarcodes.add(e.barcode);
-        }
-
-        const toAdd = [
-          ...withBarcode.filter((p) => !existingBarcodes.has(p.barcode)),
-          ...noBarcode,
-        ];
-        await db.products.bulkAdd(toAdd);
-        added = toAdd.length;
-        updated = 0;
+      // Everything already here, keyed the same way the incoming rows are, so a
+      // product with no barcode is still recognised by its name. Built once
+      // rather than queried per row: 1,300 products is a normal import.
+      const existingRows = await db.products.toArray();
+      const existingByKey = new Map();
+      for (const row of existingRows) {
+        const key = matchKey(row);
+        // First one wins, so a catalogue that already contains duplicates is not
+        // made worse by picking a different one each time.
+        if (key && !existingByKey.has(key)) existingByKey.set(key, row);
       }
+
+      await db.transaction("rw", db.products, async () => {
+        for (const product of products) {
+          const key = matchKey(product);
+          const existing = key ? existingByKey.get(key) : null;
+
+          if (existing && mode === "skip") continue;
+
+          if (existing) {
+            const merged = mergeForUpdate(product, existing);
+            await db.products.update(existing.id, merged);
+            updated++;
+            // So a file containing the same product twice updates it twice
+            // rather than inserting the second one as a new product.
+            existingByKey.set(key, { ...existing, ...merged });
+          } else {
+            const id = await db.products.add(product);
+            added++;
+            if (key) existingByKey.set(key, { ...product, id });
+          }
+        }
+      });
 
       setResult({ added, updated });
       setStage("done");
@@ -215,7 +201,10 @@ export default function CsvImport({ onClose, onImported }) {
 
               {/* Conflict mode */}
               <div className="bg-gray-800 rounded-xl p-4">
-                <p className="text-xs font-semibold text-gray-300 mb-2">If a barcode already exists:</p>
+                <p className="text-xs font-semibold text-gray-300 mb-2">
+                  If a product is already here (matched by barcode, or by name when there is no
+                  barcode):
+                </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setMode("upsert")}
@@ -225,7 +214,7 @@ export default function CsvImport({ onClose, onImported }) {
                         : "bg-gray-700 text-gray-300"
                     }`}
                   >
-                    Update existing
+                    Update it
                   </button>
                   <button
                     onClick={() => setMode("skip")}
@@ -235,7 +224,7 @@ export default function CsvImport({ onClose, onImported }) {
                         : "bg-gray-700 text-gray-300"
                     }`}
                   >
-                    Skip duplicates
+                    Leave it alone
                   </button>
                 </div>
               </div>

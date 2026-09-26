@@ -84,6 +84,9 @@ function aroniumRowToProduct(row, headers) {
     reorder_level: 10,
     active: true,
     etims_status: "pending",
+    // Imported rows are changes like any other and have to reach the other
+    // tills; without this an update would sit on this device for ever.
+    synced: false,
     updated_at: Date.now(),
   };
 }
@@ -169,6 +172,7 @@ function rowToProduct(row, colMap) {
     reorder_level: get("reorder_level") ? parseInt(get("reorder_level"), 10) || 10 : 10,
     active:        colMap.active != null ? parseActive(get("active")) : true,
     etims_status:  "pending",
+    synced:        false,
     updated_at:    Date.now(),
   };
 }
@@ -236,4 +240,41 @@ export async function parseImportFile(file) {
     skipped,
     unpriced: products.filter((product) => !product.price || product.price <= 0).length,
   };
+}
+
+
+/**
+ * The key an imported row is matched on.
+ *
+ * Barcode first, and the name when there is none. Most exports from a small
+ * shop's POS have no barcodes at all - 1,307 of the 1,311 rows in the Aronium
+ * export that prompted this - so matching on barcode alone means matching almost
+ * nothing, and a second import of the same shop duplicates the entire catalogue.
+ */
+export function matchKey(product) {
+  if (product.barcode) return `barcode:${product.barcode}`;
+  const name = String(product.name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
+  return name ? `name:${name}` : null;
+}
+
+/**
+ * What an update may change about a product that already exists.
+ *
+ * Importing must never destroy work the shop has done since the last import.
+ * A stock report with no price column would otherwise reset every price
+ * somebody had keyed in by hand to zero - and because the till refuses to sell
+ * an unpriced product, that would take the whole shop offline at once.
+ *
+ * So a blank in the file means "no information", not "set it to nothing".
+ * Quantities are the exception: updating them is what a stock import is for.
+ */
+export function mergeForUpdate(incoming, existing) {
+  const next = { ...incoming };
+  if (!next.price && existing.price) next.price = existing.price;
+  if (next.cost_price == null && existing.cost_price != null) next.cost_price = existing.cost_price;
+  if (!next.barcode && existing.barcode) next.barcode = existing.barcode;
+  if ((!next.category || next.category === "Other") && existing.category) {
+    next.category = existing.category;
+  }
+  return next;
 }

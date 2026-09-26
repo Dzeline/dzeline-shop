@@ -159,6 +159,83 @@ check("and does not reach the cart", guard.afterUnpriced === 1, `${guard.afterUn
 check("a product with no price field at all is refused too",
   guard.missing?.ok === false, JSON.stringify(guard.missing));
 
+// ── importing the same file twice ───────────────────────────────────────────
+// The case that would have wrecked a catalogue. Almost nothing in a small shop's
+// export has a barcode, and matching on barcode alone matches almost nothing, so
+// a second import used to insert every product again.
+console.log("");
+console.log("-- importing twice does not duplicate the catalogue --");
+const twice = await page.evaluate(async ({ csv }) => {
+  const { parseImportFile, matchKey, mergeForUpdate } = await import("/src/utils/productImport.js");
+  const { db } = await import("/src/services/db.js");
+
+  // The same write path the import screen runs.
+  async function write(products, mode) {
+    const existingRows = await db.products.toArray();
+    const existingByKey = new Map();
+    for (const row of existingRows) {
+      const key = matchKey(row);
+      if (key && !existingByKey.has(key)) existingByKey.set(key, row);
+    }
+    let added = 0, updated = 0;
+    await db.transaction("rw", db.products, async () => {
+      for (const product of products) {
+        const key = matchKey(product);
+        const existing = key ? existingByKey.get(key) : null;
+        if (existing && mode === "skip") continue;
+        if (existing) {
+          const merged = mergeForUpdate(product, existing);
+          await db.products.update(existing.id, merged);
+          updated++;
+          existingByKey.set(key, { ...existing, ...merged });
+        } else {
+          const id = await db.products.add(product);
+          added++;
+          if (key) existingByKey.set(key, { ...product, id });
+        }
+      }
+    });
+    return { added, updated };
+  }
+
+  await db.products.clear();
+  const file = new File([csv], "Stock.csv");
+  const parsed = await parseImportFile(file);
+
+  const first = await write(parsed.products, "upsert");
+  const afterFirst = await db.products.count();
+
+  // Somebody prices one of the unpriced products by hand, as they would.
+  const unpricedRow = await db.products
+    .filter((p) => p.name === "MINUTE MAID TROPICAL FRUIT DRINK 400ML").first();
+  await db.products.update(unpricedRow.id, { price: 85 });
+
+  const second = await write((await parseImportFile(file)).products, "upsert");
+  const afterSecond = await db.products.count();
+  const repriced = await db.products.get(unpricedRow.id);
+
+  const third = await write((await parseImportFile(file)).products, "skip");
+  const afterThird = await db.products.count();
+
+  await db.products.clear();
+  return {
+    first, afterFirst, second, afterSecond, third, afterThird,
+    keptPrice: repriced?.price,
+  };
+}, { csv: ARONIUM_CSV });
+
+check("the first import adds every product",
+  twice.first.added === 6 && twice.afterFirst === 6,
+  `${twice.first.added} added, ${twice.afterFirst} in the catalogue`);
+check("the second import updates instead of duplicating",
+  twice.second.added === 0 && twice.second.updated === 6 && twice.afterSecond === 6,
+  `${twice.second.added} added, ${twice.second.updated} updated, ${twice.afterSecond} total`);
+check("a price keyed in by hand is NOT wiped by a file that has no price",
+  twice.keptPrice === 85, `KES ${twice.keptPrice}`);
+check("'leave it alone' mode changes nothing",
+  twice.third.added === 0 && twice.third.updated === 0 && twice.afterThird === 6,
+  `${twice.third.added} added, ${twice.third.updated} updated`);
+
 // ── the real file ───────────────────────────────────────────────────────────
 if (realFile) {
   console.log(`\n── the real export (${realFile}) ──`);
