@@ -21,8 +21,9 @@ Biashara; VAT-inclusive KRA receipts; transaction history with void.
 
 **Stock** — staged receiving that separates the attendant who records a delivery from the
 manager who prices it; supplier directory with WhatsApp and email purchase orders; reorder
-alerts; spreadsheet import, including Aronium POS exports; the invoice photo is kept with
-the delivery so whoever prices it can see what arrived.
+alerts; spreadsheet import (.xlsx or CSV) that reads a stock report from another POS as
+well as a plain price list; the invoice photo is kept with the delivery so whoever prices
+it can see what arrived.
 
 **Staff** — six roles from Admin to Cashier plus a custom role, PIN login with SHA-256
 hashing, per-role navigation.

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useCartStore } from "../store/cartStore";
 import { useStaffStore } from "../store/staffStore";
 import { formatPrice } from "../utils/formatters";
+import { displayName } from "../utils/productName";
 import { dbHelpers } from "../services/db";
 import { showToast } from "../utils/toast";
 import { useSettingsStore } from "../store/settingsStore";
@@ -84,13 +85,25 @@ export default function Cart({ onNewSale }) {
       <div className="p-4">
         {/* Cart Items */}
         <div className="space-y-3 mb-6">
-          {items.map((item) => (
+          {items.map((item) => {
+            const name = displayName(item.name);
+            return (
             <div
               key={item.id}
               className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl shadow-sm"
             >
               <div className="flex-1 min-w-0">
-                <h4 className="font-semibold text-sm text-gray-800 truncate">{item.name}</h4>
+                {/* The size is kept out of the truncation: in a cart of one brand in
+                    several sizes, it is the only thing that differs. */}
+                <h4 className="font-semibold text-sm text-gray-800 flex items-baseline gap-1.5 min-w-0"
+                    title={item.name}>
+                  <span className="truncate">{name.base}</span>
+                  {name.variant && (
+                    <span className="shrink-0 text-[10px] font-extrabold text-gray-600 bg-gray-100 rounded px-1 py-0.5">
+                      {name.variant}
+                    </span>
+                  )}
+                </h4>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {formatPrice(item.price)} each
                 </p>
@@ -125,7 +138,8 @@ export default function Cart({ onNewSale }) {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Totals */}

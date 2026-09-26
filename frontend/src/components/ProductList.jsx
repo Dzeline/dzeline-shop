@@ -4,6 +4,7 @@ import { useCartStore } from "../store/cartStore";
 import { useDebounce } from "../utils/useDebounce";
 import { showToast } from "../utils/toast";
 import { findDuplicates } from "../services/mergeProducts";
+import { displayName } from "../utils/productName";
 import { formatPrice } from "../utils/formatters";
 import ProductEditModal from "./ProductEditModal";
 import ProductAddModal from "./ProductAddModal";
@@ -396,6 +397,7 @@ export default function ProductList() {
         <div className={GRID_CLASS}>
           {visibleProducts.map((product, idx) => {
             const col = accent(product.category);
+            const name = displayName(product.name);
             const outOfStock = product.stock === 0;
 
             return (
@@ -427,16 +429,27 @@ export default function ProductList() {
 
                 {/* Content */}
                 <div className="px-2.5 pb-2.5 pt-2 flex flex-col flex-1 gap-1">
-                  {/* Category label */}
-                  <p
-                    className="text-[9px] font-bold uppercase tracking-widest leading-none truncate"
-                    style={{ color: col }}
-                  >
-                    {product.category ?? "Other"}
-                  </p>
+                  {/* Category, and the size that tells two of the same thing apart */}
+                  <div className="flex items-center gap-1.5 leading-none">
+                    <p
+                      className="text-[9px] font-bold uppercase tracking-widest truncate flex-1 min-w-0"
+                      style={{ color: col }}
+                    >
+                      {product.category ?? "Other"}
+                    </p>
+                    {name.variant && (
+                      // Never truncated, and never part of the clamped name: on a
+                      // shelf of one brand it is the only thing that differs, and
+                      // it lives at the end of the name where the clamp cuts.
+                      <span className="shrink-0 text-[9px] font-extrabold text-gray-700 bg-gray-100 rounded px-1 py-0.5 tracking-wide">
+                        {name.variant}
+                      </span>
+                    )}
+                  </div>
                   {/* Name */}
-                  <h3 className="font-bold text-xs text-gray-800 leading-snug line-clamp-2">
-                    {product.name}
+                  <h3 className="font-bold text-xs text-gray-800 leading-snug line-clamp-2"
+                      title={name.title}>
+                    {name.base}
                   </h3>
 
                   {/* Stock bar */}

@@ -26,14 +26,18 @@ const ALIASES = {
   active:        ["status", "active", "enabled", "is_active"],
 };
 
-// ── Aronium POS stock report ──────────────────────────────────────────────────
+// ── A stock report from another POS ──────────────────────────────────────────────────
 //
-// Clients migrating from Aronium bring its "Stock" export, which does not fit the
-// generic mapping above and would be silently mangled by it. Two traps in
-// particular:
+// A shop migrating from another till usually brings a *stock* report rather than a
+// price list, and it does not fit the generic mapping above - it would be silently
+// mangled by it. This layout was first seen in an Aronium POS export; the headers
+// below are what identifies it, and any system exporting the same shape is read
+// the same way.
 //
-// Its "Code" column is Aronium's own row number (1287, 1265), not a barcode - and
-// "code" is in the barcode aliases, so a generic import would fill the barcode
+// Two traps in particular:
+//
+// Its "Code" column is that system's own row number (1287, 1265), not a barcode -
+// and "code" is in the barcode aliases, so a generic import would fill the barcode
 // field with numbers that scan as nothing and collide with each other.
 //
 // It has no price column at all. What it has is "Total", the stock value, so the
@@ -43,11 +47,11 @@ const ALIASES = {
 // The product name is sometimes the barcode instead, for items that were never
 // given a name.
 
-const ARONIUM_HEADERS = ["code", "product group", "product", "qty."];
+const STOCK_REPORT_HEADERS = ["code", "product group", "product", "qty."];
 
-function detectAroniumStock(headers) {
+function detectStockReportLayout(headers) {
   const lower = headers.map((h) => String(h).toLowerCase().trim());
-  const hasAll = ARONIUM_HEADERS.every((h) => lower.includes(h));
+  const hasAll = STOCK_REPORT_HEADERS.every((h) => lower.includes(h));
   // "Total" distinguishes the stock report from a plain item list, and is what
   // the price is derived from.
   return hasAll && lower.some((h) => h === "total" || h === "total before tax");
@@ -55,7 +59,7 @@ function detectAroniumStock(headers) {
 
 const BARCODE_SHAPE = /^\d{8,14}$/;
 
-function aroniumRowToProduct(row, headers) {
+function stockReportRowToProduct(row, headers) {
   const lower = headers.map((h) => String(h).toLowerCase().trim());
   const at = (label) => {
     const i = lower.indexOf(label);
@@ -236,10 +240,10 @@ export async function parseImportFile(file) {
   if (rows.length < 2) return { error: "That file has no data rows." };
   const headers = rows[0].map((h) => String(h ?? ""));
 
-  const aronium = detectAroniumStock(headers);
-  const colMap = aronium ? null : buildColumnMap(headers);
+  const stockReport = detectStockReportLayout(headers);
+  const colMap = stockReport ? null : buildColumnMap(headers);
 
-  if (!aronium && colMap.name == null) {
+  if (!stockReport && colMap.name == null) {
     return {
       error:
         `Could not find a product name column. Headers found: ${headers.join(", ")}\n` +
@@ -250,7 +254,7 @@ export async function parseImportFile(file) {
   // Which column held the quantity, so an impossible figure can be reported
   // rather than silently corrected.
   const lowerHeaders = headers.map((h) => String(h).toLowerCase().trim());
-  const stockColumn = aronium
+  const stockColumn = stockReport
     ? lowerHeaders.indexOf("qty.")
     : (colMap.stock ?? -1);
 
@@ -258,8 +262,8 @@ export async function parseImportFile(file) {
   let skipped = 0;
   let negativeStock = 0;
   for (let i = 1; i < rows.length; i++) {
-    const product = aronium
-      ? aroniumRowToProduct(rows[i], headers)
+    const product = stockReport
+      ? stockReportRowToProduct(rows[i], headers)
       : rowToProduct(rows[i], colMap);
     if (!product) { skipped++; continue; }
     if (stockColumn >= 0 && wasNegativeStock(rows[i][stockColumn])) negativeStock++;
@@ -267,7 +271,7 @@ export async function parseImportFile(file) {
   }
 
   return {
-    layout: aronium ? "aronium" : "generic",
+    layout: stockReport ? "stock-report" : "generic",
     products,
     skipped,
     unpriced: products.filter((product) => !product.price || product.price <= 0).length,

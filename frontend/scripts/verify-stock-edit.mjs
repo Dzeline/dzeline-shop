@@ -197,6 +197,62 @@ check("the main camera is left at its own zoom", camera.zoomMain === null,
   String(camera.zoomMain));
 check("a camera with no zoom capability is left alone", camera.zoomUnsupported === null);
 
+// -- telling one size from another ------------------------------------------
+console.log("");
+console.log("-- the size is never the part that gets cut off --");
+const names = await page.evaluate(async () => {
+  const { splitVariant, displayName } = await import("/src/utils/productName.js");
+  const out = {};
+  const cases = [
+    "GRACIES STRABERRY YOGHURT 250ML",
+    "GRACIES STRABERRY YOGHURT 500ML",
+    "gracies yogurt chocolate flavour 1L",
+    "AJAB MAIZE MEAL 2KG",
+    "DOWNY FRESH SCENT SUNRISE FRESH 20 ML",
+    "ALWAYS MAXI THICK",            // no size at all
+    "Eggs (Tray)",                  // parenthesis, no size
+    "ANARZ TWIGY RICE 5KG",
+    "SODA CRATE x12",
+    "Blue Band 250 g",
+    "TOSS 200G BLUE",               // size in the MIDDLE, not the end
+    "500ML",                        // nothing but a size
+    "Tea Leaves 250g.",
+  ];
+  for (const name of cases) out[name] = splitVariant(name);
+  out.__display = displayName("  GRACIES   STRABERRY  YOGHURT  250 ml ");
+  return out;
+});
+
+const v = (name) => names[name];
+check("two sizes of one product are told apart by the chip, not the name",
+  v("GRACIES STRABERRY YOGHURT 250ML").variant === "250ML"
+  && v("GRACIES STRABERRY YOGHURT 500ML").variant === "500ML"
+  && v("GRACIES STRABERRY YOGHURT 250ML").base === v("GRACIES STRABERRY YOGHURT 500ML").base,
+  `${v("GRACIES STRABERRY YOGHURT 250ML").base} | ${v("GRACIES STRABERRY YOGHURT 250ML").variant} vs ${v("GRACIES STRABERRY YOGHURT 500ML").variant}`);
+check("litres are recognised", v("gracies yogurt chocolate flavour 1L").variant === "1L",
+  v("gracies yogurt chocolate flavour 1L").variant);
+check("kilos are recognised", v("AJAB MAIZE MEAL 2KG").variant === "2KG",
+  v("AJAB MAIZE MEAL 2KG").variant);
+check("a space before the unit is closed up so sizes line up",
+  v("DOWNY FRESH SCENT SUNRISE FRESH 20 ML").variant === "20ML",
+  v("DOWNY FRESH SCENT SUNRISE FRESH 20 ML").variant);
+check("a multiplier is a size too", v("SODA CRATE x12").variant === "X12",
+  v("SODA CRATE x12").variant);
+check("a trailing full stop is dropped", v("Tea Leaves 250g.").variant === "250G",
+  v("Tea Leaves 250g.").variant);
+check("a name with no size keeps all of itself",
+  v("ALWAYS MAXI THICK").variant === null && v("ALWAYS MAXI THICK").base === "ALWAYS MAXI THICK");
+check("a bracketed word is not mistaken for a size",
+  v("Eggs (Tray)").variant === null, JSON.stringify(v("Eggs (Tray)")));
+check("a size in the middle of a name is left where it is",
+  v("TOSS 200G BLUE").variant === null && v("TOSS 200G BLUE").base === "TOSS 200G BLUE",
+  JSON.stringify(v("TOSS 200G BLUE")));
+check("a name that is only a size keeps it as the name",
+  v("500ML").variant === null && v("500ML").base === "500ML", JSON.stringify(v("500ML")));
+check("repeated spaces are tidied and the full name is kept for the tooltip",
+  names.__display.base === "GRACIES STRABERRY YOGHURT" && names.__display.variant === "250ML",
+  `${names.__display.base} | ${names.__display.variant}`);
+
 await browser.close();
 console.log("\n" + (failures.length === 0
   ? "All stock-edit and camera checks passed."

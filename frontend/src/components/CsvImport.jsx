@@ -85,10 +85,11 @@ export default function CsvImport({ onClose, onImported }) {
                 Columns are detected automatically.
               </p>
               <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl px-4 py-3 text-xs text-violet-200 leading-relaxed">
-                <span className="font-semibold text-violet-100">Aronium POS</span> exports are
-                recognised as they come. Its stock report has no price column, so prices are
-                worked out from the stock value — products with no stock arrive without a price
-                and are listed for pricing afterwards.
+                <span className="font-semibold text-violet-100">Other POS systems</span> are
+                recognised as they come — a stock report is read differently from a price list.
+                Where a file has no price column, prices are worked out from the stock value,
+                so products with no stock arrive without a price and are listed for pricing
+                afterwards.
               </div>
               <div className="bg-gray-800 rounded-xl p-4 text-xs text-gray-400 leading-relaxed">
                 <p className="font-semibold text-gray-300 mb-1">Recognised columns (any order)</p>
@@ -146,11 +147,12 @@ export default function CsvImport({ onClose, onImported }) {
                 )}
               </div>
 
-              {layout === "aronium" && (
+              {layout === "stock-report" && (
                 <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl px-4 py-3 text-xs text-violet-200 leading-relaxed">
-                  Read as an <span className="font-semibold text-violet-100">Aronium stock
-                  report</span>. Prices come from the stock value divided by the quantity. The
-                  Code column is Aronium&apos;s own numbering, not a barcode, so it is ignored.
+                  Read as a <span className="font-semibold text-violet-100">stock report</span>
+                  {" "}from another POS. Prices come from the stock value divided by the
+                  quantity, and the internal item-code column is that system&apos;s own
+                  numbering rather than a barcode, so it is ignored.
                 </div>
               )}
 

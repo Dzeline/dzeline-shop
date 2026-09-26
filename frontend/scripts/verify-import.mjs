@@ -81,7 +81,7 @@ if (aronium.error) {
 }
 
 console.log("\n── it recognises where the file came from ──");
-check("the layout is detected as an Aronium stock report", aronium.layout === "aronium",
+check("the layout is detected as a stock report from another POS", aronium.layout === "stock-report",
   aronium.layout);
 check("six products import and the nameless row is skipped",
   aronium.products.length === 6 && aronium.skipped === 1,
@@ -130,7 +130,7 @@ check("a real product group is kept", by("PEMBE MAIZE MEAL 2KG")?.category === "
 // ── the ordinary layout still works ─────────────────────────────────────────
 const generic = await parse(GENERIC_CSV, "products.csv");
 console.log("\n── the generic mapping is untouched ──");
-check("a normal export is not mistaken for an Aronium one", generic.layout === "generic",
+check("a normal price list is not mistaken for a stock report", generic.layout === "generic",
   generic.layout);
 check("its columns still map", generic.products.length === 2
   && generic.products[0].price === 175 && generic.products[0].barcode === "6001234567890",
@@ -220,7 +220,7 @@ if (realFile) {
     if (live.error) {
       check("it parses", false, live.error);
     } else {
-      check("it is read as an Aronium stock report", live.layout === "aronium", live.layout);
+      check("it is read as a stock report from another POS", live.layout === "stock-report", live.layout);
       check("every row with a name becomes a product", live.products.length > 1000,
         `${live.products.length} products, ${live.skipped} skipped`);
       const priced = live.products.filter((p) => p.price > 0);
