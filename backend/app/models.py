@@ -283,7 +283,7 @@ class SupplierPayment(Base):
     tenant_id   = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
     device_id   = Column(String(64), nullable=True, index=True)
     local_id    = Column(Integer, nullable=True, index=True)
-    receipt_id  = Column(Integer, nullable=True, index=True)   # local receipt id on the device that recorded it
+    receipt_id  = Column(Integer, nullable=True, index=True)   # the CLOUD receipt id (StockReceipt.id) - devices translate their own local id on push
     supplier_id = Column(Integer, nullable=True, index=True)
     supplier    = Column(String(200), nullable=True)
     amount      = Column(Float, nullable=False)

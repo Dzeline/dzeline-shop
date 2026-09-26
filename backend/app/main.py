@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from .database import Base, engine
+from .schema_sync import reconcile_model_columns
 from .limiter import limiter
 from .routers import supplier_payments, products, sync, mpesa, etims, admin, scan, stock_receipts, sms, staff, settings, suppliers, print_jobs
 
@@ -114,6 +115,21 @@ def _apply_migrations():
         # worse: the whole catalog's photos on every 45s poll instead of
         # just newly-created receipts.
         ("products", "image_blob", "TEXT"),
+        # suppliers — how the shop pays this supplier. Shared because the owner
+        # settling an invoice is usually not the person who received it, and
+        # hunting for a paybill number on a delivery note is how people pay the
+        # wrong account.
+        ("suppliers", "pay_method",  "VARCHAR(30)"),
+        ("suppliers", "pay_account", "VARCHAR(100)"),
+        ("suppliers", "pay_name",    "VARCHAR(200)"),
+        # stock_receipts — a delivery is also the invoice: what was billed and
+        # what has been paid against it. NOT NULL with a DEFAULT, matching the
+        # model, so existing receipts read as an unpaid zero rather than NULL
+        # arithmetic silently producing nothing.
+        ("stock_receipts", "order_id",       "INTEGER"),
+        ("stock_receipts", "invoice_amount", "FLOAT DEFAULT 0 NOT NULL"),
+        ("stock_receipts", "amount_paid",    "FLOAT DEFAULT 0 NOT NULL"),
+        ("stock_receipts", "payment_status", "VARCHAR(20) DEFAULT 'unpaid' NOT NULL"),
     ]
     with engine.connect() as conn:
         for table, col, typ in pending:
@@ -194,6 +210,9 @@ def _apply_migrations():
         except Exception as exc:
             conn.rollback()
             logger.warning("Index creation skipped: %s", exc)
+        # Whatever the hand-written list above missed, derived from the models.
+        # See app/schema_sync.py for why this exists.
+        reconcile_model_columns(conn)
     logger.info("Schema migrations complete")
 
 
