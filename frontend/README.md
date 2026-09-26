@@ -30,6 +30,7 @@ npm run dev                 # → http://localhost:5173
 | `verify:recovery` | Recovering a whole shop onto an empty device, against an intercepted API (needs `dev` running) |
 | `verify:xlsx` | Reading a real .xlsx with the dependency-free reader (needs `dev` running) |
 | `verify:import` | Aronium and generic spreadsheet mapping, and the unpriced-sale guard (needs `dev` running) |
+| `verify:duplicates` | When two products are the same product: sync, the add form, and merging (needs `dev` running) |
 | `verify:scanner` | Camera decode cost and the fast/thorough split (needs `dev` running) |
 | `verify:sms-match` | M-Pesa code/amount reconciliation rules (no browser needed) |
 | `generate-icons` | Regenerate PWA icons from the source SVG |
@@ -64,6 +65,7 @@ src/
 │   ├── db.js            Dexie schema (v19) + every dbHelpers accessor
 │   ├── sync.js          Push/pull for all synced tables, plus recoverEverything()
 │   ├── backup.js        The export file a shop owns, and restoring one
+│   ├── mergeProducts.js  Finding duplicate products and merging them into one
 │   └── (utils/productImport.js · utils/xlsx.js — spreadsheet import, incl. Aronium)
 │   ├── purchaseOrders.js  What is on order, and matching deliveries to it
 │   ├── supplierLedger.js  Invoices, payments, and what the shop owes

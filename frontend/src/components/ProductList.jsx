@@ -3,10 +3,12 @@ import { dbHelpers } from "../services/db";
 import { useCartStore } from "../store/cartStore";
 import { useDebounce } from "../utils/useDebounce";
 import { showToast } from "../utils/toast";
+import { findDuplicates } from "../services/mergeProducts";
 import { formatPrice } from "../utils/formatters";
 import ProductEditModal from "./ProductEditModal";
 import ProductAddModal from "./ProductAddModal";
 import CsvImport from "./CsvImport";
+import DuplicatesModal from "./DuplicatesModal";
 
 // Lazy-loaded: pulls in the zxing decoder, only needed once the scanner opens.
 const BarcodeScanner = lazy(() => import("./BarcodeScanner"));
@@ -93,6 +95,8 @@ export default function ProductList() {
   const [showScanner, setShowScanner] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [needsPriceOnly, setNeedsPriceOnly] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [duplicateCount, setDuplicateCount] = useState(0);
 
   const addItem = useCartStore((state) => state.addItem);
   const cartCount = useCartStore((state) => state.getItemCount());
@@ -133,6 +137,14 @@ export default function ProductList() {
   // once, and without somewhere to see them they are invisible until a cashier
   // tries to sell one.
   const unpricedCount = products.filter((p) => !p.price || p.price <= 0).length;
+
+  // Counted from the whole catalogue rather than the filtered view, and recounted
+  // after an import or a merge, so the banner reflects the shop and not the search
+  // box.
+  useEffect(() => {
+    if (!canEdit) return;
+    findDuplicates().then((groups) => setDuplicateCount(groups.length)).catch(() => {});
+  }, [products, canEdit]);
   const visibleProducts = needsPriceOnly
     ? products.filter((p) => !p.price || p.price <= 0)
     : products;
@@ -274,6 +286,24 @@ export default function ProductList() {
           <span className="text-amber-400/70 text-xs font-bold shrink-0">
             {needsPriceOnly ? "Show all" : "Show"}
           </span>
+        </button>
+      )}
+
+      {/* Products entered more than once */}
+      {!loading && duplicateCount > 0 && canEdit && (
+        <button
+          onClick={() => setShowDuplicates(true)}
+          className="mb-3 w-full flex items-center gap-2 rounded-xl px-3 py-2 text-left bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/15 transition"
+        >
+          <svg className="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          <p className="text-rose-300 text-xs font-semibold flex-1">
+            {duplicateCount} product{duplicateCount === 1 ? "" : "s"} entered more than once
+            {" "}— stock is split between the entries
+          </p>
+          <span className="text-rose-400/70 text-xs font-bold shrink-0">Review</span>
         </button>
       )}
 
@@ -450,6 +480,13 @@ export default function ProductList() {
             setShowAddModal(false);
             setEditingProduct(product);
           }}
+        />
+      )}
+
+      {showDuplicates && (
+        <DuplicatesModal
+          onClose={() => setShowDuplicates(false)}
+          onChanged={() => loadProducts({ silent: true })}
         />
       )}
 

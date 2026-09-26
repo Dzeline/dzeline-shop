@@ -235,6 +235,112 @@ console.log("-- and no longer invents a barcode --");
 check("the timestamp fallback is gone", invented.inventsBarcode === false);
 check("an empty barcode is stored as nothing", invented.nullsIt === true);
 
+// -- merging the ones that already exist --------------------------------------
+console.log("");
+console.log("-- merging duplicates that already exist --");
+const merge = await page.evaluate(async () => {
+  const { db } = await import("/src/services/db.js");
+  const { findDuplicates, suggestSurvivor, previewMerge, mergeProducts } =
+    await import("/src/services/mergeProducts.js");
+
+  await db.products.clear();
+  await db.transaction_items.clear();
+  await db.stock_receipt_items.clear();
+
+  // One tin of Blue Band, entered three times on three different days. The stock
+  // the shop actually has is 4 + 3 + 5 = 12, but no single row is low enough to
+  // trigger its reorder level of 6.
+  const a = await db.products.add({ name: "Blue Band 250g", barcode: null, price: 180,
+    cost_price: null, stock: 4, category: "Other", reorder_level: 6, cloud_id: 7001 });
+  const b = await db.products.add({ name: "BLUE BAND 250G", barcode: "6161117772045", price: 0,
+    cost_price: 150, stock: 3, category: "Spreads", reorder_level: 6, cloud_id: null });
+  const c = await db.products.add({ name: "blue band  250g", barcode: null, price: 185,
+    cost_price: null, stock: 5, category: "Other", reorder_level: 10, cloud_id: 7002 });
+  // And something that is genuinely its own product.
+  const other = await db.products.add({ name: "Salt 500g", barcode: "6003", price: 40,
+    stock: 20, category: "Other", reorder_level: 10 });
+
+  // History against two of the three.
+  const txn = await db.transactions.add({ timestamp: Date.now(), total: 180, subtotal: 155,
+    vat: 25, payment_method: "CASH", synced: false });
+  await db.transaction_items.add({ transaction_id: txn, product_id: a, name: "Blue Band 250g",
+    quantity: 1, price: 180, subtotal: 180 });
+  await db.transaction_items.add({ transaction_id: txn, product_id: c, name: "blue band  250g",
+    quantity: 2, price: 185, subtotal: 370 });
+  await db.stock_receipt_items.add({ receipt_id: 1, product_id: b, qty_added: 3, unit_cost: 150 });
+
+  const groups = await findDuplicates();
+  const group = groups[0];
+  const suggested = suggestSurvivor(group.products);
+  const preview = previewMerge(
+    group.products.find((p) => p.id === suggested.id),
+    group.products.filter((p) => p.id !== suggested.id),
+  );
+
+  const outcome = await mergeProducts(suggested.id, group.products.map((p) => p.id));
+  const kept = await db.products.get(suggested.id);
+  const remaining = await db.products.filter((p) => p.active !== false).toArray();
+  const linesOnKept = await db.transaction_items.where("product_id").equals(suggested.id).toArray();
+  const receiptLines = await db.stock_receipt_items.where("product_id").equals(suggested.id).toArray();
+  const deadRows = await Promise.all([a, b, c].filter((id) => id !== suggested.id).map((id) => db.products.get(id)));
+
+  await db.products.clear();
+  await db.transaction_items.clear();
+  await db.stock_receipt_items.clear();
+  await db.transactions.clear();
+
+  return {
+    groupCount: groups.length,
+    groupSize: group.products.length,
+    totalStock: group.totalStock,
+    suggestedIsB: suggested.id === b,
+    preview,
+    outcome,
+    kept: { name: kept.name, stock: kept.stock, price: kept.price, barcode: kept.barcode,
+            category: kept.category, reorder_level: kept.reorder_level, cost_price: kept.cost_price,
+            synced: kept.synced },
+    remainingNames: remaining.map((p) => p.name).sort(),
+    keptLines: linesOnKept.length,
+    keptReceiptLines: receiptLines.length,
+    deadRows: deadRows.map((p) => ({ active: p.active, stock: p.stock, deleted: p.deleted_at != null })),
+    otherUntouched: (await db.products.get(other)) === undefined,
+  };
+});
+
+check("the three entries are found as one group",
+  merge.groupCount === 1 && merge.groupSize === 3, `${merge.groupCount} groups of ${merge.groupSize}`);
+check("the group reports the stock the shop really has",
+  merge.totalStock === 12, `${merge.totalStock}`);
+check("the row with a real barcode is suggested as the one to keep", merge.suggestedIsB === true);
+check("stock is added together, because the stock is on the shelf",
+  merge.kept.stock === 12, `${merge.kept.stock}`);
+check("the survivor keeps its barcode", merge.kept.barcode === "6161117772045", merge.kept.barcode);
+check("a survivor with no price takes one that exists",
+  merge.kept.price === 180 || merge.kept.price === 185, String(merge.kept.price));
+check("its own cost price is not overwritten", merge.kept.cost_price === 150,
+  String(merge.kept.cost_price));
+check("a real category beats 'Other'", merge.kept.category === "Spreads", merge.kept.category);
+check("the reorder level is the highest of the group", merge.kept.reorder_level === 10,
+  String(merge.kept.reorder_level));
+check("only one Blue Band is left", merge.remainingNames.filter((n) => /blue band/i.test(n)).length === 1,
+  merge.remainingNames.join(", "));
+check("the unrelated product is untouched", merge.remainingNames.includes("Salt 500g"));
+check("past sale lines now point at the surviving product", merge.keptLines === 2,
+  `${merge.keptLines}`);
+check("so does the delivery line", merge.keptReceiptLines === 1, `${merge.keptReceiptLines}`);
+check("the merged rows are tombstoned, not deleted outright",
+  merge.deadRows.every((r) => r.active === false && r.deleted === true),
+  JSON.stringify(merge.deadRows));
+check("and their stock is zeroed so it cannot be counted twice",
+  merge.deadRows.every((r) => r.stock === 0), JSON.stringify(merge.deadRows.map((r) => r.stock)));
+check("the survivor is marked unsynced so other devices learn about it",
+  merge.kept.synced === false, String(merge.kept.synced));
+// Two lines move, not three: the delivery line was already against the row that
+// survived, so it needed nothing done to it.
+check("the outcome reports what it did",
+  merge.outcome.mergedCount === 2 && merge.outcome.stock === 12 && merge.outcome.movedLines === 2,
+  JSON.stringify(merge.outcome));
+
 await browser.close();
 console.log("\n" + (failures.length === 0
   ? "All duplicate checks passed."
