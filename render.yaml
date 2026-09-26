@@ -6,6 +6,9 @@ services:
     buildCommand: apt-get install -y -qq libgomp1 libglib2.0-0 && pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     plan: standard
+    # Explicit because both services came back from a billing suspension
+    # serving the build from before it, with the commits since undeployed.
+    autoDeploy: true
     envVars:
       - key: DATABASE_URL
         sync: false          # Set manually in Render dashboard — points to Neon PostgreSQL
