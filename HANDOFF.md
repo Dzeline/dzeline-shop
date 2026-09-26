@@ -35,10 +35,13 @@ next to it, one fact in one place:
 | H | Cross-device UI — desktop till + POS flow fixes | done, **needs a hardware pass** |
 | B | Real-time sync (WebSocket) | not started |
 
-**The caveat:** as of 2026-09-23 the Render service and the Neon database are suspended for
-non-payment. This does not block development — the frontend is offline-first and runs
-entirely standalone — but nothing syncs until they are restored, and no sync path has been
-exercised end to end since.
+**The caveat:** Render, Neon and Vercel were suspended for non-payment on 2026-09-23 and
+paid for again on 2026-09-26. Development was never blocked by it — the frontend is
+offline-first and runs standalone — but two things follow that are easy to miss. Both
+services came back running the build from *before* the suspension, and pushing to `main`
+did not redeploy either, so a manual deploy is needed (see Production TODOs). And no sync
+path had been exercised end to end across the whole period; `scripts/verify_live_sync.py`
+is how to do that now.
 
 ---
 
@@ -156,15 +159,23 @@ backend/app/
 - [ ] Replace the `kraPin: "P051234567X"` placeholder in `utils/constants.js`
 - [ ] Add error tracking (Sentry or similar) on frontend and backend
 - [ ] Wire per-tenant Daraja credentials from the Settings UI through to the tenant record
-- [ ] Restore the Render service and Neon database, then verify sync end to end
-- [ ] Create the schema added since Neon went down, by hand — there is no migration
-      tooling. Supplier `pay_method` / `pay_account` / `pay_name`; StockReceipt
-      `order_id` / `invoice_amount` / `amount_paid` / `payment_status`; the
-      `supplier_payments` table
+- [ ] **Trigger a manual deploy of Render and Vercel, and check auto-deploy is back
+      on.** Both came back from the billing suspension serving the build from
+      *before* it: as of 2026-09-26 the live API has no `/supplier-payments` route
+      at all and the live frontend has none of the backup, shift or payment work.
+      Pushing to `main` did not deploy either of them.
+- [x] ~~Create the schema added since Neon went down, by hand~~ — **not needed, and the
+      claim that there is no migration tooling was wrong.** `_apply_migrations()` in
+      `app/main.py` runs idempotent ALTERs on every boot, and `app/schema_sync.py` now
+      derives the rest from the models, so the columns appear when the API next starts.
+      Confirm with `python scripts/check_schema_state.py`
 - [ ] Check the Neon **instant restore** history window (Settings → Instant restore).
       Launch allows *up to* 7 days, which is not the same as having 7, and history
       storage bills at $0.20/GB-month
-- [ ] Repair or discard the mis-keyed `supplier_payments` rows (see Known issues)
+- [ ] Repair the mis-keyed `supplier_payments` rows: `python scripts/repair_payment_ids.py`
+      for the report, then `--apply`. They are recoverable, not lost — see Known issues
+- [ ] `python scripts/verify_live_sync.py` from the API's shell, once the real build is
+      out: a throwaway tenant, a real payment round trip, then cleans itself up
 - [ ] Hardware pass on Phase H: scan a real basket on a phone, and test a real USB wedge
       scanner (`MAX_GAP_MS` / `MIN_LENGTH` in `hooks/useWedgeScanner.js` are the dials)
 
